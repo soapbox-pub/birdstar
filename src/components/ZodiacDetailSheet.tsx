@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Flame,
@@ -9,6 +9,7 @@ import {
   Star as StarIcon,
   Sparkles,
   Moon as MoonIcon,
+  Bird,
 } from "lucide-react";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -16,6 +17,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { CommentsSection } from "@/components/comments/CommentsSection";
 import { ConstellationPreview } from "@/components/ConstellationPreview";
+import { BirdInfoDialog, type BirdSubject } from "@/components/BirdInfoDialog";
+import { useBirdLabels } from "@/hooks/useBirdLabels";
+import { useBirdInfo } from "@/hooks/useBirdInfo";
+import { birdOfTheDay } from "@/lib/birdOfTheDay";
+import type { BirdLabel } from "@/lib/birdnet/labels";
 import { starByHip } from "@/lib/stars";
 import { rulerRoute } from "@/lib/planets";
 import {
@@ -130,8 +136,31 @@ export function ZodiacDetailSheet({
   const elementMeta = s ? ELEMENT_META[s.element] : null;
   const ElementIcon = elementMeta?.icon;
 
+  // Bird-of-the-day — picked deterministically from the BirdNET
+  // roster by local calendar date. Same bird for every user on a
+  // given day, independent of the zodiac sign being viewed: the
+  // "daily" axis is the date, not the sign. Surfacing it here lets
+  // stargazers jump into a field-guide dialog without switching to
+  // Birds mode first.
+  const { data: birdLabels } = useBirdLabels();
+  const todaysBird = useMemo<BirdLabel | null>(() => {
+    if (!birdLabels) return null;
+    return birdOfTheDay(birdLabels, new Date());
+    // Labels are cached with `staleTime: Infinity`, and the daily
+    // seed only changes at local midnight — we intentionally don't
+    // depend on a ticking date value.
+  }, [birdLabels]);
+
+  // When the user taps the bird card, open `BirdInfoDialog` on top of
+  // the zodiac sheet. Using a `label`-kind subject (no detection,
+  // no eventId) gives the reader the same Wikipedia summary, range
+  // map, and reference song they'd see from the Birds checklist —
+  // without any delete affordance since there's nothing to delete.
+  const [birdSubject, setBirdSubject] = useState<BirdSubject | null>(null);
+
   return (
-    <Sheet open={!!s} onOpenChange={(o) => !o && onClose()}>
+    <>
+      <Sheet open={!!s} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="bottom"
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -270,6 +299,32 @@ export function ZodiacDetailSheet({
                   </section>
                 )}
 
+                {/* Bird-of-the-day. Cross-promotion from Stars into
+                    Birds mode: tapping the card opens the same
+                    `BirdInfoDialog` the Birds checklist uses, so the
+                    reader can see the Wikipedia summary, range map,
+                    and reference song for a species without having to
+                    switch modes. Which bird is shown is purely a
+                    function of today's local date — same for every
+                    user, every sign — because the "daily" axis here
+                    is the calendar, not the zodiac. */}
+                {todaysBird && (
+                  <section>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Bird className="h-4 w-4 text-sky-200/80" />
+                      <h3 className="text-xs uppercase tracking-widest text-white/50">
+                        Today's bird
+                      </h3>
+                    </div>
+                    <TodaysBirdCard
+                      label={todaysBird}
+                      onOpen={() =>
+                        setBirdSubject({ kind: "label", label: todaysBird })
+                      }
+                    />
+                  </section>
+                )}
+
                 {/* Stars in this figure */}
                 <section>
                   <div className="flex items-center gap-2 mb-3">
@@ -347,6 +402,17 @@ export function ZodiacDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Bird detail dialog. Rendered outside the Sheet so its own
+        Radix portal can stack above the zodiac sheet. Kept mounted
+        with `open` tied to `birdSubject` so Radix handles the focus
+        trap, backdrop, and close-on-escape behaviour for us. */}
+    <BirdInfoDialog
+      subject={birdSubject}
+      open={birdSubject !== null}
+      onOpenChange={(o) => !o && setBirdSubject(null)}
+    />
+    </>
   );
 }
 
@@ -399,4 +465,83 @@ function FactCard({
     );
   }
   return <div className={classes}>{body}</div>;
+}
+
+/**
+ * Clickable "Today's bird" card. Shows a Wikipedia thumbnail (if one
+ * exists for the species) alongside the common and scientific names.
+ * Tapping it opens the shared `BirdInfoDialog` — the same dialog
+ * Birds mode uses — so the reader gets the full field-guide view
+ * (Wikipedia summary, iNaturalist range map, reference song) without
+ * leaving the zodiac sheet.
+ *
+ * Uses a native `<button>` so keyboard users get the click target
+ * and focus ring for free. The Wikipedia lookup uses the same
+ * `useBirdInfo` hook the dialog itself will use, so by the time the
+ * dialog opens the data is already cached.
+ */
+function TodaysBirdCard({
+  label,
+  onOpen,
+}: {
+  label: BirdLabel;
+  onOpen: () => void;
+}) {
+  const { data: info, isLoading } = useBirdInfo(
+    label.scientificName,
+    label.commonName,
+  );
+  const imageUrl = info?.imageUrl ?? null;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={cn(
+        "w-full text-left rounded-xl border border-white/10 bg-white/5",
+        "hover:bg-white/10 hover:border-white/20 transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/60",
+        "overflow-hidden",
+      )}
+      title={`Open ${label.commonName}`}
+    >
+      <div className="flex items-center gap-3 p-3">
+        <div
+          className={cn(
+            "h-14 w-14 shrink-0 rounded-lg overflow-hidden",
+            "bg-linear-to-br from-sky-500/20 via-white/5 to-transparent",
+            "border border-white/10 flex items-center justify-center",
+          )}
+          aria-hidden
+        >
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <Bird
+              className={cn(
+                "h-6 w-6 text-sky-200/80",
+                isLoading && "animate-pulse",
+              )}
+            />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-white/95 truncate">
+            {label.commonName}
+          </div>
+          <div className="text-xs text-white/55 italic truncate">
+            {label.scientificName}
+          </div>
+        </div>
+        <span className="text-[10px] uppercase tracking-widest text-white/40 shrink-0">
+          Tap
+        </span>
+      </div>
+    </button>
+  );
 }

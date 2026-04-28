@@ -34,6 +34,7 @@
  */
 
 import type { ZodiacId } from "./zodiac";
+import { fnv1a, localDateKey, mulberry32, pick } from "./seededRandom";
 
 /** Themed prose fragments that compose a daily reading for one sign. */
 interface SignContent {
@@ -430,48 +431,6 @@ const CONTENT: Record<ZodiacId, SignContent> = {
   },
 };
 
-/**
- * Returns the ISO `YYYY-MM-DD` date key in the user's local timezone.
- * Local (not UTC) is deliberate: horoscopes read as "today" to the
- * reader, and a user flipping past midnight local time should see a
- * new reading even if UTC hasn't rolled over yet.
- */
-function localDateKey(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/**
- * FNV-1a 32-bit hash of a string. Small, dependency-free, and stable
- * across platforms — which is all we need for seeding the PRNG.
- */
-function fnv1a(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-/**
- * Mulberry32 PRNG. Matches the pattern already used by
- * `ConstellationPreview.tsx` so we have one deterministic-random
- * primitive in the codebase rather than two.
- */
-function mulberry32(a: number): () => number {
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** Result of generating a daily horoscope. */
 export interface DailyHoroscope {
   /** Multi-sentence paragraph for the sign on the given day. */
@@ -514,8 +473,4 @@ export function horoscopeFor(sign: ZodiacId, date: Date): DailyHoroscope {
     luckyNumber,
     dateKey,
   };
-}
-
-function pick<T>(arr: readonly T[], rand: () => number): T {
-  return arr[Math.floor(rand() * arr.length)];
 }
