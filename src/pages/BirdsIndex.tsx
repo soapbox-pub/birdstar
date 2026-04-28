@@ -748,7 +748,7 @@ const IndexInner = () => {
           edge-to-edge HUD in Stars mode. `pointer-events-none` on the
           strip + `pointer-events-auto` on each child keeps the area
           between the two groups click-through to the roster. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 px-4 pt-4 sm:pt-6">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 p-4">
         <div className="pointer-events-auto">
           <ModeSelector />
         </div>
@@ -773,7 +773,7 @@ const IndexInner = () => {
         </div>
       </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-16 sm:pb-36 sm:pt-20">
+      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-16 sm:pb-36">
         <div className="mt-6 sm:mt-8">
           <Header />
         </div>

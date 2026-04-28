@@ -18,11 +18,13 @@ import { cn } from "@/lib/utils";
  * auto forever. That matches the mental model: if you flip the switch,
  * you meant to flip it.
  *
- * Clicking either half explicitly sets that mode (so tapping the
- * already-active side while still in auto commits the current
- * resolution without flipping it — useful as an "I know, keep it
- * here" affordance). Clicking the knob / blank track flips to the
- * opposite concrete mode.
+ * **Clicking anywhere on the toggle flips it to the opposite mode.**
+ * The two halves still exist as separate buttons for keyboard and
+ * screen-reader affordance (each is aria-pressed, each announces
+ * "Birds mode" / "Stars mode"), but both halves' click handler does
+ * the same thing: set the *opposite* mode. That means a user who
+ * wants to flip never has to think about which half to tap — any
+ * pixel of the pill works.
  *
  * ## Visual
  *
@@ -37,12 +39,12 @@ export function ModeSelector({ className }: { className?: string }) {
 
   const isBirds = effectiveMode === "birds";
 
-  // Clicking a side sets that concrete mode. Clicking the already-
-  // active side still commits (auto → birds or auto → stars without a
-  // visible flip), which is the documented "lock it in" path.
-  const pick = (next: "birds" | "stars") => {
+  // Any click flips. The two half-buttons exist for a11y (each one
+  // has its own aria-pressed + label), but we intentionally collapse
+  // their click semantics: "flip to the opposite of whatever's live".
+  const flip = () => {
     hapticTick();
-    setMode(next);
+    setMode(isBirds ? "stars" : "birds");
   };
 
   return (
@@ -76,7 +78,7 @@ export function ModeSelector({ className }: { className?: string }) {
 
       <button
         type="button"
-        onClick={() => pick("birds")}
+        onClick={flip}
         aria-pressed={isBirds}
         aria-label="Birds mode"
         className={cn(
@@ -92,7 +94,7 @@ export function ModeSelector({ className }: { className?: string }) {
 
       <button
         type="button"
-        onClick={() => pick("stars")}
+        onClick={flip}
         aria-pressed={!isBirds}
         aria-label="Stars mode"
         className={cn(
