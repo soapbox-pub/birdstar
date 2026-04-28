@@ -819,7 +819,7 @@ const IndexInner = () => {
           )}
         </section>
 
-        <Footer />
+        {placeSet ? <Footer /> : null}
       </main>
 
       <PlayerBar
