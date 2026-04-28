@@ -890,7 +890,7 @@ function SettingsSheet({
             Customize your sky view and location.
           </SheetDescription>
         </SheetHeader>
-        <div className="space-y-6 mt-6">
+        <div className="space-y-6 mt-6 px-4 pb-4">
           <section className="space-y-3">
             <h3 className="text-sm font-semibold uppercase tracking-widest text-white/50">
               Display
