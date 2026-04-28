@@ -830,7 +830,6 @@ const IndexInner = () => {
         showFirstLoadNote={isFirstLoad}
         latestDetection={latestDetection}
         latestHit={latestHit}
-        pendingLeader={pendingLeader}
         getAnalyser={recorder.getAnalyser}
         onPause={handlePause}
         onResume={handleResume}

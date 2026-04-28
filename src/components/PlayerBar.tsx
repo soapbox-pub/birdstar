@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import type { RecorderErrorKind } from '@/hooks/useAudioRecorder';
-import type { PendingLeader, LatestHit } from '@/hooks/useDetectionAccumulator';
+import type { LatestHit } from '@/hooks/useDetectionAccumulator';
 import { useSongPlaybackActive } from '@/hooks/useSongPlayback';
 import { cn } from '@/lib/utils';
 
@@ -43,43 +43,43 @@ interface PlayerBarProps {
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
   showFirstLoadNote: boolean;
-  /** Most recently detected bird this session (or null if none yet). */
+  /**
+   * Most recently confirmed detection this session (or null if none yet).
+   * Used only to resolve the click target when the album-art species is
+   * confirmed — we hand the Detection back to the parent's
+   * `onSelectLatest` so the shared BirdInfoDialog opens against the
+   * real event (with its Nostr eventId, etc.). Not used for the
+   * thumbnail image / name / pie — those all follow `latestHit` so
+   * the bar is always about the most recently heard bird.
+   */
   latestDetection: Detection | null;
   /**
-   * Species of the most recent prediction that cleared the raw-confidence
-   * floor. Independent of `latestDetection` (which is only confirmed
-   * sightings) and `pendingLeader` (highest-summed species). Drives the
-   * album-art thumbnail IMAGE so it always reflects the most recent bird
-   * heard — confirmed or not, leading or not. The pie/`?` overlay and
-   * tap target still follow `pendingLeader` / `latestDetection`.
+   * Most recent prediction that cleared the raw-confidence floor.
+   * The player bar is effectively a mirror of this: thumbnail image,
+   * species name, dimming pie (`latestHit.progress`), amber `?` badge
+   * (`!latestHit.confirmed`), and tap target all reflect the bird
+   * *just heard*, whether or not it's confirmed. Null only until the
+   * first qualifying hit lands (or after the 3-minute rolling window
+   * empties).
    */
   latestHit: LatestHit | null;
-  /**
-   * Species currently accumulating toward confirmation, if any. When
-   * present, drives the pie/`?` overlay on the album-art thumbnail and
-   * takes priority in the click target and status label. It does NOT
-   * drive the thumbnail image — that's `latestHit`, so the image always
-   * reflects the bird most recently heard.
-   */
-  pendingLeader: PendingLeader | null;
   getAnalyser: () => AnalyserNode | null;
   onPause: () => void;
   onResume: () => void;
   onRetry: () => void;
   /**
-   * Called when the user taps the "album art" thumbnail. The parent owns
-   * the details dialog so it can be shared between the player bar and the
-   * detection cards on the page.
+   * Called when the user taps the album art and the currently-displayed
+   * species is already confirmed. The parent owns the details dialog so
+   * it can be shared between the player bar and the detection cards.
    */
   onSelectLatest?: (detection: Detection) => void;
   /**
-   * Called when the user taps the "album art" thumbnail while a species
-   * is pending (accumulating toward confirmation). The parent opens a
-   * BirdInfoDialog for the pending species so the user can read about
-   * the bird that *might* be singing while they wait for the rolling
-   * window to tip over the confirmation threshold. Passing only the
-   * scientific name keeps this bar decoupled from the labels table —
-   * the parent resolves the label.
+   * Called when the user taps the album art and the currently-displayed
+   * species is unconfirmed (still accumulating). The parent opens a
+   * BirdInfoDialog for that species so the user can read about the
+   * bird the app thinks it just heard. Passing only the scientific
+   * name keeps this bar decoupled from the labels table — the parent
+   * resolves the label.
    */
   onSelectPending?: (scientificName: string, progress: number) => void;
   /**
@@ -103,7 +103,6 @@ function PlayerBarImpl({
   showFirstLoadNote,
   latestDetection,
   latestHit,
-  pendingLeader,
   getAnalyser,
   onPause,
   onResume,
@@ -137,6 +136,44 @@ function PlayerBarImpl({
   // silent MediaStreamTrack.
   const visualizerActive = mode === 'listening' && !isMutedForSong;
 
+  /**
+   * Resolve a click on the album art (or status label) to the right
+   * dialog. The album art currently represents `latestHit`, so:
+   *   - If the species is confirmed, open the confirmed dialog. We
+   *     prefer the full `latestDetection` when it matches the latest
+   *     hit (same species), because that carries the Nostr eventId
+   *     and any other hydrated fields. Otherwise we synthesize a
+   *     minimal Detection from the hit itself — the parent's
+   *     `handleSelectLatest` will try to hydrate it from its
+   *     detection map on the way to the dialog.
+   *   - If the species is unconfirmed (accumulating), open the
+   *     pending dialog so the user can read about the bird the
+   *     classifier thinks is singing.
+   */
+  const openLatestHitDialog = () => {
+    if (!latestHit) return;
+    if (latestHit.confirmed) {
+      const matchedDetection =
+        latestDetection &&
+        latestDetection.scientificName === latestHit.scientificName &&
+        latestDetection.commonName === latestHit.commonName
+          ? latestDetection
+          : null;
+      const detection: Detection = matchedDetection ?? {
+        // `session-` prefix matches the convention in
+        // useDetectionAccumulator so key handling stays consistent
+        // if the parent later merges this into a map.
+        id: `session-${latestHit.scientificName}`,
+        scientificName: latestHit.scientificName,
+        commonName: latestHit.commonName,
+        timestamp: latestHit.timestamp,
+      };
+      onSelectLatest?.(detection);
+      return;
+    }
+    onSelectPending?.(latestHit.scientificName, latestHit.progress);
+  };
+
   return (
     <div
       className={cn(
@@ -151,29 +188,7 @@ function PlayerBarImpl({
         <LocationOptInBanner onRequest={onRequestLocation} />
       ) : null}
       <div className="mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
-        <AlbumArt
-          detection={latestDetection}
-          latestHit={latestHit}
-          pendingLeader={pendingLeader}
-          onClick={() => {
-            // Priority matches the thumbnail's visual priority: a
-            // pending leader (yellow ? badge + progress pie) takes
-            // precedence over the last confirmed detection, so a
-            // tap opens the dialog for whichever bird the
-            // thumbnail is currently representing. Guard both
-            // callbacks in case a parent wires only one.
-            if (pendingLeader) {
-              onSelectPending?.(
-                pendingLeader.scientificName,
-                pendingLeader.progress,
-              );
-              return;
-            }
-            if (latestDetection) {
-              onSelectLatest?.(latestDetection);
-            }
-          }}
-        />
+        <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
 
         <div className="min-w-0 flex-1">
           <CenterRegion
@@ -182,13 +197,11 @@ function PlayerBarImpl({
             errorMessage={errorMessage}
             errorKind={errorKind}
             showFirstLoadNote={showFirstLoadNote}
-            latestDetection={latestDetection}
-            pendingLeader={pendingLeader}
+            latestHit={latestHit}
             getAnalyser={getAnalyser}
             visualizerActive={visualizerActive}
             isMutedForSong={isMutedForSong}
-            onSelectLatest={onSelectLatest}
-            onSelectPending={onSelectPending}
+            onOpenLatestHit={openLatestHitDialog}
           />
         </div>
 
@@ -207,57 +220,36 @@ function PlayerBarImpl({
 /**
  * Left-hand "album art" slot.
  *
- * Image source is ALWAYS the `latestHit` — i.e. whichever species most
- * recently crossed the raw-confidence floor, regardless of whether that
- * species is accumulating, confirmed, or neither. This keeps the
- * thumbnail honest to "what was just heard" and avoids the confusing
- * case where the image locked onto a pending-leader species (highest
- * γ-sum) even though a different bird had just sung.
+ * Everything in this slot reflects the SAME bird — the most recently
+ * heard one. Image, name, dimming pie (that species' own progress to
+ * confirmation), amber `?` badge (shown iff unconfirmed), and tap
+ * target all come from `latestHit`. When the pie is full and the
+ * badge is hidden the bar reads as "latest confirmed"; a dim pie
+ * with a `?` reads as "just heard once, still unconfirmed". No
+ * state where the image and overlay point at different birds.
  *
- * Overlay chrome — the dimming pie and amber `?` badge — remains driven
- * by `pendingLeader` as before: "here's how close some species is to
- * confirmation". Note that the pie species and the thumbnail species
- * can temporarily disagree when the most recent hit is for a different
- * bird than the current leader. That's intentional: the thumbnail
- * answers "who just sang?" and the pie answers "who's about to be
- * confirmed?".
- *
- * Click priority mirrors the old behavior:
- *   1. Pending leader → opens the pending dialog for that species.
- *   2. Latest confirmed detection → opens the confirmed dialog.
- *   3. Neither → non-interactive silhouette.
- *
- * Fallback image source order: latestHit → pendingLeader → detection →
- * silhouette. The fallbacks only kick in very briefly at startup
- * before the first qualifying hit arrives (`latestHit` null) so the
- * thumbnail can still reflect a confirmation or a leader if somehow
- * they appear first (hydrate-from-disk ordering edge case).
+ * When no hit has been heard in the last CONFIRMATION_WINDOW_MS the
+ * thumbnail falls back to a silhouette placeholder and is not
+ * interactive.
  */
 function AlbumArt({
-  detection,
   latestHit,
-  pendingLeader,
   onClick,
 }: {
-  detection: Detection | null;
   latestHit: LatestHit | null;
-  pendingLeader: PendingLeader | null;
   onClick: () => void;
 }) {
-  // Image source: most recent hit. Fallbacks cover the narrow window
-  // between hydrate completing (may populate pendingLeader/detection
-  // first) and the first live hit landing.
-  const imageSource = latestHit ?? pendingLeader ?? detection;
-  // Overlay + click target still key off pendingLeader — the pie
-  // answers "who's about to confirm?" and must stay welded to the
-  // accumulator's leader, not the recency stream.
-  const isPending = Boolean(pendingLeader);
-
   const { data } = useBirdInfo(
-    imageSource?.scientificName ?? null,
-    imageSource?.commonName ?? null,
+    latestHit?.scientificName ?? null,
+    latestHit?.commonName ?? null,
   );
   const imageUrl = data?.imageUrl;
+
+  // The pie is only meaningful when the species is still accumulating.
+  // Once confirmed, hide the overlay chrome entirely — the thumbnail
+  // is just "this is the bird that was confirmed most recently".
+  const isUnconfirmed = Boolean(latestHit && !latestHit.confirmed);
+  const progress = latestHit?.progress ?? 0;
 
   const thumbnail = (
     <div
@@ -270,7 +262,7 @@ function AlbumArt({
       {imageUrl ? (
         <img
           src={imageUrl}
-          alt={imageSource?.commonName ?? ''}
+          alt={latestHit?.commonName ?? ''}
           className="h-full w-full object-cover"
           loading="lazy"
         />
@@ -279,9 +271,9 @@ function AlbumArt({
           <Bird className="h-7 w-7" aria-hidden strokeWidth={1.75} />
         </div>
       )}
-      {isPending ? (
+      {isUnconfirmed ? (
         <>
-          <ConfidencePie progress={pendingLeader!.progress} />
+          <ConfidencePie progress={progress} />
           {/* Yellow "?" badge. Sits on top of the pie dimmer so it
               stays legible even at 0% progress when the pie covers
               the whole thumbnail. Communicates "unconfirmed — tap
@@ -308,45 +300,35 @@ function AlbumArt({
     </div>
   );
 
-  // Both pending and confirmed are now clickable. For pending, the
-  // click opens a BirdInfoDialog for the currently-accumulating
-  // species so the user can read about the bird the app *thinks*
-  // it's hearing while they wait for the window to tip over the
-  // threshold. The confirmed case is unchanged.
-  if (isPending) {
-    const pct = Math.round(pendingLeader!.progress * 100);
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-label={`Unconfirmed: ${pendingLeader!.commonName} — ${pct}% to confirmation. Show details.`}
-        title={`${pendingLeader!.commonName} — ${pct}% to confirmation`}
-        className={cn(
-          'shrink-0 rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-none',
-          'focus-visible:ring-2 focus-visible:ring-amber-400/70 focus-visible:ring-offset-2',
-          'focus-visible:ring-offset-white dark:focus-visible:ring-amber-300/60 dark:focus-visible:ring-offset-[#0d1230]',
-        )}
-      >
-        {thumbnail}
-      </button>
-    );
-  }
-
-  if (!detection) {
-    // Nothing to drill into yet — keep it non-interactive so a click
-    // doesn't open an empty dialog.
+  if (!latestHit) {
+    // Nothing heard yet — keep it non-interactive so a click doesn't
+    // open an empty dialog.
     return thumbnail;
   }
+
+  const pct = Math.round(progress * 100);
+  const ariaLabel = latestHit.confirmed
+    ? `Show details for ${latestHit.commonName}`
+    : `Unconfirmed: ${latestHit.commonName} — ${pct}% to confirmation. Show details.`;
+  const ringColor = latestHit.confirmed
+    ? 'focus-visible:ring-emerald-500/60 dark:focus-visible:ring-amber-400/60'
+    : 'focus-visible:ring-amber-400/70 dark:focus-visible:ring-amber-300/60';
 
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`Show details for ${detection.commonName}`}
+      aria-label={ariaLabel}
+      title={
+        latestHit.confirmed
+          ? latestHit.commonName
+          : `${latestHit.commonName} — ${pct}% to confirmation`
+      }
       className={cn(
         'shrink-0 rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-none',
-        'focus-visible:ring-2 focus-visible:ring-emerald-500/60 focus-visible:ring-offset-2',
-        'focus-visible:ring-offset-white dark:focus-visible:ring-amber-400/60 dark:focus-visible:ring-offset-[#0d1230]',
+        'focus-visible:ring-2 focus-visible:ring-offset-2',
+        'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
+        ringColor,
       )}
     >
       {thumbnail}
@@ -437,21 +419,25 @@ function CenterRegion({
   errorMessage,
   errorKind,
   showFirstLoadNote,
-  latestDetection,
-  pendingLeader,
+  latestHit,
   getAnalyser,
   visualizerActive,
   isMutedForSong,
-  onSelectLatest,
-  onSelectPending,
+  onOpenLatestHit,
 }: {
   mode: PlayerMode;
   loadingPct: number;
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
   showFirstLoadNote: boolean;
-  latestDetection: Detection | null;
-  pendingLeader: PendingLeader | null;
+  /**
+   * Most recent species to clear the raw-confidence floor. The status
+   * label's top line names this species (with timestamp or
+   * "listening… X% to confirmation" depending on whether it's
+   * confirmed), so the label and the album art always point at the
+   * same bird.
+   */
+  latestHit: LatestHit | null;
   getAnalyser: () => AnalyserNode | null;
   visualizerActive: boolean;
   /**
@@ -461,14 +447,12 @@ function CenterRegion({
    */
   isMutedForSong: boolean;
   /**
-   * Forwarded from PlayerBarProps. Wired to the status-label top
-   * line so tapping a bird name there opens the same dialog the
-   * album art does. Both are parallel surfaces pointing at the
-   * same subject; making only one of them clickable would feel
-   * arbitrary.
+   * Called when the user taps the top-line species name. Resolves to
+   * the same dialog the album art opens — parent handles the
+   * confirmed-vs-pending branching since it owns the full Detection
+   * map needed to hydrate a confirmed click.
    */
-  onSelectLatest?: (detection: Detection) => void;
-  onSelectPending?: (scientificName: string, progress: number) => void;
+  onOpenLatestHit: () => void;
 }) {
   if (mode === 'error') {
     return (
@@ -499,35 +483,28 @@ function CenterRegion({
     );
   }
 
-  // Happy paths — visualizer + status label.
-  // Title mirrors the album-art slot's priority: a pending leader (species
-  // currently accumulating toward confirmation) takes precedence over the
-  // last confirmed detection, so the text and thumbnail always refer to
-  // the same bird.
-  // A label's "subject" identifies whether the top line of the
-  // status label refers to an actual bird the user can drill into
-  // (a confirmed detection or a pending species) or is just
-  // operator-facing chrome ("Ready", "Paused", "Mic paused", ...).
-  // Driving this off a tagged field rather than sniffing the text
-  // keeps the two "is the name clickable?" decisions -- in the
-  // album art and the top line -- aligned by construction: both
-  // priorities go pending > detection > null, so tapping either
-  // opens the same dialog for the same bird.
-  type LabelSubject =
-    | { kind: 'detection'; detection: Detection }
-    | { kind: 'pending'; pending: PendingLeader }
-    | null;
+  // Happy paths — visualizer + status label. The top line names the
+  // same bird the album art is currently showing (`latestHit`), with
+  // a subtitle that varies by mode + confirmation state. Keeping the
+  // status label and the thumbnail welded to the same subject means
+  // they can never tell conflicting stories.
+  const hitPct = latestHit ? Math.round(latestHit.progress * 100) : 0;
 
   const statusLabel: {
     top: string;
     bottom: string;
-    subject: LabelSubject;
+    /**
+     * True when the top line names an actual bird (i.e. `latestHit`
+     * is populated and we're in a mode that surfaces it). Drives
+     * whether the top line renders as a button or a plain <p>.
+     */
+    clickable: boolean;
   } = (() => {
     switch (mode) {
       case 'listening':
         // Muted-for-song overrides all other listening sub-states:
         // we're not meaningfully "listening" to anything the mic
-        // can hear right now, and the pending-leader progress is
+        // can hear right now, and the rolling-window progress is
         // frozen since no chunks are being ingested. Telling the
         // user exactly why the squiggle went flat avoids the
         // "wait, is it broken?" reaction.
@@ -535,78 +512,55 @@ function CenterRegion({
           return {
             top: 'Mic paused',
             bottom: 'Listening resumes when the song ends',
-            subject: null,
+            clickable: false,
           };
         }
-        if (pendingLeader) {
-          const pct = Math.round(pendingLeader.progress * 100);
+        if (latestHit) {
           return {
-            top: pendingLeader.commonName,
-            bottom: `Listening… ${pct}% to confirmation`,
-            subject: { kind: 'pending', pending: pendingLeader },
+            top: latestHit.commonName,
+            bottom: latestHit.confirmed
+              ? `Last heard ${formatClock(latestHit.timestamp)}`
+              : `Listening… ${hitPct}% to confirmation`,
+            clickable: true,
           };
         }
-        return latestDetection
-          ? {
-              top: latestDetection.commonName,
-              bottom: `Last heard ${formatClock(latestDetection.timestamp)}`,
-              subject: { kind: 'detection', detection: latestDetection },
-            }
-          : {
-              top: 'Listening…',
-              bottom: 'Point the mic toward the trees',
-              subject: null,
-            };
+        return {
+          top: 'Listening…',
+          bottom: 'Point the mic toward the trees',
+          clickable: false,
+        };
       case 'paused':
-        if (pendingLeader) {
+        if (latestHit) {
           return {
-            top: pendingLeader.commonName,
+            top: latestHit.commonName,
             bottom: 'Paused — tap play to resume',
-            subject: { kind: 'pending', pending: pendingLeader },
+            clickable: true,
           };
         }
-        return latestDetection
-          ? {
-              top: latestDetection.commonName,
-              bottom: 'Paused — tap play to resume',
-              subject: { kind: 'detection', detection: latestDetection },
-            }
-          : {
-              top: 'Paused',
-              bottom: 'Tap play to resume',
-              subject: null,
-            };
+        return {
+          top: 'Paused',
+          bottom: 'Tap play to resume',
+          clickable: false,
+        };
       case 'ready-idle':
         return {
           top: 'Ready',
           bottom: 'Waiting for microphone access…',
-          subject: null,
+          clickable: false,
         };
       default:
         return {
           top: 'Getting ready',
           bottom: 'Starting up…',
-          subject: null,
+          clickable: false,
         };
     }
   })();
 
-  const handleTopClick = () => {
-    if (!statusLabel.subject) return;
-    if (statusLabel.subject.kind === 'pending') {
-      onSelectPending?.(
-        statusLabel.subject.pending.scientificName,
-        statusLabel.subject.pending.progress,
-      );
-    } else {
-      onSelectLatest?.(statusLabel.subject.detection);
-    }
-  };
-
   return (
     <div className="flex min-w-0 flex-col justify-center gap-1">
       <div className="flex min-w-0 items-baseline gap-2">
-        {statusLabel.subject ? (
+        {statusLabel.clickable && latestHit ? (
           // Button when the top line names an actual bird. Tapping
           // opens the same info dialog the album art does. Styling
           // mirrors the <p> branch (font, truncation, color) so the
@@ -617,11 +571,11 @@ function CenterRegion({
           // clickability isn't discoverable.
           <button
             type="button"
-            onClick={handleTopClick}
+            onClick={onOpenLatestHit}
             aria-label={
-              statusLabel.subject.kind === 'pending'
-                ? `Unconfirmed: ${statusLabel.subject.pending.commonName}. Show details.`
-                : `Show details for ${statusLabel.subject.detection.commonName}`
+              latestHit.confirmed
+                ? `Show details for ${latestHit.commonName}`
+                : `Unconfirmed: ${latestHit.commonName}. Show details.`
             }
             className={cn(
               'min-w-0 truncate text-left font-serif text-sm font-semibold sm:text-base',
@@ -886,7 +840,7 @@ function LocationOptInBanner({ onRequest }: { onRequest: () => void }) {
 
 // Memoized — see the file-level comment for why. A shallow compare is
 // sufficient: all scalar props are primitives, `latestDetection` and
-// `pendingLeader` are swapped as whole objects (the accumulator memoizes
-// the PendingLeader object when nothing meaningful has changed), and the
+// `latestHit` are swapped as whole objects (the accumulator memoizes
+// the LatestHit object when nothing meaningful has changed), and the
 // callback props are stable on the parent side thanks to useCallback.
 export const PlayerBar = memo(PlayerBarImpl);

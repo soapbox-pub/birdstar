@@ -186,25 +186,37 @@ export interface PendingLeader {
 
 /**
  * Most recent prediction that passed the MIN_RAW_CONFIDENCE floor,
- * regardless of species or whether it ever confirmed. Surfaced so UI
- * that wants to reflect "what was just heard" (e.g. the player bar's
- * album-art thumbnail) can track the raw hit stream rather than the
- * pending-leader (highest-summed species) or the confirmed map
- * (threshold-crossers only). Cleared to null only when the in-memory
- * windows are empty — i.e. no hits at all within the rolling window.
+ * regardless of species or whether it ever confirmed. This is the one
+ * slot the player bar reflects in every dimension — thumbnail image,
+ * pie overlay, `?` badge, status label, and click target — so the
+ * bar always reads as "here is the bird you just heard".
  *
- * This is deliberately decoupled from PendingLeader: pending leader is
- * "who's winning the accumulation race" (highest γ-shaped sum), which
- * can point at a species that hasn't been heard in the last ~30 s if
- * they earlier stacked up a lot of confidence and no other species has
- * been heard since. `latestHit` always points at the most recent
- * actual audio hit.
+ * `progress` is *this species'* accumulated evidence toward confirmation
+ * (its γ-shaped rolling-window sum / CONFIRMATION_THRESHOLD, clamped to
+ * [0, 1]), NOT the highest-summed species' progress. A freshly-heard
+ * species that has never contributed before will come through with a
+ * low progress, which is exactly what the pie should display — dimmed
+ * ≈ "we just heard this once, nowhere near confirmed".
+ *
+ * `confirmed` is true when this species has been promoted to
+ * `confirmedSightings` during the current session. When confirmed,
+ * the pie is fully revealed and the `?` badge is hidden, but the image
+ * still reflects that it was the most recent bird heard.
  */
 export interface LatestHit {
   scientificName: string;
   commonName: string;
   /** Timestamp (ms) of the hit. */
   timestamp: number;
+  /**
+   * γ-shaped rolling-window sum for THIS species divided by
+   * CONFIRMATION_THRESHOLD, clamped to [0, 1]. 1 when the species is
+   * already confirmed (the window is cleared on confirmation, so the
+   * raw sum is 0 — we substitute 1 so the pie reads as "done").
+   */
+  progress: number;
+  /** True when this species is in `confirmedSightings`. */
+  confirmed: boolean;
 }
 
 export interface AccumulatorOptions {
@@ -334,6 +346,11 @@ export function useDetectionAccumulator(
   const [confirmedSightings, setConfirmedSightings] = useState<
     Map<string, Detection>
   >(() => new Map());
+  // Mirror of confirmedSightings for use inside refreshPendingLeader,
+  // which doesn't want to take confirmedSightings as a dep (it would
+  // invalidate the memoized ingest callback on every new confirmation).
+  // Writes to this ref always happen right next to setConfirmedSightings.
+  const confirmedRef = useRef<Map<string, Detection>>(new Map());
   const [pendingLeader, setPendingLeader] = useState<PendingLeader | null>(null);
   // Most recent qualifying hit (any species). Updated on every ingest that
   // passes the floor and reset to null once the rolling window empties, so
@@ -369,8 +386,11 @@ export function useDetectionAccumulator(
     let bestSum = 0;
     let bestLastHit = 0;
     // Absolute newest live hit across all species — drives `latestHit`.
+    // We also snapshot the newest species' own sum so the player bar
+    // can render a pie for *that* species' progress, not the leader's.
     let newestKey: string | null = null;
     let newestAt = 0;
+    let newestSum = 0;
 
     for (const [key, hits] of windowsRef.current) {
       const live = hits.filter((h) => h.timestamp >= cutoff);
@@ -396,21 +416,37 @@ export function useDetectionAccumulator(
       if (lastHit > newestAt) {
         newestAt = lastHit;
         newestKey = key;
+        newestSum = sum;
       }
     }
 
     // Update latestHit from whichever species has the most-recent live
     // hit. Done even when there is no pending leader (all windows
     // empty) so the slot clears in sync with the bar's empty state.
+    //
+    // The progress here is THIS species' own γ-summed evidence toward
+    // confirmation, not the leader's — so the pie the player bar
+    // renders on this species' thumbnail always reflects *its own*
+    // accumulation. A brand-new species gets a near-empty pie (heavy
+    // dim veil) which is exactly right: "we just heard this once".
     if (newestKey) {
       const names = namesBySpeciesKeyRef.current.get(newestKey);
       if (names) {
+        const confirmed = confirmedRef.current.has(newestKey);
+        // When a species is confirmed, its window is cleared (sum → 0),
+        // but we want the pie to read "done" (full reveal) rather than
+        // "empty". Clamp to 1 in that case.
+        const progress = confirmed
+          ? 1
+          : Math.min(newestSum / CONFIRMATION_THRESHOLD, 1);
         setLatestHit((prev) => {
           if (
             prev &&
             prev.scientificName === names.scientificName &&
             prev.commonName === names.commonName &&
-            prev.timestamp === newestAt
+            prev.timestamp === newestAt &&
+            prev.progress === progress &&
+            prev.confirmed === confirmed
           ) {
             return prev;
           }
@@ -418,6 +454,8 @@ export function useDetectionAccumulator(
             scientificName: names.scientificName,
             commonName: names.commonName,
             timestamp: newestAt,
+            progress,
+            confirmed,
           };
         });
       }
@@ -640,6 +678,7 @@ export function useDetectionAccumulator(
             // re-confirmations of the same species.
             id: existing?.id ?? detection.id,
           });
+          confirmedRef.current = next;
           return next;
         });
 
@@ -663,6 +702,7 @@ export function useDetectionAccumulator(
       if (!prev.has(key)) return prev;
       const next = new Map(prev);
       next.delete(key);
+      confirmedRef.current = next;
       return next;
     });
   }, []);
