@@ -1843,16 +1843,15 @@ export function SkyMap({
   // to drop clicks synthesized by drag/pinch gestures.
   //
   // Priority order:
-  //   1. Moon — a huge, unambiguous target. If the tap lands inside the
-  //      rendered disk (plus a small halo margin) it almost certainly
-  //      meant the Moon. Skipped in drawing mode so the Moon can't
-  //      hijack a star-picking tap.
-  //   2. Stars — A star is a small, precise target and a crowded
-  //      constellation label area shouldn't swallow a tap that was
-  //      clearly meant for one of its stars.
-  //   3. Custom constellation lines — fall back to a line hit-test when
-  //      no star is within range. Skipped entirely in drawing mode so
-  //      every tap goes straight to a star (picking a point on the chain).
+  //   1. Sun / Moon / planets — huge, unambiguous disk targets. Skipped
+  //      in drawing mode so they can't hijack a star-picking tap.
+  //   2. Constellations (incl. zodiacs) — intentionally checked BEFORE
+  //      stars so they're easier to click than the pinprick star disks
+  //      they're drawn on top of. An exception lets a tap land squarely
+  //      on a star's own rendered dot and still select the star, so
+  //      precise star-picking still works when the user is clearly
+  //      aiming at a specific star. Skipped in drawing mode.
+  //   3. Stars — fall-through target when no constellation was hit.
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
@@ -1955,31 +1954,14 @@ export function SkyMap({
       }
     }
 
-    // 2. Star hit-test (unchanged behavior for disk; also accepts taps
-    // on the star's rendered name label when one was drawn this frame).
-    if (onSelectStar) {
-      let best: { s: ScreenStar; d: number } | null = null;
-      for (const ss of screenStarsRef.current) {
-        if (!ss.inView) continue;
-        const dx = ss.x - x;
-        const dy = ss.y - y;
-        const d = Math.hypot(dx, dy);
-        const hitR = Math.max(24, ss.radius * 6);
-        const hit = d < hitR || hitsLabel(ss.label);
-        if (hit && (best === null || d < best.d)) {
-          best = { s: ss, d };
-        }
-      }
-      if (best) {
-        onSelectStar(best.s.star);
-        return;
-      }
-    }
-
-    // 3. Constellation hit-test. Disabled while drawing so star picking
-    // stays uninterrupted. Runs in two passes so the overwhelmingly
-    // common case (tap near a visible line) is both fast and precise,
-    // while the interior of a figure still picks something useful:
+    // 2. Constellation hit-test. Runs BEFORE stars so constellation
+    // figures (including zodiac overlays) are easier to click than the
+    // tiny star disks they're drawn on top of — users aiming at a
+    // constellation shouldn't have to thread the needle between its
+    // own stars. Disabled while drawing so star picking stays
+    // uninterrupted. Runs in two passes so the overwhelmingly common
+    // case (tap near a visible line) is both fast and precise, while
+    // the interior of a figure still picks something useful:
     //
     //   Pass A — nearest edge within ~22px. Bumped from the old 14px so
     //   it's comfortable for a finger pad; Apple HIG's ~44pt tappable
@@ -1992,6 +1974,12 @@ export function SkyMap({
     //   regions. When a tap lands inside multiple overlapping hulls,
     //   break the tie by picking the one whose centroid is nearest —
     //   that's the constellation the user most plausibly "meant".
+    //
+    // Precise-star escape hatch: if the tap also lands on a star's own
+    // rendered disk (not its padded tap target, just the pixels where
+    // the dot is actually drawn, with a tiny grace ring), the star
+    // wins. That keeps taps on bright stars like Regulus or Antares
+    // selectable even when they sit on a constellation line.
     if (!drawingMode && onSelectConstellation) {
       const EDGE_HIT_TOL_PX = 22;
       let bestId: string | null = null;
@@ -2024,7 +2012,55 @@ export function SkyMap({
         }
       }
 
-      if (bestId) onSelectConstellation(bestId);
+      if (bestId) {
+        // Precise-tap escape hatch — see comment above. Use a tight
+        // radius (the drawn disk plus ~3px grace) so most near-line
+        // taps still go to the constellation; only taps essentially
+        // on the dot itself are routed to the star.
+        if (onSelectStar) {
+          const STAR_OVERRIDE_PAD_PX = 3;
+          let overrideStar: ScreenStar | null = null;
+          let overrideDist = Infinity;
+          for (const ss of screenStarsRef.current) {
+            if (!ss.inView) continue;
+            const dx = ss.x - x;
+            const dy = ss.y - y;
+            const d = Math.hypot(dx, dy);
+            if (d <= ss.radius + STAR_OVERRIDE_PAD_PX && d < overrideDist) {
+              overrideStar = ss;
+              overrideDist = d;
+            }
+          }
+          if (overrideStar) {
+            onSelectStar(overrideStar.star);
+            return;
+          }
+        }
+
+        onSelectConstellation(bestId);
+        return;
+      }
+    }
+
+    // 3. Star hit-test (unchanged behavior for disk; also accepts taps
+    // on the star's rendered name label when one was drawn this frame).
+    if (onSelectStar) {
+      let best: { s: ScreenStar; d: number } | null = null;
+      for (const ss of screenStarsRef.current) {
+        if (!ss.inView) continue;
+        const dx = ss.x - x;
+        const dy = ss.y - y;
+        const d = Math.hypot(dx, dy);
+        const hitR = Math.max(24, ss.radius * 6);
+        const hit = d < hitR || hitsLabel(ss.label);
+        if (hit && (best === null || d < best.d)) {
+          best = { s: ss, d };
+        }
+      }
+      if (best) {
+        onSelectStar(best.s.star);
+        return;
+      }
     }
   };
 
