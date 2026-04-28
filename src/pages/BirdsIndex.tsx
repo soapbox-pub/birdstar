@@ -8,6 +8,7 @@ import {
 } from '@/components/BirdInfoDialog';
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
+import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1122,19 +1123,37 @@ function LocationGate({
         </div>
 
         <div className="flex flex-col items-stretch gap-3">
-          <Button
-            type="button"
-            onClick={onRequestLocation}
-            disabled={isResolving}
-            className={cn(
-              'mx-auto w-full max-w-sm gap-2',
-              'bg-emerald-600 text-white hover:bg-emerald-700',
-              'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
-            )}
-          >
-            <MapPin className="h-4 w-4" aria-hidden />
-            {isResolving ? 'Locating…' : 'Use my location'}
-          </Button>
+          {wasDenied ? (
+            <LocationHelpDialog
+              trigger={
+                <Button
+                  type="button"
+                  className={cn(
+                    'mx-auto w-full max-w-sm gap-2',
+                    'bg-emerald-600 text-white hover:bg-emerald-700',
+                    'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+                  )}
+                >
+                  <MapPin className="h-4 w-4" aria-hidden />
+                  Use my location
+                </Button>
+              }
+            />
+          ) : (
+            <Button
+              type="button"
+              onClick={onRequestLocation}
+              disabled={isResolving}
+              className={cn(
+                'mx-auto w-full max-w-sm gap-2',
+                'bg-emerald-600 text-white hover:bg-emerald-700',
+                'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+              )}
+            >
+              <MapPin className="h-4 w-4" aria-hidden />
+              {isResolving ? 'Locating…' : 'Use my location'}
+            </Button>
+          )}
 
           {/* Manual narrowing: continent → country → subdivision. */}
           <div className="mx-auto flex w-full max-w-sm flex-col items-stretch gap-2">
