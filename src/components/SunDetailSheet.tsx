@@ -317,7 +317,7 @@ function EclipseListItem({ eclipse }: { eclipse: SolarEclipse }) {
 
   return (
     <li className="flex items-start gap-3 px-4 py-3">
-      <div className="flex-shrink-0 mt-0.5">
+      <div className="shrink-0 mt-0.5">
         <EclipsedSunGlyph size={32} type={eclipse.type} />
       </div>
       <div className="min-w-0 flex-1">
@@ -331,7 +331,7 @@ function EclipseListItem({ eclipse }: { eclipse: SolarEclipse }) {
             {formatAbsolute(eclipse.date)}, {year}
             <ExternalLink className="h-3 w-3 opacity-60" />
           </a>
-          <span className="text-xs text-white/70 tabular-nums flex-shrink-0">
+          <span className="text-xs text-white/70 tabular-nums shrink-0">
             {formatRelative(eclipse.date)}
           </span>
         </div>
@@ -430,14 +430,14 @@ export function SunDetailSheet({
         {state && (
           <div className="flex flex-col h-full overflow-hidden">
             {/* Drag handle */}
-            <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
               <div className="h-1.5 w-10 rounded-full bg-white/20" />
             </div>
 
             {/* Header: Sun identity */}
-            <div className="px-5 pb-4 border-b border-white/10 flex-shrink-0">
+            <div className="px-5 pb-4 border-b border-white/10 shrink-0">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex-shrink-0">
+                <div className="mt-0.5 shrink-0">
                   <SunGlyph size={44} />
                 </div>
                 <div className="min-w-0 flex-1">
@@ -521,13 +521,13 @@ export function SunDetailSheet({
                   {sunWiki && (
                     <Card className="bg-white/5 border-white/10 overflow-hidden">
                       {sunWiki.thumbnail && (
-                        <div className="relative w-full aspect-[16/9] bg-black/40">
+                        <div className="relative w-full aspect-video bg-black/40">
                           <img
                             src={sunWiki.thumbnail.source}
                             alt="The Sun"
                             className="absolute inset-0 w-full h-full object-cover"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent" />
+                          <div className="absolute inset-0 bg-linear-to-t from-slate-950/80 to-transparent" />
                         </div>
                       )}
                       <CardContent className="p-4 space-y-4">
@@ -683,7 +683,7 @@ export function SunDetailSheet({
               </div>
             </div>
 
-            <div className="p-4 border-t border-white/10 flex-shrink-0 bg-slate-950/80">
+            <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
               <Button
                 variant="outline"
                 className="w-full bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"

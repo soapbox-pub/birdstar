@@ -415,10 +415,10 @@ export function ZapDialog({ target, children, className }: ZapDialogProps) {
               </Button>
             </DrawerClose>
 
-            <DrawerTitle className="text-lg break-words pt-2">
+            <DrawerTitle className="text-lg wrap-break-word pt-2">
               {invoice ? 'Lightning Payment' : 'Send a Zap'}
             </DrawerTitle>
-            <DrawerDescription className="text-sm break-words text-center">
+            <DrawerDescription className="text-sm wrap-break-word text-center">
               {invoice ? (
                 'Pay with Bitcoin Lightning Network'
               ) : (
@@ -443,10 +443,10 @@ export function ZapDialog({ target, children, className }: ZapDialogProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px] max-h-[95vh] overflow-hidden" data-testid="zap-modal">
         <DialogHeader>
-          <DialogTitle className="text-lg break-words">
+          <DialogTitle className="text-lg wrap-break-word">
             {invoice ? 'Lightning Payment' : 'Send a Zap'}
           </DialogTitle>
-          <DialogDescription className="text-sm text-center break-words">
+          <DialogDescription className="text-sm text-center wrap-break-word">
             {invoice ? (
               'Pay with Bitcoin Lightning Network'
             ) : (

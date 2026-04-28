@@ -801,7 +801,7 @@ function DrawingModeBanner({
   return (
     <div className="pointer-events-none absolute top-20 left-1/2 -translate-x-1/2 w-[min(92vw,480px)] px-2">
       <div className="pointer-events-auto rounded-2xl border border-amber-200/40 bg-amber-300/10 backdrop-blur-md px-4 py-2.5 shadow-lg flex items-center gap-3">
-        <div className="h-8 w-8 rounded-xl bg-amber-300 text-slate-900 flex items-center justify-center flex-shrink-0">
+        <div className="h-8 w-8 rounded-xl bg-amber-300 text-slate-900 flex items-center justify-center shrink-0">
           <Pencil className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
@@ -812,7 +812,7 @@ function DrawingModeBanner({
             Tap stars to connect them · {starCount} picked
           </div>
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={onUndo}
             disabled={starCount === 0}
@@ -911,7 +911,7 @@ function SettingsSheet({
                   setCommunityMode(v as CommunityConstellationMode)
                 }
               >
-                <SelectTrigger className="h-9 w-[140px] bg-white/5 border-white/10 text-white data-[placeholder]:text-white/50">
+                <SelectTrigger className="h-9 w-[140px] bg-white/5 border-white/10 text-white data-placeholder:text-white/50">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-950/95 border-white/10 text-white backdrop-blur-lg">

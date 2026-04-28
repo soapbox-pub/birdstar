@@ -121,7 +121,7 @@ function ProfileContent({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Drag handle */}
-      <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+      <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
         <div className="h-1.5 w-10 rounded-full bg-white/20" />
       </div>
 
@@ -136,10 +136,10 @@ function ProfileContent({
                 alt=""
                 className="h-full w-full object-cover opacity-50"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-950/60 to-slate-950" />
+              <div className="absolute inset-0 bg-linear-to-b from-transparent via-slate-950/60 to-slate-950" />
             </div>
           ) : (
-            <div className="absolute inset-0 -z-10 bg-gradient-to-b from-indigo-900/30 via-slate-900 to-slate-950" />
+            <div className="absolute inset-0 -z-10 bg-linear-to-b from-indigo-900/30 via-slate-900 to-slate-950" />
           )}
 
           <div className="px-5 pt-4 pb-6">
@@ -148,10 +148,10 @@ function ProfileContent({
                 <img
                   src={picture}
                   alt=""
-                  className="h-20 w-20 rounded-full object-cover ring-4 ring-slate-950 shadow-xl flex-shrink-0"
+                  className="h-20 w-20 rounded-full object-cover ring-4 ring-slate-950 shadow-xl shrink-0"
                 />
               ) : (
-                <div className="h-20 w-20 rounded-full bg-white/10 ring-4 ring-slate-950 shadow-xl flex-shrink-0" />
+                <div className="h-20 w-20 rounded-full bg-white/10 ring-4 ring-slate-950 shadow-xl shrink-0" />
               )}
               <div className="min-w-0 flex-1 pt-1">
                 <h2 className="text-2xl font-semibold tracking-tight truncate">
@@ -168,16 +168,16 @@ function ProfileContent({
                   className="inline-flex items-center gap-1 mt-1 text-[11px] text-white/40 hover:text-white/70 font-mono transition-colors"
                   title="Copy npub"
                 >
-                  <span className="truncate max-w-[12rem]">
+                  <span className="truncate max-w-48">
                     {npub.slice(0, 16)}…{npub.slice(-8)}
                   </span>
-                  <Copy className="h-3 w-3 flex-shrink-0" />
+                  <Copy className="h-3 w-3 shrink-0" />
                 </button>
               </div>
             </div>
 
             {about && (
-              <p className="mt-4 text-sm leading-relaxed text-white/80 whitespace-pre-wrap break-words">
+              <p className="mt-4 text-sm leading-relaxed text-white/80 whitespace-pre-wrap wrap-break-word">
                 {about}
               </p>
             )}
@@ -235,7 +235,7 @@ function ProfileContent({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-white/10 flex-shrink-0 bg-slate-950/80">
+      <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
         <Button
           variant="outline"
           asChild

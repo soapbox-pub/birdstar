@@ -231,7 +231,7 @@ function AlbumArt({
     <div
       className={cn(
         'relative h-14 w-14 shrink-0 overflow-hidden rounded-md shadow-sm sm:h-16 sm:w-16',
-        'bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100',
+        'bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100',
         'dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60',
       )}
     >
@@ -809,7 +809,7 @@ function PrimaryButton({
         // Nudge the play icon right by 1px — it's visually offset inside
         // its square bounding box because the triangle's visual center
         // sits a little left of the geometric center.
-        <Play className="h-5 w-5 translate-x-[1px] fill-current" />
+        <Play className="h-5 w-5 translate-x-px fill-current" />
       )}
     </button>
   );

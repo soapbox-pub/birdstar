@@ -167,7 +167,7 @@ export function BirdInfoDialog({
                 tinted gradient so the dialog never looks broken.
                 `shrink-0` pins the banner at 192px so the flex parent
                 gives the remaining height to the scrolling body. */}
-            <div className="relative h-48 w-full shrink-0 overflow-hidden bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60">
+            <div className="relative h-48 w-full shrink-0 overflow-hidden bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60">
               {isLoading ? (
                 <Skeleton className="h-full w-full" />
               ) : data?.imageUrl ? (
@@ -189,7 +189,7 @@ export function BirdInfoDialog({
                   loading="lazy"
                 />
               ) : null}
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/60 to-transparent" />
 
               {/* "Rare find" chip overlay — shown for out-of-region heard
                   birds so the context from the roster carries through
@@ -792,12 +792,12 @@ function SourcesLine({
   // overflow horizontally instead of wrapping mid-credit.
   //
   // Fix: normal inline flow, with the bullet as a regular inline
-  // character between pieces. The parent uses `break-words` so
+  // character between pieces. The parent uses `wrap-break-word` so
   // extra-long tokens (e.g. accidental URLs in a username field)
   // still wrap rather than pushing the dialog wider than the
   // viewport on mobile.
   return (
-    <p className="break-words text-[11px] leading-snug text-stone-400 dark:text-stone-500">
+    <p className="wrap-break-word text-[11px] leading-snug text-stone-400 dark:text-stone-500">
       {pieces.map((piece, i) => (
         <span key={i}>
           {i > 0 ? (
@@ -921,7 +921,7 @@ function useSongPlayer(
         // Nudge the play triangle right by 1px so it looks
         // optically centered inside the circle (the glyph's
         // centroid sits left of its bounding box).
-        <Play className="h-4 w-4 translate-x-[1px] fill-current" aria-hidden />
+        <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
       )}
     </button>
   );

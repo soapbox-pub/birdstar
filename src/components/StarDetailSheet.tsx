@@ -330,15 +330,15 @@ export function StarDetailSheet({ star, onClose }: StarDetailSheetProps) {
         {star && (
           <div className="flex flex-col h-full overflow-hidden">
             {/* Drag handle */}
-            <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
               <div className="h-1.5 w-10 rounded-full bg-white/20" />
             </div>
 
             {/* Header (star identity) */}
-            <div className="px-5 pb-4 border-b border-white/10 flex-shrink-0">
+            <div className="px-5 pb-4 border-b border-white/10 shrink-0">
               <div className="flex items-start gap-3">
                 <div
-                  className="mt-1.5 h-4 w-4 rounded-full flex-shrink-0 shadow-[0_0_16px_currentColor]"
+                  className="mt-1.5 h-4 w-4 rounded-full shrink-0 shadow-[0_0_16px_currentColor]"
                   style={{
                     backgroundColor: bvToColor(star.bv),
                     color: bvToColor(star.bv),
@@ -427,13 +427,13 @@ export function StarDetailSheet({ star, onClose }: StarDetailSheetProps) {
                   {wiki && (
                     <Card className="bg-white/5 border-white/10 overflow-hidden">
                       {wiki.thumbnail && (
-                        <div className="relative w-full aspect-[16/9] bg-black/40">
+                        <div className="relative w-full aspect-video bg-black/40">
                           <img
                             src={wiki.thumbnail.source}
                             alt={wiki.displayTitle}
                             className="absolute inset-0 w-full h-full object-cover"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent" />
+                          <div className="absolute inset-0 bg-linear-to-t from-slate-950/80 to-transparent" />
                         </div>
                       )}
                       <CardContent className="p-4 space-y-3">
@@ -484,7 +484,7 @@ export function StarDetailSheet({ star, onClose }: StarDetailSheetProps) {
               </div>
             </div>
 
-            <div className="p-4 border-t border-white/10 flex-shrink-0 bg-slate-950/80">
+            <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
               <Button
                 variant="outline"
                 className="w-full bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"

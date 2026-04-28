@@ -88,7 +88,7 @@ export function ConstellationCard({
     <div
       className={cn(
         "group relative rounded-2xl border overflow-hidden transition-colors",
-        "bg-white/[0.04] border-white/10 hover:border-white/20 hover:bg-white/[0.06]",
+        "bg-white/4 border-white/10 hover:border-white/20 hover:bg-white/6",
       )}
     >
       {/* Clickable card body. Using a <div role="button"> (rather than an
@@ -108,11 +108,11 @@ export function ConstellationCard({
         title={`Open ${c.title}`}
       >
         {/* Hero preview (4:3) */}
-        <div className="relative aspect-[4/3]">
+        <div className="relative aspect-4/3">
           <ConstellationPreview
             edges={c.edges}
             ariaLabel={`Preview of ${c.title}`}
-            className="!rounded-none"
+            className="rounded-none!"
           />
         </div>
 
@@ -135,10 +135,10 @@ export function ConstellationCard({
                 <img
                   src={picture}
                   alt=""
-                  className="h-4 w-4 rounded-full object-cover flex-shrink-0 ring-1 ring-white/10"
+                  className="h-4 w-4 rounded-full object-cover shrink-0 ring-1 ring-white/10"
                 />
               ) : (
-                <div className="h-4 w-4 rounded-full bg-white/10 flex-shrink-0" />
+                <div className="h-4 w-4 rounded-full bg-white/10 shrink-0" />
               )}
               <span className="text-xs text-white/60 truncate hover:text-white/80">
                 {isMine ? "You" : displayName}

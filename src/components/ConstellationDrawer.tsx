@@ -201,7 +201,7 @@ export function ConstellationDrawer({
         side="bottom"
         className="bg-slate-950/95 border-white/10 text-white backdrop-blur-lg p-0 h-[85dvh] max-h-[85dvh] rounded-t-3xl flex flex-col"
       >
-        <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+        <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
           <div className="h-1.5 w-10 rounded-full bg-white/20" />
         </div>
         <SheetHeader className="px-5 pb-3 text-left">
@@ -219,7 +219,7 @@ export function ConstellationDrawer({
           onValueChange={(v) => setTab(v as typeof tab)}
           className="flex-1 flex flex-col overflow-hidden"
         >
-          <div className="px-5 flex-shrink-0">
+          <div className="px-5 shrink-0">
             <TabsList className="bg-white/5 border border-white/10 grid grid-cols-2 w-full">
               <TabsTrigger value="mine" className="data-[state=active]:bg-white/10">
                 <User className="h-3.5 w-3.5 mr-1.5" />
@@ -338,7 +338,7 @@ function DrawPane({
       {!drawingMode ? (
         <Button
           onClick={onStart}
-          className="w-full bg-gradient-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold"
+          className="w-full bg-linear-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold"
         >
           <PlusCircle className="h-4 w-4 mr-2" />
           Start drawing
@@ -455,7 +455,7 @@ function DrawPane({
             <Button
               onClick={onPublish}
               disabled={!canPublish || publishing || !loggedIn}
-              className="w-full bg-gradient-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold disabled:opacity-40"
+              className="w-full bg-linear-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold disabled:opacity-40"
             >
               {publishing ? (
                 <>

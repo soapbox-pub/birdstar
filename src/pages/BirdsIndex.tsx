@@ -740,7 +740,7 @@ const IndexInner = () => {
     !regionHasDecided && regionStatus !== 'resolving' && !placeSet;
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-sky-50 via-emerald-50/70 to-amber-50 text-stone-900 dark:bg-gradient-to-b dark:from-[#0d1230] dark:via-[#1a1740] dark:to-[#3b2a3f] dark:text-stone-100">
+    <div className="relative min-h-screen bg-linear-to-b from-sky-50 via-emerald-50/70 to-amber-50 text-stone-900 dark:bg-linear-to-b dark:from-[#0d1230] dark:via-[#1a1740] dark:to-[#3b2a3f] dark:text-stone-100">
       {/* Full-page-width top HUD: mode selector on the left, optional
           manual-location pill + LoginArea on the right. Absolutely
           positioned (rather than tucked inside the max-w-6xl main) so

@@ -53,7 +53,7 @@ function BirdCardImpl({ detection, onSelect }: BirdCardProps) {
           intrinsic aspect ratio would otherwise allow. */}
       <div className="flex h-full gap-0">
         {/* Image panel */}
-        <div className="relative w-36 shrink-0 overflow-hidden bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 sm:w-48 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60">
+        <div className="relative w-36 shrink-0 overflow-hidden bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 sm:w-48 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60">
           {isLoading ? (
             <Skeleton className="h-full w-full" />
           ) : data?.imageUrl ? (
@@ -69,7 +69,7 @@ function BirdCardImpl({ detection, onSelect }: BirdCardProps) {
             </div>
           )}
           {/* Subtle gradient overlay at the bottom for legibility of any overlaid chips */}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/30 to-transparent" />
           <div className="absolute bottom-2 left-2 font-mono text-[10px] uppercase tracking-wider text-white/80">
             {timeStr}
           </div>

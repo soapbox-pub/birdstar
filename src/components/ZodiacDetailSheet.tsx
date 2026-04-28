@@ -140,18 +140,18 @@ export function ZodiacDetailSheet({
         {s && commentRoot && (
           <div className="flex flex-col h-full overflow-hidden">
             {/* Drag handle */}
-            <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
               <div className="h-1.5 w-10 rounded-full bg-white/20" />
             </div>
 
             {/* Header */}
-            <div className="px-5 pb-4 border-b border-white/10 flex-shrink-0">
+            <div className="px-5 pb-4 border-b border-white/10 shrink-0">
               <div className="min-w-0">
                 <h2 className="text-2xl font-semibold tracking-tight truncate">
                   {s.name}
                 </h2>
                 <div className="flex items-center gap-1.5 mt-1 text-sm text-white/60 min-w-0">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-200/70 flex-shrink-0" />
+                  <Sparkles className="h-3.5 w-3.5 text-amber-200/70 shrink-0" />
                   <span className="truncate">Zodiac sign</span>
                 </div>
               </div>
@@ -166,14 +166,14 @@ export function ZodiacDetailSheet({
                     figure and the astrology one-liner read as a single
                     unit, mirroring ConstellationDetailSheet. */}
                 <Card className="bg-white/5 border-white/10 overflow-hidden">
-                  <div className="relative w-full aspect-[4/3]">
+                  <div className="relative w-full aspect-4/3">
                     <ConstellationPreview
                       edges={s.edges}
                       ariaLabel={`Preview of ${s.name}`}
-                      className="!rounded-none"
+                      className="rounded-none!"
                       interactive
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-slate-950/70 via-transparent to-transparent" />
                     {/* Glyph watermark in the corner — subtle, non-repeating
                         cue that this is the astrological sign, not just any
                         star figure. */}
@@ -241,7 +241,7 @@ export function ZodiacDetailSheet({
                         {horoscopeDateLabel}
                       </span>
                     </div>
-                    <Card className="bg-gradient-to-br from-amber-500/10 via-white/5 to-transparent border-amber-200/15">
+                    <Card className="bg-linear-to-br from-amber-500/10 via-white/5 to-transparent border-amber-200/15">
                       <CardContent className="p-4 space-y-4">
                         <p className="text-sm leading-relaxed text-white/90">
                           {horoscope.paragraph}
@@ -334,7 +334,7 @@ export function ZodiacDetailSheet({
               </div>
             </div>
 
-            <div className="p-4 border-t border-white/10 flex-shrink-0 bg-slate-950/80">
+            <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
               <Button
                 variant="outline"
                 className="w-full bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"

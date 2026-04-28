@@ -378,14 +378,14 @@ export function ObservationMap({ scientificName }: ObservationMapProps) {
         // fold. 16:10 gives enough vertical room to read north/south
         // range at a glance while keeping the "you are here" dot +
         // song player visible in the same viewport on most phones.
-        'aspect-[16/10] bg-stone-100',
+        'aspect-16/10 bg-stone-100',
         'dark:border-indigo-900/60 dark:bg-indigo-950/40',
         // Dark-mode tint applied to the basemap tile layer's DOM
         // subtree. Targets the class we set on the CARTO TileLayer
         // above; the iNat grid layer has a different class and
         // is unaffected, so the warm observation density squares
         // keep their natural colours.
-        '[&_.carto-basemap-tiles]:dark:[filter:invert(0.92)_hue-rotate(180deg)_brightness(0.9)]',
+        '[&_.carto-basemap-tiles]:dark:filter-[invert(0.92)_hue-rotate(180deg)_brightness(0.9)]',
       )}
     >
       <div ref={containerRef} className="h-full w-full" />

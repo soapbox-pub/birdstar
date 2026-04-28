@@ -96,7 +96,7 @@ function BannerCard({
     >
       <div
         className={cn(
-          "h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0",
+          "h-8 w-8 rounded-xl flex items-center justify-center shrink-0",
           warning ? "bg-rose-400/20 text-rose-100" : "bg-white/10 text-sky-200",
         )}
       >
@@ -112,7 +112,7 @@ function BannerCard({
         <button
           type="button"
           onClick={msg.action.onClick}
-          className="flex-shrink-0 h-7 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white text-[11px] font-medium"
+          className="shrink-0 h-7 px-3 rounded-full bg-white/10 hover:bg-white/20 text-white text-[11px] font-medium"
         >
           {msg.action.label}
         </button>
@@ -120,7 +120,7 @@ function BannerCard({
       <button
         type="button"
         onClick={onDismiss}
-        className="flex-shrink-0 h-7 w-7 rounded-full hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center"
+        className="shrink-0 h-7 w-7 rounded-full hover:bg-white/10 text-white/60 hover:text-white flex items-center justify-center"
         aria-label="Dismiss"
       >
         <XIcon className="h-3.5 w-3.5" />

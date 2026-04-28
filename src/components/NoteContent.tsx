@@ -113,7 +113,7 @@ export function NoteContent({
   }, [event]);
 
   return (
-    <div className={cn("whitespace-pre-wrap break-words", className)}>
+    <div className={cn("whitespace-pre-wrap wrap-break-word", className)}>
       {content.length > 0 ? content : event.content}
     </div>
   );

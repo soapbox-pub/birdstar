@@ -31,7 +31,7 @@ export function EnableSensorsDialog({
       <DialogContent className="bg-slate-950 border-white/10 text-white sm:rounded-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-amber-300 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <div className="h-10 w-10 rounded-2xl bg-linear-to-br from-indigo-500 to-amber-300 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Compass className="h-5 w-5 text-slate-900" />
             </div>
             <div className="text-left">
@@ -93,7 +93,7 @@ export function EnableSensorsDialog({
           </Button>
           <Button
             onClick={() => window.location.reload()}
-            className="bg-gradient-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold"
+            className="bg-linear-to-r from-indigo-500 to-amber-300 text-slate-900 hover:opacity-90 font-semibold"
           >
             <RefreshCw className="h-4 w-4 mr-2" />
             Reload page
@@ -116,7 +116,7 @@ function Instructions({
       <ol className="space-y-2.5">
         {steps.map((step, i) => (
           <li key={i} className="flex items-start gap-3 text-sm text-white/85">
-            <span className="flex-shrink-0 mt-0.5 h-5 w-5 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-[11px] font-semibold text-white/80 tabular-nums">
+            <span className="shrink-0 mt-0.5 h-5 w-5 rounded-full bg-white/10 border border-white/10 flex items-center justify-center text-[11px] font-semibold text-white/80 tabular-nums">
               {i + 1}
             </span>
             <span className="leading-snug">{step}</span>

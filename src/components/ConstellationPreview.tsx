@@ -67,7 +67,7 @@ export function ConstellationPreview({
     return (
       <div
         className={cn(
-          "rounded-xl border border-dashed border-white/10 bg-white/[0.02]",
+          "rounded-xl border border-dashed border-white/10 bg-white/2",
           className,
         )}
         aria-label={ariaLabel}
@@ -87,7 +87,7 @@ export function ConstellationPreview({
         // container regardless of the container's aspect ratio. The figure
         // SVG is letterboxed on top with `meet` so shapes never distort.
         "relative w-full h-full rounded-xl ring-1 ring-white/10 overflow-hidden",
-        "bg-[radial-gradient(ellipse_at_50%_40%,_#1e1b4b_0%,_#0b1026_55%,_#020617_100%)]",
+        "bg-[radial-gradient(ellipse_at_50%_40%,#1e1b4b_0%,#0b1026_55%,#020617_100%)]",
         className,
       )}
       role="img"

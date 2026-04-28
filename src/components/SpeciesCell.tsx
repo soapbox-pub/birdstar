@@ -139,14 +139,14 @@ function SpeciesCellImpl({
                 // on the clip wrapper rather than the individual
                 // layers so the effect is uniform and survives the
                 // image-loading handoff from gradient to photo.
-                'opacity-60 [filter:grayscale(0.3)] group-hover:opacity-80',
+                'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
               ),
         )}
       >
         {/* Fallback gradient — shows through until the image loads,
             and stays as the background for the no-image glyph state. */}
         <div
-          className="absolute inset-0 bg-gradient-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60"
+          className="absolute inset-0 bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60"
           aria-hidden
         />
 
@@ -170,7 +170,7 @@ function SpeciesCellImpl({
         )}
 
         {/* Bottom gradient for name legibility */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/60 to-transparent" />
 
         {/* Heard / rare badges (top-right) */}
         {heard ? (

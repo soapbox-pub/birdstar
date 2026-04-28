@@ -90,12 +90,12 @@ export function ConstellationDetailSheet({
         {c && (
           <div className="flex flex-col h-full overflow-hidden">
             {/* Drag handle */}
-            <div className="flex items-center justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="flex items-center justify-center pt-3 pb-1 shrink-0">
               <div className="h-1.5 w-10 rounded-full bg-white/20" />
             </div>
 
             {/* Header */}
-            <div className="px-5 pb-4 border-b border-white/10 flex-shrink-0">
+            <div className="px-5 pb-4 border-b border-white/10 shrink-0">
               <div className="min-w-0">
                 <h2 className="text-2xl font-semibold tracking-tight truncate">
                   {c.title}
@@ -112,10 +112,10 @@ export function ConstellationDetailSheet({
                     <img
                       src={picture}
                       alt=""
-                      className="h-4 w-4 rounded-full object-cover flex-shrink-0"
+                      className="h-4 w-4 rounded-full object-cover shrink-0"
                     />
                   ) : (
-                    <div className="h-4 w-4 rounded-full bg-white/10 flex-shrink-0" />
+                    <div className="h-4 w-4 rounded-full bg-white/10 shrink-0" />
                   )}
                   <span className="truncate">by {displayName}</span>
                 </Link>
@@ -128,18 +128,18 @@ export function ConstellationDetailSheet({
                 {/* Hero preview — a large rendering of the figure, shown in
                     the same slot Wikipedia images occupy on star views. */}
                 <Card className="bg-white/5 border-white/10 overflow-hidden">
-                  <div className="relative w-full aspect-[4/3]">
+                  <div className="relative w-full aspect-4/3">
                     <ConstellationPreview
                       edges={c.edges}
                       ariaLabel={`Preview of ${c.title}`}
-                      className="!rounded-none"
+                      className="rounded-none!"
                       interactive
                     />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+                    <div className="pointer-events-none absolute inset-0 bg-linear-to-t from-slate-950/70 via-transparent to-transparent" />
                   </div>
                   {c.description && (
                     <CardContent className="p-4">
-                      <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap break-words">
+                      <p className="text-sm leading-relaxed text-white/85 whitespace-pre-wrap wrap-break-word">
                         {c.description}
                       </p>
                     </CardContent>
@@ -227,7 +227,7 @@ export function ConstellationDetailSheet({
               </div>
             </div>
 
-            <div className="p-4 border-t border-white/10 flex-shrink-0 bg-slate-950/80">
+            <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
               <Button
                 variant="outline"
                 className="w-full bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"
