@@ -1,11 +1,14 @@
 import { createContext } from "react";
 
 /**
- * The three values the user can pick from in the top-left dropdown.
+ * The three values the underlying state machine can take.
  *
- * - `"auto"`: the *user-selected* mode. In this state the app decides
+ * - `"auto"`: the *initial default*. In this state the app decides
  *   between birds and stars based on the local sun altitude (see
- *   {@link useEffectiveMode}). This is the default.
+ *   `ModeProvider`). There is no visible control for this value —
+ *   the toggle UI only shows Birds and Stars, with the knob tracking
+ *   the resolved `effectiveMode`. The first explicit click commits
+ *   the user to a concrete mode and they never return to auto.
  * - `"birds"`: force bird mode regardless of time of day.
  * - `"stars"`: force star mode regardless of time of day.
  */

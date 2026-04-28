@@ -1,147 +1,110 @@
-import { useMemo } from "react";
-import {
-  Bird,
-  Check,
-  ChevronDown,
-  Sparkles,
-} from "lucide-react";
+import { Bird, Sparkles } from "lucide-react";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useMode } from "@/hooks/useMode";
 import { hapticTick } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 
 /**
- * The floating top-left mode dropdown.
+ * Two-position Birds/Stars toggle that lives in the top-left of both
+ * experiences.
  *
- * In "auto" the trigger collapses to a bare circle with a down-chevron —
- * the visual cue is "this follows the sun, don't think about it". In
- * "birds" or "stars" the trigger widens to show the active mode's label
- * and icon.
+ * ## Interaction model
  *
- * Styled to sit over both the bird roster's pale-gradient background and
- * starpoint's black sky, so it uses the same frosted-dark pill treatment
- * as the rest of the sky HUD.
+ * The toggle only has two visible sides — Birds (left) and Stars
+ * (right). There is no visible "Auto" affordance. A first-time visitor
+ * still loads in auto mode (the knob tracks `effectiveMode` — the
+ * resolved birds/stars based on sun altitude), and the moment they
+ * click the toggle, the app commits to that concrete mode and sheds
+ * auto forever. That matches the mental model: if you flip the switch,
+ * you meant to flip it.
+ *
+ * Clicking either half explicitly sets that mode (so tapping the
+ * already-active side while still in auto commits the current
+ * resolution without flipping it — useful as an "I know, keep it
+ * here" affordance). Clicking the knob / blank track flips to the
+ * opposite concrete mode.
+ *
+ * ## Visual
+ *
+ * Dark frosted pill + sliding knob. The pill is dark on both
+ * backgrounds (pale birds gradient, black sky) so the same component
+ * works in either mode without restyling. The knob carries the active
+ * mode's accent color so the "where am I" cue is unambiguous even for
+ * users who don't parse icons.
  */
 export function ModeSelector({ className }: { className?: string }) {
-  const { mode, effectiveMode, setMode } = useMode();
+  const { effectiveMode, setMode } = useMode();
 
-  // When Auto is picked the dropdown appends "(currently birds)" / "
-  // (currently stars)" to the matching row, so the user can tell which
-  // way Auto is resolving right now without leaving the menu.
-  const items = useMemo(
-    () =>
-      [
-        {
-          value: "auto" as const,
-          label: "Auto",
-          description:
-            effectiveMode === "birds"
-              ? "Currently birds — stars after dark"
-              : "Currently stars — birds by day",
-        },
-        {
-          value: "birds" as const,
-          label: "Birds",
-          description: "Listen for birds near you",
-          icon: Bird,
-        },
-        {
-          value: "stars" as const,
-          label: "Stars",
-          description: "Point your phone at the sky",
-          icon: Sparkles,
-        },
-      ] as const,
-    [effectiveMode],
-  );
+  const isBirds = effectiveMode === "birds";
 
-  const isAuto = mode === "auto";
+  // Clicking a side sets that concrete mode. Clicking the already-
+  // active side still commits (auto → birds or auto → stars without a
+  // visible flip), which is the documented "lock it in" path.
+  const pick = (next: "birds" | "stars") => {
+    hapticTick();
+    setMode(next);
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label="Switch between birds, stars, and auto"
+    <div
+      role="group"
+      aria-label="Switch between birds and stars"
+      className={cn(
+        "relative inline-flex h-10 w-[168px] items-center rounded-full border p-1 backdrop-blur-md",
+        // Dark frosted pill — works over the bird roster's light
+        // background (via the white/10 border) and the sky's black.
+        "border-white/10 bg-black/40 text-white",
+        "focus-within:ring-2 focus-within:ring-white/40",
+        "transition-colors",
+        className,
+      )}
+    >
+      {/* Sliding knob. Tracks effectiveMode so auto users see it at
+          whichever side the sun decided — it snaps to the opposite
+          side on their first click without needing state of its own. */}
+      <span
+        aria-hidden
         className={cn(
-          "group inline-flex items-center justify-center gap-2",
-          "rounded-full border text-sm font-medium backdrop-blur-md",
-          // Dark frosted pill — works over the bird roster's light
-          // background (via the white/10 border) and the sky's black.
-          "bg-black/40 border-white/10 text-white hover:bg-black/60",
-          "focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-0",
+          "pointer-events-none absolute top-1 h-8 w-[80px] rounded-full shadow-md transition-transform duration-200 ease-out motion-reduce:transition-none",
+          // Birds gets an emerald knob, stars an indigo/violet one — a
+          // color cue that survives the icon and works in both modes.
+          isBirds
+            ? "translate-x-0 bg-emerald-500/90"
+            : "translate-x-[80px] bg-indigo-500/90",
+        )}
+      />
+
+      <button
+        type="button"
+        onClick={() => pick("birds")}
+        aria-pressed={isBirds}
+        aria-label="Birds mode"
+        className={cn(
+          "relative z-10 inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-medium",
           "transition-colors",
-          // Compact circular treatment for Auto; widens to a pill with
-          // label when birds/stars is explicitly selected.
-          isAuto ? "h-10 w-10 p-0" : "h-10 px-3.5 pr-3",
-          className,
+          "focus-visible:outline-hidden",
+          isBirds ? "text-white" : "text-white/60 hover:text-white/85",
         )}
-        onClick={() => hapticTick()}
       >
-        {isAuto ? (
-          <ChevronDown className="h-4 w-4" aria-hidden />
-        ) : mode === "birds" ? (
-          <>
-            <Bird className="h-4 w-4" aria-hidden />
-            <span>Birds</span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-60" aria-hidden />
-          </>
-        ) : (
-          <>
-            <Sparkles className="h-4 w-4" aria-hidden />
-            <span>Stars</span>
-            <ChevronDown className="h-3.5 w-3.5 opacity-60" aria-hidden />
-          </>
+        <Bird className="h-4 w-4" aria-hidden />
+        <span>Birds</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => pick("stars")}
+        aria-pressed={!isBirds}
+        aria-label="Stars mode"
+        className={cn(
+          "relative z-10 inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-medium",
+          "transition-colors",
+          "focus-visible:outline-hidden",
+          !isBirds ? "text-white" : "text-white/60 hover:text-white/85",
         )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="min-w-[220px] bg-slate-950/95 border-white/10 text-white backdrop-blur-lg"
       >
-        <DropdownMenuLabel className="text-[11px] uppercase tracking-[0.18em] text-white/50 font-semibold">
-          Mode
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-white/10" />
-        {items.map((item) => {
-          const Icon = "icon" in item ? item.icon : null;
-          const selected = mode === item.value;
-          return (
-            <DropdownMenuItem
-              key={item.value}
-              onSelect={() => setMode(item.value)}
-              className={cn(
-                "gap-3 py-2 pr-2 text-white focus:bg-white/10 focus:text-white",
-                selected && "bg-white/5",
-              )}
-            >
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center">
-                {Icon ? (
-                  <Icon className="h-4 w-4 opacity-80" aria-hidden />
-                ) : (
-                  <ChevronDown className="h-4 w-4 opacity-80" aria-hidden />
-                )}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-sm font-medium leading-tight">
-                  {item.label}
-                </span>
-                <span className="text-[11px] text-white/60 leading-tight">
-                  {item.description}
-                </span>
-              </div>
-              {selected ? (
-                <Check className="h-3.5 w-3.5 text-white/70" aria-hidden />
-              ) : null}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <Sparkles className="h-4 w-4" aria-hidden />
+        <span>Stars</span>
+      </button>
+    </div>
   );
 }
