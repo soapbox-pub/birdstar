@@ -176,7 +176,6 @@ function PlayerBarImpl({
             isMutedForSong={isMutedForSong}
             onSelectLatest={onSelectLatest}
             onSelectPending={onSelectPending}
-            onRetry={onRetry}
           />
         </div>
 
@@ -412,7 +411,6 @@ function CenterRegion({
   isMutedForSong,
   onSelectLatest,
   onSelectPending,
-  onRetry,
 }: {
   mode: PlayerMode;
   loadingPct: number;
@@ -438,14 +436,12 @@ function CenterRegion({
    */
   onSelectLatest?: (detection: Detection) => void;
   onSelectPending?: (scientificName: string, progress: number) => void;
-  onRetry: () => void;
 }) {
   if (mode === 'error') {
     return (
       <ErrorRegion
         errorKind={errorKind}
         errorMessage={errorMessage}
-        onRetry={onRetry}
       />
     );
   }
@@ -645,11 +641,9 @@ function CenterRegion({
 function ErrorRegion({
   errorKind,
   errorMessage,
-  onRetry,
 }: {
   errorKind: RecorderErrorKind | null;
   errorMessage: string | null;
-  onRetry: () => void;
 }) {
   // Permission-denied gets a bespoke treatment with the help dialog; all
   // other error kinds share a common compact layout.
@@ -676,18 +670,10 @@ function ErrorRegion({
                   variant="outline"
                   className="h-7 border-rose-300 bg-white/70 px-2 text-xs text-rose-800 hover:bg-white dark:border-rose-700 dark:bg-rose-950/60 dark:text-rose-100 dark:hover:bg-rose-900/60"
                 >
-                  How to enable
+                  Fix it
                 </Button>
               }
             />
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onRetry}
-              className="h-7 border-rose-300 bg-white/70 px-2 text-xs text-rose-800 hover:bg-white dark:border-rose-700 dark:bg-rose-950/60 dark:text-rose-100 dark:hover:bg-rose-900/60"
-            >
-              I've enabled it
-            </Button>
           </div>
         </div>
       </div>
