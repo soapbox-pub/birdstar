@@ -356,14 +356,19 @@ function SpeciesCellPlayButton({
         }
         aria-pressed={isPlaying}
         className={cn(
-          // Exact palette + size of the old checkmark badge so the
-          // "confirmed" cue reads identically; only the glyph and
-          // interactivity change.
-          'absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full',
-          'bg-emerald-500/95 text-white shadow ring-1 ring-white/20 backdrop-blur-sm',
+          // Sized up from the original 24px checkmark badge to 36px
+          // (h-9 w-9) so the play affordance reads as a primary
+          // action on the cell — users should see it as a
+          // tappable soundboard, not a status badge. Still a
+          // touch smaller than the dialog's 40px button because
+          // the cell itself is much smaller than the dialog
+          // header, but large enough to meet reasonable touch-
+          // target guidance on mobile.
+          'absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full',
+          'bg-emerald-500/95 text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm',
           'dark:bg-emerald-400/95 dark:text-emerald-950',
           'transition-[transform,background-color,box-shadow] duration-200',
-          'hover:bg-emerald-600/95 hover:shadow-md active:scale-95',
+          'hover:bg-emerald-600/95 hover:shadow-lg active:scale-95',
           'dark:hover:bg-emerald-300/95',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-1',
           'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
@@ -371,7 +376,7 @@ function SpeciesCellPlayButton({
           // interactivity so the confirmed indicator stays
           // consistent even when a species has no usable
           // recording.
-          'disabled:cursor-default disabled:hover:bg-emerald-500/95 disabled:hover:shadow disabled:active:scale-100',
+          'disabled:cursor-default disabled:hover:bg-emerald-500/95 disabled:hover:shadow-md disabled:active:scale-100',
           'disabled:dark:hover:bg-emerald-400/95',
         )}
       >
@@ -381,7 +386,7 @@ function SpeciesCellPlayButton({
           // Nudge the triangle right by 1px so it looks optically
           // centered inside the circle (the glyph's centroid
           // sits left of its bounding box).
-          <Play className="h-3 w-3 translate-x-px fill-current" aria-hidden />
+          <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
         )}
       </button>
 
@@ -418,11 +423,11 @@ function SpeciesCellPlayButton({
 function EqualiserBars() {
   const delays = ['0ms', '120ms', '60ms', '180ms'];
   return (
-    <span className="flex h-3 items-end gap-[1.5px]" aria-hidden>
+    <span className="flex h-4 items-end gap-[2px]" aria-hidden>
       {delays.map((delay, i) => (
         <span
           key={i}
-          className="block w-[1.5px] animate-pulse-bar rounded-full bg-current"
+          className="block w-[2px] animate-pulse-bar rounded-full bg-current"
           style={{ animationDelay: delay }}
         />
       ))}
