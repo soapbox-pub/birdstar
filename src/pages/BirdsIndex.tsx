@@ -1150,29 +1150,23 @@ function LocationGate({
 
           {/* Manual narrowing: continent → country → subdivision. */}
           <div className="mx-auto flex w-full max-w-sm flex-col items-stretch gap-2">
-            <Select
-              value={pickedContinent ?? ''}
-              onValueChange={(v) => {
-                const next = v as RegionCode;
-                setPickedContinent(next);
-                setPickedCountry(null);
-                // Auto-commit on continent pick; the country / subdivision
-                // dropdowns below let the user narrow further but aren't
-                // required. They can stop at the continent level.
-                commit(next);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pick a continent…" />
-              </SelectTrigger>
-              <SelectContent>
-                {CONTINENTS.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {pickedContinent !== 'NA' ? (
+              <Button
+                type="button"
+                variant="link"
+                className="justify-start px-0 text-emerald-700 hover:text-emerald-800 dark:text-amber-300 dark:hover:text-amber-200"
+                onClick={() => {
+                  setPickedContinent('NA');
+                  setPickedCountry(null);
+                  // Auto-commit on continent pick; the country / subdivision
+                  // dropdowns below let the user narrow further but aren't
+                  // required. They can stop at the continent level.
+                  commit('NA');
+                }}
+              >
+                North America →
+              </Button>
+            ) : null}
 
             {pickedContinent && countriesOnContinent.length > 0 ? (
               <Select
