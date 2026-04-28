@@ -1140,17 +1140,9 @@ function LocationGate({
             {isResolving ? 'Locating…' : 'Use my location'}
           </Button>
 
-          {(wasDenied || wasUnavailable) && (
-            <p className="text-xs text-stone-500 dark:text-stone-400">
-              {wasDenied
-                ? "Couldn't access your location. Pick a region instead:"
-                : "Couldn't get a location fix. Pick a region instead:"}
-            </p>
-          )}
-
           {/* Manual narrowing: continent → country → subdivision. */}
           <div className="mx-auto flex w-full max-w-sm flex-col items-stretch gap-2">
-            {pickedContinent !== 'NA' ? (
+            {(wasDenied || wasUnavailable) && pickedContinent !== 'NA' ? (
               <Button
                 type="button"
                 variant="link"
