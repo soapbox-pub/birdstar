@@ -1,7 +1,7 @@
 {
-  "name": "Birdstar — Birds by day, stars by night",
+  "name": "Birdstar — Go outside. Find the birds. Draw the stars.",
   "short_name": "Birdstar",
-  "description": "A bird-by-ear checklist and an interactive sky map in one app. Switch modes or let the app follow the sun.",
+  "description": "Go outside. Find the birds. Draw the stars. A birdsong-by-ear checklist and an interactive sky map in one app.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,8 +9,7 @@
   "background_color": "#05070f",
   "theme_color": "#05070f",
   "icons": [
-    { "src": "/favicon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
-    { "src": "/favicon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" },
-    { "src": "/bird-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    { "src": "/birdstar.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/birdstar.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
