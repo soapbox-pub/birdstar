@@ -8,7 +8,7 @@ their original standalone clients.
 
 ---
 
-## Kind 1007 — Bird Detection (from Birdsong Spotter)
+## Kind 2473 — Bird Detection (from Birdsong Spotter)
 
 A regular event representing a single identified bird observation. Regular
 events (1000 ≤ kind < 10000) are stored permanently by relays and are not
@@ -84,7 +84,7 @@ Structured data MUST be placed in tags, not in `content`.
 _(None currently defined.)_
 
 Publishers SHOULD NOT attach a per-event numeric confidence to a detection.
-Publishing a kind 1007 event IS the publisher's confidence signal: the act
+Publishing a kind 2473 event IS the publisher's confidence signal: the act
 of authoring and signing the event asserts that the observation was
 reliable enough to commit to the record.
 
@@ -92,7 +92,7 @@ reliable enough to commit to the record.
 
 ```jsonc
 {
-  "kind": 1007,
+  "kind": 2473,
   "content": "Heard from my balcony around 7am — very clear song.",
   "tags": [
     ["alt", "Bird detection: American Robin (Turdus migratorius)"],
@@ -108,7 +108,7 @@ All detections of a given species across the network:
 
 ```jsonc
 {
-  "kinds": [1007],
+  "kinds": [2473],
   "#i": ["https://www.wikidata.org/entity/Q26825"]
 }
 ```
@@ -124,14 +124,14 @@ Wikidata entity URI is a shared NIP-73 identifier:
 All detections by a specific observer:
 
 ```jsonc
-{ "kinds": [1007], "authors": ["<hex-pubkey>"], "limit": 50 }
+{ "kinds": [2473], "authors": ["<hex-pubkey>"], "limit": 50 }
 ```
 
 ### Validation
 
 Clients SHOULD ignore an event as a bird detection if:
 
-- `kind !== 1007`
+- `kind !== 2473`
 - No `i` tag with a normalized `https://www.wikidata.org/entity/Q<digits>`
   URL is present (paired with a `k` tag of `web`)
 
@@ -157,8 +157,8 @@ Users can retract a previously published detection by issuing a standard
 {
   "kind": 5,
   "tags": [
-    ["e", "<kind-1007-event-id>"],
-    ["k", "1007"]
+    ["e", "<kind-2473-event-id>"],
+    ["k", "2473"]
   ],
   "content": ""
 }

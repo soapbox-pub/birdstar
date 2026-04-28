@@ -13,7 +13,7 @@ export interface Detection {
   timestamp: number;
   /**
    * The underlying Nostr event id, when this detection came from a
-   * persisted kind 1007 event. Session-only detections that haven't been
+   * persisted kind 2473 event. Session-only detections that haven't been
    * published yet (or never will be, e.g. when logged out) omit this.
    */
   eventId?: string;

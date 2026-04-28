@@ -1,5 +1,5 @@
 // Publishes a NIP-09 deletion request (kind 5) for a previously published
-// bird detection (kind 1007). The caller supplies the detection whose
+// bird detection (kind 2473). The caller supplies the detection whose
 // `eventId` points at the event to be deleted; we optimistically remove it
 // from the cached history so the UI updates instantly, with a rollback on
 // publish failure.
@@ -46,7 +46,7 @@ export function useDeleteBirdDetection(): DeleteBirdDetectionApi {
         content: '',
         tags: [
           ['e', detection.eventId],
-          ['k', '1007'],
+          ['k', '2473'],
         ],
       });
     },

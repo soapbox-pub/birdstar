@@ -1,5 +1,5 @@
 // Resolves the Wikidata entity URI for a bird detection and publishes a
-// kind 1007 event — once per species, ever. History comes from
+// kind 2473 event — once per species, ever. History comes from
 // useBirdHistory, and an in-memory set tracks species already published
 // during this session so we don't spam relays on every chirp.
 import { useCallback, useEffect, useRef } from 'react';
@@ -277,7 +277,7 @@ export function useAutoPublishDetection({
 
           try {
             await publish({
-              kind: 1007,
+              kind: 2473,
               content: '',
               tags: [
                 [

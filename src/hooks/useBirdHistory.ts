@@ -1,4 +1,4 @@
-// Loads the current user's past bird detections (kind 1007) from Nostr so
+// Loads the current user's past bird detections (kind 2473) from Nostr so
 // they persist across page refreshes. Returns a list of Detection-shaped
 // objects ready to render in the UI, plus the Set of Wikidata entity URIs
 // they cover — used elsewhere to dedupe auto-publishing.
@@ -90,7 +90,7 @@ export function useBirdHistory(): HistoryResult {
       // issued in a single query — combining kinds is cheaper for the
       // relay than two round-trips.
       const events = await nostr.query(
-        [{ kinds: [1007, 5], authors: [pubkey], limit: MAX_HISTORY }],
+        [{ kinds: [2473, 5], authors: [pubkey], limit: MAX_HISTORY }],
         { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) },
       );
       return events;
@@ -120,7 +120,7 @@ export function useBirdHistory(): HistoryResult {
     // limiting.
     const byUri = new Map<string, Detection & { entityUri: string }>();
     for (const event of events) {
-      if (event.kind !== 1007) continue;
+      if (event.kind !== 2473) continue;
       if (deletedIds.has(event.id)) continue;
       const det = eventToDetection(event);
       if (!det) continue;

@@ -24,7 +24,7 @@ class on `<html>` while it is mounted. Both experiences own their
 entire viewport; the mode selector floats as a top-left pill on
 both.
 
-- Custom kinds — bird detections (**1007**) and custom
+- Custom kinds — bird detections (**2473**) and custom
   constellations (**30621**) — are documented in `NIP.md`.
 - Bird-specific code lives under `src/components/Bird*`, `src/hooks/useBird*`,
   `src/lib/birdnet/`, `src/lib/geo/`, and `src/lib/inat/`.

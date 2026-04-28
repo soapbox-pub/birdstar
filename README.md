@@ -6,7 +6,7 @@ blends two previously standalone apps into one viewport:
 - **Birdsong Spotter**, a bird-by-ear checklist. Runs BirdNET in your
   browser via TensorFlow.js, listens through the microphone, and checks
   off every species it plausibly hears where you are. Logged-in users
-  publish **kind 1007** detection events so their checklist survives
+  publish **kind 2473** detection events so their checklist survives
   across sessions and devices.
 - **Starpoint**, an interactive sky map. Point your phone at the sky to
   identify stars, planets, the sun, the moon, and the 12 zodiac signs.
@@ -28,7 +28,7 @@ from under you when the sun sets.
 Both kinds are preserved unchanged from the original apps, so Birdstar
 stays interoperable with any other client that implements them.
 
-- `1007` — bird detection (regular event)
+- `2473` — bird detection (regular event)
 - `30621` — custom constellation (addressable event)
 
 See [`NIP.md`](./NIP.md) for the full schemas, rationale, and example
