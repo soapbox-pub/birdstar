@@ -2,8 +2,48 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="content-security-policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self' https:; font-src 'self'; base-uri 'self'; manifest-src 'self'; connect-src 'self' blob: https: wss:; img-src 'self' data: blob: https:; media-src 'self' https:">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <meta name="theme-color" content="#05070f">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <title>Birdstar — Birds by day, stars by night</title>
+        <meta name="description" content="Birdstar blends a birdsong-by-ear checklist and an interactive sky map into one app. Switch between bird mode and star mode, or let the app follow the sun.">
+
+        <!--
+            CSP merges the needs of both apps:
+            - `wasm-unsafe-eval` + `blob:` on script-src: required by TensorFlow.js
+            (BirdNET) for its WebAssembly backend and worker files.
+            - `worker-src blob:` + `child-src blob:`: TF.js spawns workers from
+            Blob URLs on some backends.
+            - `media-src blob:`: audio recorder / reference-song playback reads
+            from Blob URLs.
+            Everything not explicitly opened is blocked via `default-src 'none'`.
+        -->
+        <meta http-equiv="content-security-policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self' 'unsafe-inline'; frame-src 'self' https:; font-src 'self'; base-uri 'self'; manifest-src 'self'; connect-src 'self' blob: https: wss:; img-src 'self' data: blob: https:; media-src 'self' https: blob:; worker-src 'self' blob:; child-src 'self' blob:">
+
+        <!-- Favicon -->
+        <link
+            rel="icon"
+            type="image/png"
+            href="/favicon.png"
+        >
+        <link
+            rel="apple-touch-icon"
+            href="/favicon.png"
+        >
+
+        <!-- Open Graph / social sharing -->
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="Birdstar">
+        <meta property="og:title" content="Birdstar — Birds by day, stars by night">
+        <meta property="og:description" content="An interactive sky map at night and a bird-by-ear checklist by day. Switch modes, or let the app follow the sun.">
+        <meta property="og:url" content="https://birdstar.shakespeare.wtf">
+
+        <!-- Twitter / X -->
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="Birdstar">
+        <meta name="twitter:description" content="An interactive sky map at night and a bird-by-ear checklist by day.">
+
         <link rel="manifest" href="/manifest.webmanifest">
     </head>
     <body>

@@ -1,0 +1,16 @@
+{
+  "name": "Birdstar — Birds by day, stars by night",
+  "short_name": "Birdstar",
+  "description": "A bird-by-ear checklist and an interactive sky map in one app. Switch modes or let the app follow the sun.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05070f",
+  "theme_color": "#05070f",
+  "icons": [
+    { "src": "/favicon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "any" },
+    { "src": "/favicon.png", "sizes": "1024x1024", "type": "image/png", "purpose": "maskable" },
+    { "src": "/bird-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

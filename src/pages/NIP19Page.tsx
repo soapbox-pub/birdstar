@@ -1,42 +1,48 @@
-import { nip19 } from 'nostr-tools';
-import { useParams } from 'react-router-dom';
-import NotFound from './NotFound';
+import { useMemo } from "react";
+import { useParams } from "react-router-dom";
+import { nip19 } from "nostr-tools";
 
+import Index from "@/pages/Index";
+import NotFound from "@/pages/NotFound";
+import { CUSTOM_CONSTELLATION_KIND } from "@/lib/customConstellations";
+
+/**
+ * Root-level NIP-19 identifier dispatcher. Routes like `/npub1…`,
+ * `/nprofile1…`, and `/naddr1…` all land here. Every supported
+ * identifier resolves to an overlay opened over the sky (`Index`),
+ * which reads the same URL via `useOpenedView` and mounts the matching
+ * detail sheet (profile, constellation, etc.).
+ *
+ * We do a cheap pre-flight decode here just to 404 malformed or
+ * unsupported identifiers up front, avoiding the flash of the sky
+ * beneath an empty overlay.
+ */
 export function NIP19Page() {
-  const { nip19: identifier } = useParams<{ nip19: string }>();
+  const { nip19Id } = useParams<{ nip19Id: string }>();
 
-  if (!identifier) {
-    return <NotFound />;
-  }
+  const supported = useMemo(() => {
+    if (!nip19Id) return false;
+    let decoded: ReturnType<typeof nip19.decode>;
+    try {
+      decoded = nip19.decode(nip19Id);
+    } catch {
+      return false;
+    }
+    switch (decoded.type) {
+      case "npub":
+      case "nprofile":
+        return true;
+      case "naddr":
+        // We only know how to render custom constellations; other
+        // addressable kinds fall through to 404.
+        return decoded.data.kind === CUSTOM_CONSTELLATION_KIND;
+      default:
+        return false;
+    }
+  }, [nip19Id]);
 
-  let decoded;
-  try {
-    decoded = nip19.decode(identifier);
-  } catch {
-    return <NotFound />;
-  }
+  if (!supported) return <NotFound />;
+  return <Index />;
+}
 
-  const { type } = decoded;
-
-  switch (type) {
-    case 'npub':
-    case 'nprofile':
-      // AI agent should implement profile view here
-      return <div>Profile placeholder</div>;
-
-    case 'note':
-      // AI agent should implement note view here
-      return <div>Note placeholder</div>;
-
-    case 'nevent':
-      // AI agent should implement event view here
-      return <div>Event placeholder</div>;
-
-    case 'naddr':
-      // AI agent should implement addressable event view here
-      return <div>Addressable event placeholder</div>;
-
-    default:
-      return <NotFound />;
-  }
-} 
+export default NIP19Page;

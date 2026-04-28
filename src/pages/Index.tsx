@@ -1,25 +1,29 @@
-import { useSeoMeta } from '@unhead/react';
+import { useMode } from "@/hooks/useMode";
+import { ForceDarkTheme } from "@/components/ForceDarkTheme";
+import BirdsIndex from "./BirdsIndex";
+import StarsIndex from "./StarsIndex";
 
-// FIXME: Update this page (the content is just a fallback if you fail to update the page)
-
+/**
+ * Top-level dispatcher. Reads the resolved {@link useMode.effectiveMode}
+ * and renders the matching experience. Both sub-pages own their own
+ * SEO meta, top-HUD, and background.
+ *
+ * `ForceDarkTheme` is mounted only for Stars mode — the sky canvas only
+ * reads on a black background, and the HUD styles assume white-on-dark.
+ * Birds mode keeps AppConfig's theme (light/dark/system) intact.
+ */
 const Index = () => {
-  useSeoMeta({
-    title: 'Welcome to Your Blank App',
-    description: 'A modern Nostr client application built with React, TailwindCSS, and Nostrify.',
-  });
+  const { effectiveMode } = useMode();
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4 text-gray-900 dark:text-gray-100">
-          Welcome to Your Blank App
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-400">
-          Start building your amazing project here!
-        </p>
-      </div>
-    </div>
-  );
+  if (effectiveMode === "stars") {
+    return (
+      <>
+        <ForceDarkTheme />
+        <StarsIndex />
+      </>
+    );
+  }
+  return <BirdsIndex />;
 };
 
 export default Index;

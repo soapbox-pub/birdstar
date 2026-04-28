@@ -1,6 +1,29 @@
 # Project Overview
 
-This project is a Nostr client application built with React 19.x, TailwindCSS 4.x, Vite, shadcn/ui, and Nostrify.
+**Birdstar** is a Nostr client that merges two prior apps — **Birdsong
+Spotter** (a browser-based bird-by-ear checklist powered by BirdNET /
+TensorFlow.js) and **Starpoint** (an interactive sky map with
+user-drawn community constellations). A root-level dropdown lets the
+user pick **Birds**, **Stars**, or **Auto** (the default — birds while
+the sun is up, stars after dark, using the same astronomy code that
+drives the sky map).
+
+Birds mode forces nothing about the theme and respects
+`AppConfig.theme` (light/dark/system). Stars mode pins the `dark`
+class on `<html>` while it is mounted. Both experiences own their
+entire viewport; the mode selector floats as a top-left pill on
+both.
+
+- Custom kinds — bird detections (**1007**) and custom
+  constellations (**30621**) — are documented in `NIP.md`.
+- Bird-specific code lives under `src/components/Bird*`, `src/hooks/useBird*`,
+  `src/lib/birdnet/`, `src/lib/geo/`, and `src/lib/inat/`.
+- Star-specific code lives under `src/components/Sky*`, `src/components/Constellation*`,
+  `src/components/*DetailSheet.tsx`, `src/hooks/useDevice*` / `useGeolocation` /
+  `useConstellation*` / etc, `src/lib/astronomy.ts`, and related sky-math modules.
+- The mode machinery is in `src/contexts/ModeContext.ts`,
+  `src/components/ModeProvider.tsx`, `src/components/ModeSelector.tsx`,
+  `src/components/ForceDarkTheme.tsx`, and `src/hooks/useMode.ts`.
 
 ## Technology Stack
 
@@ -11,7 +34,10 @@ This project is a Nostr client application built with React 19.x, TailwindCSS 4.
 - **Nostrify** (`@nostrify/react`): Nostr protocol framework
 - **React Router**: client-side routing with `BrowserRouter` and automatic scroll-to-top
 - **TanStack Query**: data fetching, caching, state
+- **TensorFlow.js** (birds): runs BirdNET in the browser via WebAssembly / WebGL; uses Blob workers (CSP accommodates this)
+- **d3-celestial** / custom sky math (stars): plots the sky map, planets, sun, and moon
 - **TypeScript**: type-safe JS. **Never use the `any` type.**
+
 
 ## Project Structure
 

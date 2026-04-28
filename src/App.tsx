@@ -31,7 +31,10 @@ const queryClient = new QueryClient({
 });
 
 const defaultConfig: AppConfig = {
-  theme: "light",
+  // "system" so birds mode respects the OS-level light/dark preference
+  // out of the box. Stars mode always forces dark while mounted via
+  // `ForceDarkTheme`, regardless of this setting.
+  theme: "system",
   relayMetadata: {
     relays: [
       { url: 'wss://relay.ditto.pub', read: true, write: true },
