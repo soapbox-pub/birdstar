@@ -1,7 +1,7 @@
 # Birdstar
 
-**Birds by day, stars by night** — a Nostr client that blends two
-previously standalone apps into one viewport:
+**Go outside. Find the birds. Draw the stars.** A Nostr client that
+blends two previously standalone apps into one viewport:
 
 - **Birdsong Spotter**, a bird-by-ear checklist. Runs BirdNET in your
   browser via TensorFlow.js, listens through the microphone, and checks

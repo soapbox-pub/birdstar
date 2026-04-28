@@ -92,7 +92,7 @@ function angleDelta(a: number, b: number): number {
 
 const Index = () => {
   useSeoMeta({
-    title: "Birdstar — Interactive Sky Map",
+    title: "Birdstar — Go outside. Find the birds. Draw the stars.",
     description:
       "Point your phone at the sky to identify stars and constellations in real time.",
     ogImageAlt:

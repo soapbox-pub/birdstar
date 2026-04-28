@@ -277,7 +277,7 @@ function speciesKey(d: { scientificName: string; commonName: string }): string {
 
 const IndexInner = () => {
   useSeoMeta({
-    title: 'Birdstar — Your bird checklist, by ear',
+    title: 'Birdstar — Go outside. Find the birds. Draw the stars.',
     description:
       'Listen for birds near you. Every species plausibly found where you are shows up as a checklist; hear one and it lights up.',
   });

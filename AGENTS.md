@@ -6,6 +6,12 @@ TensorFlow.js) and **Starpoint** (an interactive sky map with
 user-drawn community constellations). A top-left toggle lets the user
 flip between **Birds** (the default) and **Stars**.
 
+> **Slogan:** *Go outside. Find the birds. Draw the stars.*
+>
+> Use this exact wording for SEO titles/descriptions (`<title>`,
+> `og:title`, `twitter:title`, `useSeoMeta` pages), marketing copy,
+> and the Birds landing header. Don't paraphrase it.
+
 Birds mode forces nothing about the theme and respects
 `AppConfig.theme` (light/dark/system). Stars mode pins the `dark`
 class on `<html>` while it is mounted. Both experiences own their
