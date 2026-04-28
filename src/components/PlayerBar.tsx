@@ -25,7 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import type { RecorderErrorKind } from '@/hooks/useAudioRecorder';
-import type { PendingLeader } from '@/hooks/useDetectionAccumulator';
+import type { PendingLeader, LatestHit } from '@/hooks/useDetectionAccumulator';
 import { useSongPlaybackActive } from '@/hooks/useSongPlayback';
 import { cn } from '@/lib/utils';
 
@@ -46,9 +46,20 @@ interface PlayerBarProps {
   /** Most recently detected bird this session (or null if none yet). */
   latestDetection: Detection | null;
   /**
+   * Species of the most recent prediction that cleared the raw-confidence
+   * floor. Independent of `latestDetection` (which is only confirmed
+   * sightings) and `pendingLeader` (highest-summed species). Drives the
+   * album-art thumbnail IMAGE so it always reflects the most recent bird
+   * heard — confirmed or not, leading or not. The pie/`?` overlay and
+   * tap target still follow `pendingLeader` / `latestDetection`.
+   */
+  latestHit: LatestHit | null;
+  /**
    * Species currently accumulating toward confirmation, if any. When
-   * present, takes priority over `latestDetection` in the album-art slot
-   * and is rendered with a pie overlay showing progress-to-threshold.
+   * present, drives the pie/`?` overlay on the album-art thumbnail and
+   * takes priority in the click target and status label. It does NOT
+   * drive the thumbnail image — that's `latestHit`, so the image always
+   * reflects the bird most recently heard.
    */
   pendingLeader: PendingLeader | null;
   getAnalyser: () => AnalyserNode | null;
@@ -91,6 +102,7 @@ function PlayerBarImpl({
   errorKind,
   showFirstLoadNote,
   latestDetection,
+  latestHit,
   pendingLeader,
   getAnalyser,
   onPause,
@@ -141,6 +153,7 @@ function PlayerBarImpl({
       <div className="mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
         <AlbumArt
           detection={latestDetection}
+          latestHit={latestHit}
           pendingLeader={pendingLeader}
           onClick={() => {
             // Priority matches the thumbnail's visual priority: a
@@ -192,37 +205,57 @@ function PlayerBarImpl({
 }
 
 /**
- * Left-hand "album art" slot. Three display modes, in priority order:
+ * Left-hand "album art" slot.
  *
- *   1. Pending leader — a species is accumulating toward confirmation.
- *      Shows that species' thumbnail (or silhouette while the Wikipedia
- *      image is loading) with a dimming pie overlay that shrinks as
- *      progress goes from 0 → 1. Non-interactive: the species hasn't
- *      been confirmed yet so there's nothing to open a dialog for.
+ * Image source is ALWAYS the `latestHit` — i.e. whichever species most
+ * recently crossed the raw-confidence floor, regardless of whether that
+ * species is accumulating, confirmed, or neither. This keeps the
+ * thumbnail honest to "what was just heard" and avoids the confusing
+ * case where the image locked onto a pending-leader species (highest
+ * γ-sum) even though a different bird had just sung.
  *
- *   2. Latest confirmed detection — the original "what was just heard"
- *      behavior. Clickable; opens the shared details dialog.
+ * Overlay chrome — the dimming pie and amber `?` badge — remains driven
+ * by `pendingLeader` as before: "here's how close some species is to
+ * confirmation". Note that the pie species and the thumbnail species
+ * can temporarily disagree when the most recent hit is for a different
+ * bird than the current leader. That's intentional: the thumbnail
+ * answers "who just sang?" and the pie answers "who's about to be
+ * confirmed?".
  *
- *   3. Nothing yet — silhouette placeholder, non-interactive.
+ * Click priority mirrors the old behavior:
+ *   1. Pending leader → opens the pending dialog for that species.
+ *   2. Latest confirmed detection → opens the confirmed dialog.
+ *   3. Neither → non-interactive silhouette.
+ *
+ * Fallback image source order: latestHit → pendingLeader → detection →
+ * silhouette. The fallbacks only kick in very briefly at startup
+ * before the first qualifying hit arrives (`latestHit` null) so the
+ * thumbnail can still reflect a confirmation or a leader if somehow
+ * they appear first (hydrate-from-disk ordering edge case).
  */
 function AlbumArt({
   detection,
+  latestHit,
   pendingLeader,
   onClick,
 }: {
   detection: Detection | null;
+  latestHit: LatestHit | null;
   pendingLeader: PendingLeader | null;
   onClick: () => void;
 }) {
-  // Pending takes priority over confirmed. The user's mental model is
-  // "look at the pie to see who's about to be confirmed"; once confirmed,
-  // the species leaves this slot until the NEXT bird starts accumulating.
-  const source = pendingLeader ?? detection;
+  // Image source: most recent hit. Fallbacks cover the narrow window
+  // between hydrate completing (may populate pendingLeader/detection
+  // first) and the first live hit landing.
+  const imageSource = latestHit ?? pendingLeader ?? detection;
+  // Overlay + click target still key off pendingLeader — the pie
+  // answers "who's about to confirm?" and must stay welded to the
+  // accumulator's leader, not the recency stream.
   const isPending = Boolean(pendingLeader);
 
   const { data } = useBirdInfo(
-    source?.scientificName ?? null,
-    source?.commonName ?? null,
+    imageSource?.scientificName ?? null,
+    imageSource?.commonName ?? null,
   );
   const imageUrl = data?.imageUrl;
 
@@ -237,7 +270,7 @@ function AlbumArt({
       {imageUrl ? (
         <img
           src={imageUrl}
-          alt={source?.commonName ?? ''}
+          alt={imageSource?.commonName ?? ''}
           className="h-full w-full object-cover"
           loading="lazy"
         />

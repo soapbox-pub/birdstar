@@ -462,7 +462,7 @@ const IndexInner = () => {
     [coarse, localSpeciesMap, nearest],
   );
 
-  const { ingest, confirmedSightings, forgetConfirmed, pendingLeader } =
+  const { ingest, confirmedSightings, forgetConfirmed, pendingLeader, latestHit } =
     useDetectionAccumulator({
       onConfirm: (detection) => considerPublish(detection),
       locationAdjuster,
@@ -829,6 +829,7 @@ const IndexInner = () => {
         errorKind={playerErrorKind}
         showFirstLoadNote={isFirstLoad}
         latestDetection={latestDetection}
+        latestHit={latestHit}
         pendingLeader={pendingLeader}
         getAnalyser={recorder.getAnalyser}
         onPause={handlePause}

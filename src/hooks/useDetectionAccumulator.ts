@@ -184,6 +184,29 @@ export interface PendingLeader {
   lastHitAt: number;
 }
 
+/**
+ * Most recent prediction that passed the MIN_RAW_CONFIDENCE floor,
+ * regardless of species or whether it ever confirmed. Surfaced so UI
+ * that wants to reflect "what was just heard" (e.g. the player bar's
+ * album-art thumbnail) can track the raw hit stream rather than the
+ * pending-leader (highest-summed species) or the confirmed map
+ * (threshold-crossers only). Cleared to null only when the in-memory
+ * windows are empty — i.e. no hits at all within the rolling window.
+ *
+ * This is deliberately decoupled from PendingLeader: pending leader is
+ * "who's winning the accumulation race" (highest γ-shaped sum), which
+ * can point at a species that hasn't been heard in the last ~30 s if
+ * they earlier stacked up a lot of confidence and no other species has
+ * been heard since. `latestHit` always points at the most recent
+ * actual audio hit.
+ */
+export interface LatestHit {
+  scientificName: string;
+  commonName: string;
+  /** Timestamp (ms) of the hit. */
+  timestamp: number;
+}
+
 export interface AccumulatorOptions {
   /**
    * Called exactly once per species each time its rolling-window sum
@@ -259,6 +282,16 @@ export interface AccumulatorApi {
    */
   pendingLeader: PendingLeader | null;
 
+  /**
+   * Species of the most recent prediction that cleared the raw-confidence
+   * floor, regardless of accumulator state. Null when no qualifying hits
+   * have landed in the current rolling window (i.e. the on-disk seed was
+   * empty and nothing has been ingested live). Drives the player bar's
+   * album-art thumbnail so it reflects "what was just heard" rather than
+   * the highest-summed pending species or the last confirmation.
+   */
+  latestHit: LatestHit | null;
+
   /** True until the on-disk prune + rehydrate has completed. */
   isHydrating: boolean;
 }
@@ -302,6 +335,12 @@ export function useDetectionAccumulator(
     Map<string, Detection>
   >(() => new Map());
   const [pendingLeader, setPendingLeader] = useState<PendingLeader | null>(null);
+  // Most recent qualifying hit (any species). Updated on every ingest that
+  // passes the floor and reset to null once the rolling window empties, so
+  // the player bar's album art never displays a species that hasn't been
+  // heard within CONFIRMATION_WINDOW_MS. Independent of pendingLeader —
+  // `latestHit` is recency-first; `pendingLeader` is sum-first.
+  const [latestHit, setLatestHit] = useState<LatestHit | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
 
   // Species name cache so we can report the leader with its human-readable
@@ -317,6 +356,10 @@ export function useDetectionAccumulator(
    * expired hits from each species as a side effect, removes empty
    * windows, and picks the species with the highest remaining sum.
    *
+   * Also recomputes `latestHit` (the species of the most-recent live
+   * hit across all windows) so it ages out in lockstep with the
+   * pending-leader decay tick.
+   *
    * Called from: (a) post-ingest, (b) a low-frequency tick so leaders
    * decay even when no new hits arrive, and (c) after hydration.
    */
@@ -325,6 +368,9 @@ export function useDetectionAccumulator(
     let bestKey: string | null = null;
     let bestSum = 0;
     let bestLastHit = 0;
+    // Absolute newest live hit across all species — drives `latestHit`.
+    let newestKey: string | null = null;
+    let newestAt = 0;
 
     for (const [key, hits] of windowsRef.current) {
       const live = hits.filter((h) => h.timestamp >= cutoff);
@@ -347,6 +393,36 @@ export function useDetectionAccumulator(
         bestSum = sum;
         bestLastHit = lastHit;
       }
+      if (lastHit > newestAt) {
+        newestAt = lastHit;
+        newestKey = key;
+      }
+    }
+
+    // Update latestHit from whichever species has the most-recent live
+    // hit. Done even when there is no pending leader (all windows
+    // empty) so the slot clears in sync with the bar's empty state.
+    if (newestKey) {
+      const names = namesBySpeciesKeyRef.current.get(newestKey);
+      if (names) {
+        setLatestHit((prev) => {
+          if (
+            prev &&
+            prev.scientificName === names.scientificName &&
+            prev.commonName === names.commonName &&
+            prev.timestamp === newestAt
+          ) {
+            return prev;
+          }
+          return {
+            scientificName: names.scientificName,
+            commonName: names.commonName,
+            timestamp: newestAt,
+          };
+        });
+      }
+    } else {
+      setLatestHit((prev) => (prev === null ? prev : null));
     }
 
     if (!bestKey) {
@@ -596,6 +672,7 @@ export function useDetectionAccumulator(
     forgetConfirmed,
     confirmedSightings,
     pendingLeader,
+    latestHit,
     isHydrating,
   };
 }
