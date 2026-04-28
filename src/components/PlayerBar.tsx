@@ -670,7 +670,7 @@ function ErrorRegion({
                   variant="outline"
                   className="h-7 border-rose-300 bg-white/70 px-2 text-xs text-rose-800 hover:bg-white dark:border-rose-700 dark:bg-rose-950/60 dark:text-rose-100 dark:hover:bg-rose-900/60"
                 >
-                  Fix it
+                  Use my microphone
                 </Button>
               }
             />
