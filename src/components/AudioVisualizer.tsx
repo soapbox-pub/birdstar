@@ -136,16 +136,19 @@ export function AudioVisualizer({
      * zero target even for quiet audio and varies meaningfully across
      * the line so the squiggle has spatial structure.
      *
-     * We also add a tiny time-varying idle offset driven by low-frequency
-     * sines of different phases per point, so the line still breathes
-     * gently in silence rather than locking dead-flat. The amplitude of
-     * this idle term is small enough to be clearly subordinate to real
-     * audio motion.
+     * An idle "breathing" term (four overlapping sines) adds gentle
+     * motion so the line doesn't feel dead when there's mild ambient
+     * sound. Its amplitude is gated by `idleGain` — when the audio
+     * envelope falls to effectively zero (total silence / muted input),
+     * the gate closes and the line settles to a perfectly flat,
+     * unmoving baseline. This matches the behavior of a real oscilloscope
+     * showing silent input.
      */
     const sampleTargets = (
       buf: Float32Array,
       targets: Float32Array,
       timeSec: number,
+      idleGain: number,
     ): void => {
       const n = targets.length;
       const bufLen = buf.length;
@@ -164,13 +167,18 @@ export function AudioVisualizer({
         // each with a per-point phase offset that winds across the line
         // several times. High spatial frequencies (winding 5–8× across
         // the line) produce visible local crests and troughs so the
-        // shape looks like rolling surf, not a lazy curve.
-        const phase = (i / n) * Math.PI * 2;
-        const idle =
-          0.45 * Math.sin(timeSec * 2.1 + phase * 3.0) +
-          0.30 * Math.sin(timeSec * 0.9 + phase * 5.0) +
-          0.22 * Math.sin(timeSec * 3.4 + phase * 7.0) +
-          0.15 * Math.sin(timeSec * 5.7 + phase * 8.0);
+        // shape looks like rolling surf, not a lazy curve. Only computed
+        // when `idleGain` > 0 so total silence produces a truly flat line.
+        let idle = 0;
+        if (idleGain > 0) {
+          const phase = (i / n) * Math.PI * 2;
+          idle =
+            (0.45 * Math.sin(timeSec * 2.1 + phase * 3.0) +
+              0.30 * Math.sin(timeSec * 0.9 + phase * 5.0) +
+              0.22 * Math.sin(timeSec * 3.4 + phase * 7.0) +
+              0.15 * Math.sin(timeSec * 5.7 + phase * 8.0)) *
+            idleGain;
+        }
         // Very heavy amplification on the audio peak so normal mic
         // levels (~±0.1) produce dramatic, unmissable waves on top of
         // the idle motion. Soft-clipped downstream.
@@ -325,7 +333,6 @@ export function AudioVisualizer({
         analyser.getFloatTimeDomainData(
           buf as unknown as Float32Array<ArrayBuffer>,
         );
-        sampleTargets(buf, targetBuffer, timeSec);
 
         // Gain curve on the envelope: pow < 1 lifts quiet sounds into the
         // visible range; the scalar tunes overall liveliness. Clamped to
@@ -336,6 +343,24 @@ export function AudioVisualizer({
         // every impulse.
         envelope = envelopeRef.current * 0.75 + raw * 0.25;
         envelopeRef.current = envelope;
+
+        // Idle breathing gate: if the raw signal level is below the noise
+        // floor of a muted / silent mic, close the gate entirely so the
+        // line is flat and unmoving. A soft ramp between `silenceFloor`
+        // and `silenceCeil` avoids popping when real audio returns.
+        // Values chosen so a muted input (rms < ~0.001) reads as silent
+        // while normal room ambience (rms > ~0.005) keeps the idle
+        // motion alive.
+        const silenceFloor = 0.001;
+        const silenceCeil = 0.005;
+        const idleGain =
+          rms <= silenceFloor
+            ? 0
+            : rms >= silenceCeil
+              ? 1
+              : (rms - silenceFloor) / (silenceCeil - silenceFloor);
+
+        sampleTargets(buf, targetBuffer, timeSec, idleGain);
       } else {
         // Not active: every target goes to zero AND the envelope decays.
         // Springs carry any existing motion and settle smoothly to flat.
