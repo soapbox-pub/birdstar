@@ -8,6 +8,7 @@ import {
 } from '@/components/BirdInfoDialog';
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
+import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1119,60 +1120,60 @@ function LocationGate({
           <h2 className="font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
             Which birds are near you?
           </h2>
-          <p className="text-sm text-stone-600 dark:text-stone-300">
-            Your bird list is the set of species you can plausibly hear where
-            you live. Share your location to build it, or pick a region below.
-          </p>
         </div>
 
         <div className="flex flex-col items-stretch gap-3">
-          <Button
-            type="button"
-            onClick={onRequestLocation}
-            disabled={isResolving}
-            className={cn(
-              'mx-auto w-full max-w-sm gap-2',
-              'bg-emerald-600 text-white hover:bg-emerald-700',
-              'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
-            )}
-          >
-            <MapPin className="h-4 w-4" aria-hidden />
-            {isResolving ? 'Locating…' : 'Use my location'}
-          </Button>
-
-          {(wasDenied || wasUnavailable) && (
-            <p className="text-xs text-stone-500 dark:text-stone-400">
-              {wasDenied
-                ? "Couldn't access your location. Pick a region instead:"
-                : "Couldn't get a location fix. Pick a region instead:"}
-            </p>
+          {wasDenied ? (
+            <LocationHelpDialog
+              trigger={
+                <Button
+                  type="button"
+                  className={cn(
+                    'mx-auto w-full max-w-sm gap-2',
+                    'bg-emerald-600 text-white hover:bg-emerald-700',
+                    'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+                  )}
+                >
+                  <MapPin className="h-4 w-4" aria-hidden />
+                  Use my location
+                </Button>
+              }
+            />
+          ) : (
+            <Button
+              type="button"
+              onClick={onRequestLocation}
+              disabled={isResolving}
+              className={cn(
+                'mx-auto w-full max-w-sm gap-2',
+                'bg-emerald-600 text-white hover:bg-emerald-700',
+                'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+              )}
+            >
+              <MapPin className="h-4 w-4" aria-hidden />
+              {isResolving ? 'Locating…' : 'Use my location'}
+            </Button>
           )}
 
           {/* Manual narrowing: continent → country → subdivision. */}
           <div className="mx-auto flex w-full max-w-sm flex-col items-stretch gap-2">
-            <Select
-              value={pickedContinent ?? ''}
-              onValueChange={(v) => {
-                const next = v as RegionCode;
-                setPickedContinent(next);
-                setPickedCountry(null);
-                // Auto-commit on continent pick; the country / subdivision
-                // dropdowns below let the user narrow further but aren't
-                // required. They can stop at the continent level.
-                commit(next);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Pick a continent…" />
-              </SelectTrigger>
-              <SelectContent>
-                {CONTINENTS.map((c) => (
-                  <SelectItem key={c.code} value={c.code}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {(wasDenied || wasUnavailable) && pickedContinent !== 'NA' ? (
+              <Button
+                type="button"
+                variant="link"
+                className="justify-center px-0 text-emerald-700 hover:text-emerald-800 dark:text-amber-300 dark:hover:text-amber-200"
+                onClick={() => {
+                  setPickedContinent('NA');
+                  setPickedCountry(null);
+                  // Auto-commit on continent pick; the country / subdivision
+                  // dropdowns below let the user narrow further but aren't
+                  // required. They can stop at the continent level.
+                  commit('NA');
+                }}
+              >
+                North America →
+              </Button>
+            ) : null}
 
             {pickedContinent && countriesOnContinent.length > 0 ? (
               <Select
@@ -1215,10 +1216,6 @@ function LocationGate({
             ) : null}
           </div>
         </div>
-
-        <p className="text-[11px] text-stone-400 dark:text-stone-500">
-          Your location stays on this device — it's never published to Nostr.
-        </p>
       </CardContent>
     </Card>
   );
