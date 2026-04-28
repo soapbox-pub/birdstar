@@ -1119,10 +1119,6 @@ function LocationGate({
           <h2 className="font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
             Which birds are near you?
           </h2>
-          <p className="text-sm text-stone-600 dark:text-stone-300">
-            Your bird list is the set of species you can plausibly hear where
-            you live. Share your location to build it, or pick a region below.
-          </p>
         </div>
 
         <div className="flex flex-col items-stretch gap-3">
@@ -1201,10 +1197,6 @@ function LocationGate({
             ) : null}
           </div>
         </div>
-
-        <p className="text-[11px] text-stone-400 dark:text-stone-500">
-          Your location stays on this device — it's never published to Nostr.
-        </p>
       </CardContent>
     </Card>
   );
