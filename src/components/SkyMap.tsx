@@ -529,68 +529,116 @@ export function SkyMap({
 
     // --- Below-horizon shading -------------------------------------------
     // Fill the "ground" — the region in screen space whose directions point
-    // below the celestial horizon (alt < 0). Stereographic projection maps
-    // the horizon to a perfect circle on screen, so we can compute the fill
-    // region exactly using the even-odd winding rule:
+    // below the celestial horizon (alt < 0).
     //
-    //   • Trace the full horizon as one closed subpath.
-    //   • If the viewer is looking AT or ABOVE the horizon (alt ≥ 0), the
-    //     zenith lies inside the horizon curve → ground is the *outside*
-    //     of the curve. Add a full-canvas rectangle as a second subpath so
-    //     the even-odd rule fills the outside (rect ⊕ circle = outside).
-    //   • If the viewer is looking BELOW the horizon (alt < 0), the nadir
-    //     lies inside the horizon curve → ground is the *inside*. Skip the
-    //     outer rectangle so only the circle is filled.
+    // Stereographic projection maps every great circle on the sphere to a
+    // circle or line on the plane. For |alt| comfortably away from 0 the
+    // horizon projects to a closed circle on screen and we can fill the
+    // ground exactly using the even-odd rule:
     //
-    // Degenerate cases:
-    //   • Looking essentially straight down (alt ≤ −89.99°): the horizon
-    //     curve blows up toward the antipode. Just fill the whole canvas.
-    //   • Looking essentially straight up: the horizon is a tiny circle
-    //     around the antipode; rect ⊕ circle still does the right thing.
+    //   • If the viewer is above the horizon (alt > 0), the zenith sits
+    //     inside the horizon circle → ground is the *outside* of the
+    //     curve. Add a full-canvas rect as a second subpath and evenodd
+    //     fills the outside.
+    //   • If the viewer is below the horizon (alt < 0), the nadir sits
+    //     inside the horizon circle → ground is the *inside*. Fill the
+    //     loop directly.
+    //
+    // The degenerate case is alt ≈ 0. There the horizon great circle
+    // passes through the antipode of the view direction and projects to
+    // a *straight line* through the screen center; a 360-sample closed
+    // loop folds back on itself at the antipode, producing a zero-area
+    // self-intersecting polygon that evenodd treats as "empty". The
+    // ground shading then washes across the *entire* canvas (above AND
+    // below the horizon both paint orange).
+    //
+    // Near-horizon fix: when |alt| is small enough that the projected
+    // horizon can't be safely represented as a closed polygon, fall back
+    // to filling the "ground" screen half-plane directly. In this regime
+    // the horizon is nearly a straight line through screen center whose
+    // orientation is fixed by the roll-rotated up vector `upR`, so we
+    // can paint the below-horizon half-plane exactly.
     ctx.save();
     ctx.fillStyle = "rgba(30, 18, 10, 0.35)";
 
     if (altitude <= -89.99) {
       // Looking at (or past) the nadir — everything on screen is ground.
       ctx.fillRect(0, 0, w, h);
+    } else if (altitude >= 89.99) {
+      // Looking at (or past) the zenith — no ground is visible.
+    } else if (Math.abs(altitude) < 2) {
+      // Near-horizon: approximate the horizon as a straight line through
+      // the point where the view direction hits the sphere (screen
+      // center) and fill the half-plane on the ground side. This is the
+      // exact limit of the stereographic horizon circle as alt → 0, and
+      // stays visually correct for a few degrees on either side — by the
+      // time the approximation breaks down (|alt| ≥ 2°) the closed-loop
+      // branch takes over.
+      //
+      // The horizon line is perpendicular to the zenith direction on
+      // screen. The ground half-plane is on the nadir side.
+      const zenith: [number, number, number] = [0, 0, 1];
+      const zP = project(zenith, view, upR, rightR, focal);
+      // Screen coords are y-down; project() returns world-up-like y.
+      const zx = zP.x;
+      const zy = -zP.y;
+      const zLen = Math.hypot(zx, zy) || 1;
+      const ux = zx / zLen; // unit "up" on screen
+      const uy = zy / zLen;
+      // Nadir (down on screen) is the opposite direction.
+      const nx = -ux;
+      const ny = -uy;
+      // Perpendicular to up, for the horizon line direction.
+      const px = -uy;
+      const py = ux;
+
+      // Horizon line passes through screen center. We account for the
+      // tiny offset proportional to altitude so the fill tracks the
+      // stroked horizon line smoothly: the projected horizon at altitude
+      // α is offset from center toward the nadir by focal * 2 * tan(α/2)
+      // along the up axis when α > 0 (it sinks on screen), and toward
+      // the zenith when α < 0.
+      const offset = 2 * focal * Math.tan((altitude * DEG) / 2);
+      // When alt > 0 the horizon line lies BELOW screen center (toward
+      // the nadir in screen space). Offset along the nadir direction.
+      const cx = w / 2 + nx * offset;
+      const cy = h / 2 + ny * offset;
+
+      const FAR = (w + h) * 4 + 2000;
+
+      // Build the ground half-plane as a quad: two points on the
+      // horizon line (extended far in the perpendicular direction) and
+      // two matching points pushed far along the nadir axis.
+      ctx.beginPath();
+      ctx.moveTo(cx + px * FAR, cy + py * FAR);
+      ctx.lineTo(cx - px * FAR, cy - py * FAR);
+      ctx.lineTo(cx - px * FAR + nx * FAR, cy - py * FAR + ny * FAR);
+      ctx.lineTo(cx + px * FAR + nx * FAR, cy + py * FAR + ny * FAR);
+      ctx.closePath();
+      ctx.fill();
     } else {
-      const horizonPts: Array<{ x: number; y: number; valid: boolean }> = [];
-      let anyInvalid = false;
+      // Closed-loop path: |alt| ≥ 2°, the horizon projects to a safely
+      // finite closed circle on screen.
+      type Pt = { x: number; y: number };
+      const horizonPts: Pt[] = [];
       for (let az = 0; az < 360; az += 1) {
         const v = altAzToVector(0, az);
         const p = project(v, view, upR, rightR, focal);
-        const valid = p.z > -0.9999;
-        if (!valid) anyInvalid = true;
-        horizonPts.push({
-          x: w / 2 + p.x,
-          y: h / 2 - p.y,
-          valid,
-        });
+        horizonPts.push({ x: w / 2 + p.x, y: h / 2 - p.y });
       }
 
-      if (anyInvalid) {
-        // One or more horizon samples landed at the antipodal singularity.
-        // This should only happen when looking essentially straight down,
-        // which we already handled above — but guard just in case.
-        ctx.fillRect(0, 0, w, h);
-      } else {
-        ctx.beginPath();
-
-        // Outer subpath (only when ground is OUTSIDE the horizon curve).
-        // Slight overscan so the rect reliably covers any antialias seam.
-        if (altitude >= 0) {
-          ctx.rect(-10, -10, w + 20, h + 20);
-        }
-
-        // Horizon subpath — a single closed loop through all 360 samples.
-        ctx.moveTo(horizonPts[0].x, horizonPts[0].y);
-        for (let i = 1; i < horizonPts.length; i++) {
-          ctx.lineTo(horizonPts[i].x, horizonPts[i].y);
-        }
-        ctx.closePath();
-
-        ctx.fill("evenodd");
+      ctx.beginPath();
+      // alt ≥ 2° → ground is OUTSIDE the loop.
+      // alt ≤ -2° → ground is INSIDE the loop.
+      if (altitude >= 0) {
+        ctx.rect(-10, -10, w + 20, h + 20);
       }
+      ctx.moveTo(horizonPts[0].x, horizonPts[0].y);
+      for (let i = 1; i < horizonPts.length; i++) {
+        ctx.lineTo(horizonPts[i].x, horizonPts[i].y);
+      }
+      ctx.closePath();
+      ctx.fill("evenodd");
     }
     ctx.restore();
 
@@ -834,6 +882,9 @@ export function SkyMap({
     }
 
     // Draw horizon line (where alt = 0) on top of the ground for clarity.
+    // Use the same antipode cutoff as the ground fill so near-horizon
+    // samples that would project to screen-infinity don't create a huge
+    // stray line across the canvas.
     ctx.strokeStyle = "rgba(230, 170, 110, 0.55)";
     ctx.lineWidth = 1.2;
     ctx.beginPath();
@@ -841,7 +892,7 @@ export function SkyMap({
     for (let az = 0; az < 360; az += 2) {
       const v = altAzToVector(0, az);
       const p = project(v, view, upR, rightR, focal);
-      if (p.z <= -0.9999) {
+      if (p.z <= -0.995) {
         horizonStarted = false;
         continue;
       }
