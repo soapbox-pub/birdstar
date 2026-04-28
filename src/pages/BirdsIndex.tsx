@@ -1300,7 +1300,17 @@ const Footer = memo(function Footer() {
           className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
         >
           Shakespeare
-        </a>
+        </a>{' '}
+        ·{' '}
+        <a
+          href="https://gitlab.com/soapbox-pub/birdstar"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
+        >
+          Source code
+        </a>{' '}
+        (AGPL-3.0)
       </p>
       <p className="text-stone-400/70 dark:text-stone-600">
         BirdNET weights CC-BY-NC-SA 4.0 · non-commercial use · range data

@@ -1001,7 +1001,7 @@ function SettingsSheet({
             )}
           </section>
 
-          <div className="pt-4 border-t border-white/10 flex justify-center">
+          <div className="pt-4 border-t border-white/10 flex flex-col items-center gap-2">
             <a
               href="https://shakespeare.diy"
               target="_blank"
@@ -1009,6 +1009,14 @@ function SettingsSheet({
               className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
             >
               Vibed with Shakespeare
+            </a>
+            <a
+              href="https://gitlab.com/soapbox-pub/birdstar"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
+            >
+              Source code · AGPL-3.0
             </a>
           </div>
         </div>

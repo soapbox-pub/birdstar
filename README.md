@@ -55,3 +55,17 @@ BirdNET weights are used under CC-BY-NC-SA 4.0 (non-commercial).
 Wikipedia provides bird range data, species articles, and star/planet
 summaries. iNaturalist provides nearest-observation distance data for
 the bird damper. d3-celestial supplies the Hipparcos star catalog.
+
+## License
+
+Birdstar is free software licensed under the
+[GNU Affero General Public License v3.0 or later](./LICENSE) (AGPL-3.0-or-later).
+If you run a modified version of this software on a network server,
+you must make the corresponding source code available to its users.
+
+Source code: <https://gitlab.com/soapbox-pub/birdstar>
+
+Third-party assets retain their own licenses. Notably, **BirdNET model
+weights are CC-BY-NC-SA 4.0 and may not be used commercially** — that
+restriction governs any deployment that bundles the weights, separate
+from Birdstar's own AGPL licensing.
