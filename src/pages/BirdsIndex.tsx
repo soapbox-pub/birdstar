@@ -1146,7 +1146,7 @@ function LocationGate({
               <Button
                 type="button"
                 variant="link"
-                className="justify-start px-0 text-emerald-700 hover:text-emerald-800 dark:text-amber-300 dark:hover:text-amber-200"
+                className="justify-center px-0 text-emerald-700 hover:text-emerald-800 dark:text-amber-300 dark:hover:text-amber-200"
                 onClick={() => {
                   setPickedContinent('NA');
                   setPickedCountry(null);
