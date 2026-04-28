@@ -3,8 +3,14 @@
 **Birdstar** is a Nostr client that merges two prior apps — **Birdsong
 Spotter** (a browser-based bird-by-ear checklist powered by BirdNET /
 TensorFlow.js) and **Starpoint** (an interactive sky map with
-user-drawn community constellations). A top-left toggle lets the user
-flip between **Birds** (the default) and **Stars**.
+user-drawn community constellations). **The app always starts in
+Birds mode** on a fresh install; a top-left toggle lets the user flip
+to Stars. The chosen mode is persisted to localStorage
+(`birdstar:mode`) so returning users resume where they left off, but
+first-time visitors always land in Birds. There is no "auto" /
+time-of-day mode — keeping the choice explicit avoids surprises
+(e.g. the app switching out from under someone mid-session when the
+sun sets).
 
 > **Slogan:** *Go outside. Find the birds. Draw the stars.*
 >

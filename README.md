@@ -14,9 +14,14 @@ blends two previously standalone apps into one viewport:
   addressable events, and browse figures drawn by anyone you follow on
   Nostr.
 
-A floating toggle on the top-left lets you switch between **Birds**
-(the default) and **Stars**. It's a two-position pill — tap either side,
-or anywhere on the pill, to flip.
+**The app always starts in Birds mode** on a fresh install. A
+floating toggle on the top-left lets you flip to **Stars**; it's a
+two-position pill — tap either side, or anywhere on the pill, to
+switch. Your choice is persisted to `localStorage` so a returning
+visitor resumes in whichever mode they were last using, but first-
+time visitors always land in Birds. There is no auto-by-time-of-day
+behavior: keeping the choice explicit means the app won't swap out
+from under you when the sun sets.
 
 ## Custom event kinds
 
