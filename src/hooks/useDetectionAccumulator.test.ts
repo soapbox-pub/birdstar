@@ -123,7 +123,7 @@ describe('useDetectionAccumulator location damping', () => {
     });
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
-    // The emitted Detection carries no score (kind 1007 events deliberately
+    // The emitted Detection carries no score (kind 2473 events deliberately
     // omit per-event confidence — publishing IS the confidence signal).
     // We only assert that accumulation did in fact cross the threshold.
     expect(4 * contributionFor(0.9 * OUT_OF_REGION_MULTIPLIER)).toBeGreaterThanOrEqual(

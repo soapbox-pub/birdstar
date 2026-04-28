@@ -14,12 +14,24 @@
 // `useBirdInfo` (which fires a Wikipedia request) once the cell has been
 // observed to enter the viewport at least once. After that, the query is
 // enabled permanently so scrolling back up doesn't re-fetch.
+//
+// Confirmed (heard && !rare) cells additionally expose an inline
+// "play reference song" button in the same top-right slot that
+// would otherwise hold the green checkmark badge. Clicking it
+// toggles playback of the species' reference recording (Wikipedia/
+// Commons first, iNaturalist fallback — the same source the
+// BirdInfoDialog uses) without opening the dialog. Pending and
+// unheard species don't get this affordance — we only hand out the
+// quick-soundboard control once a species is conclusively in the
+// checklist.
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bird, Check, Sparkles } from 'lucide-react';
+import { Bird, Play, Sparkles } from 'lucide-react';
 import type { BirdLabel } from '@/lib/birdnet/labels';
 import type { Detection } from '@/components/BirdCard';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
+import { useBirdSound } from '@/hooks/useBirdSound';
+import { useRegisterSongPlayback } from '@/hooks/useSongPlayback';
 import { cn } from '@/lib/utils';
 
 interface SpeciesCellProps {
@@ -43,7 +55,7 @@ function SpeciesCellImpl({
   // viewport. This keeps the cost at "N visible cells" rather than "all
   // 6,500 cells at mount", which would saturate the network + cache on
   // page load.
-  const rootRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [hasBeenVisible, setHasBeenVisible] = useState(false);
 
   useEffect(() => {
@@ -74,16 +86,14 @@ function SpeciesCellImpl({
     hasBeenVisible ? label.commonName : null,
   );
 
+  // Confirmed (heard && !rare) cells expose the inline play control;
+  // everyone else gets the normal click-to-open-dialog behavior
+  // without a soundboard.
+  const confirmed = heard && !rare;
+
   return (
-    <button
+    <div
       ref={rootRef}
-      type="button"
-      onClick={() => onSelect(label, detection)}
-      aria-label={
-        heard
-          ? `Heard ${label.commonName}. Show details.`
-          : `${label.commonName}. Not yet heard. Show details.`
-      }
       className={cn(
         // OUTER wrapper: owns the hover lift, the shadow, and nothing
         // else visual. Deliberately NOT clipped and NOT rounded.
@@ -101,11 +111,19 @@ function SpeciesCellImpl({
         // content-visibility + contain-intrinsic-size live on the
         // outer so the browser can skip the entire subtree when
         // offscreen.
+        //
+        // `group` on the outer so the inner clip's border + ring
+        // classes can respond to hover/focus of the underlying
+        // open-dialog button (keyed off `group-hover` / `group-focus-visible`).
+        // The open-dialog trigger is a full-bleed absolutely-
+        // positioned <button> below — we deliberately don't make
+        // the outer element itself a <button>, because the play
+        // control for confirmed species is a sibling <button> and
+        // nesting interactive elements is invalid HTML + breaks a11y.
         'group relative block aspect-square',
         '[content-visibility:auto] [contain-intrinsic-size:200px_200px]',
-        'text-left transition-[transform,filter] duration-300',
+        'transition-[transform,filter] duration-300',
         'hover:-translate-y-0.5',
-        'focus:outline-none',
         heard
           ? rare
             ? 'drop-shadow-md hover:drop-shadow-lg'
@@ -113,6 +131,28 @@ function SpeciesCellImpl({
           : 'drop-shadow-sm hover:drop-shadow-md',
       )}
     >
+      {/* Full-bleed "open details dialog" trigger. Rendered FIRST
+          in DOM so the visually-overlapping clip (pointer-events-
+          none) paints on top of it, and so the confirmed play
+          button later in DOM stays above it in paint order too.
+          The `peer` utility lets the clip key its focus ring on
+          this specific button's focus-visible state — we want the
+          big cell ring when the open-dialog trigger is
+          keyboard-focused, but NOT when the small play button
+          is focused (the play button has its own smaller ring).
+          Nested <button>s would be invalid HTML; siblings with
+          peer/group variants keep the semantics correct. */}
+      <button
+        type="button"
+        onClick={() => onSelect(label, detection)}
+        aria-label={
+          heard
+            ? `Heard ${label.commonName}. Show details.`
+            : `${label.commonName}. Not yet heard. Show details.`
+        }
+        className="peer absolute inset-0 rounded-2xl text-left focus:outline-none"
+      />
+
       {/* INNER clip: owns the rounded corners, the overflow clip, the
           border, the background, and the focus ring. Does NOT
           transform — its rectangle (and therefore its rounded clip)
@@ -123,17 +163,17 @@ function SpeciesCellImpl({
         className={cn(
           'pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border',
           'transition-[border-color,filter] duration-300',
-          'group-focus-visible:ring-2 group-focus-visible:ring-offset-2',
-          'group-focus-visible:ring-offset-white dark:group-focus-visible:ring-offset-[#0d1230]',
+          'peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+          'peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-[#0d1230]',
           heard
             ? rare
-              ? 'border-amber-300/80 bg-amber-50/80 group-focus-visible:ring-amber-500/60 dark:border-amber-700/50 dark:bg-amber-950/30 dark:group-focus-visible:ring-amber-400/60'
-              : 'border-emerald-300/80 bg-white/90 group-focus-visible:ring-emerald-500/60 dark:border-emerald-700/50 dark:bg-indigo-950/60 dark:group-focus-visible:ring-amber-400/60'
+              ? 'border-amber-300/80 bg-amber-50/80 peer-focus-visible:ring-amber-500/60 dark:border-amber-700/50 dark:bg-amber-950/30 dark:peer-focus-visible:ring-amber-400/60'
+              : 'border-emerald-300/80 bg-white/90 peer-focus-visible:ring-emerald-500/60 dark:border-emerald-700/50 dark:bg-indigo-950/60 dark:peer-focus-visible:ring-amber-400/60'
             : cn(
                 'border-stone-200/70 bg-white/40 group-hover:border-stone-300',
-                'group-focus-visible:ring-stone-400/60',
+                'peer-focus-visible:ring-stone-400/60',
                 'dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:group-hover:border-indigo-800/70',
-                'dark:group-focus-visible:ring-amber-400/40',
+                'dark:peer-focus-visible:ring-amber-400/40',
                 // Grayed-out treatment for unheard birds: fade the
                 // whole clip subtree (image + gradient + label). Kept
                 // on the clip wrapper rather than the individual
@@ -172,20 +212,6 @@ function SpeciesCellImpl({
         {/* Bottom gradient for name legibility */}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/60 to-transparent" />
 
-        {/* Heard / rare badges (top-right) */}
-        {heard ? (
-          rare ? (
-            <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow ring-1 ring-white/20 backdrop-blur-sm">
-              <Sparkles className="h-2.5 w-2.5" aria-hidden />
-              Rare
-            </span>
-          ) : (
-            <span className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500/95 text-white shadow ring-1 ring-white/20 backdrop-blur-sm dark:bg-emerald-400/95 dark:text-emerald-950">
-              <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />
-            </span>
-          )
-        ) : null}
-
         {/* Name label — overlaid on the image so the cell is image-dominant */}
         <div className="absolute inset-x-0 bottom-0 px-2.5 pb-2 pt-4">
           <div
@@ -206,7 +232,206 @@ function SpeciesCellImpl({
           </div>
         </div>
       </div>
-    </button>
+
+      {/* Top-right badge region. Three mutually-exclusive treatments:
+          - Rare heard: amber "Rare" chip (non-interactive).
+          - Confirmed (heard && !rare): emerald play button that
+            triggers the same reference-song playback as the dialog.
+          - Unheard: no badge. */}
+      {heard ? (
+        rare ? (
+          <span className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow ring-1 ring-white/20 backdrop-blur-sm">
+            <Sparkles className="h-2.5 w-2.5" aria-hidden />
+            Rare
+          </span>
+        ) : (
+          <SpeciesCellPlayButton
+            commonName={label.commonName}
+            scientificName={hasBeenVisible ? label.scientificName : null}
+            enabled={confirmed && hasBeenVisible}
+          />
+        )
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Inline reference-song play button rendered in the top-right of a
+ * confirmed SpeciesCell. Visually matches the old green checkmark
+ * badge (same `bg-emerald-500/95` palette, same ring + shadow, same
+ * size) so the cell's "you heard this one" cue stays recognizable —
+ * we just replaced the check glyph with a play triangle and made
+ * the badge clickable.
+ *
+ * Playback logic mirrors the BirdInfoDialog's `useSongPlayer`:
+ *
+ *   - Reference sound looked up via `useBirdSound` (Wikipedia/
+ *     Commons first, iNaturalist fallback).
+ *   - Hidden looping <audio> element mounted locally so each cell
+ *     owns its own playback independent of the dialog and any
+ *     other cell. Looping matches the dialog — bird reference
+ *     recordings are short phrases and comparing them to a field
+ *     observation benefits from hearing the phrase multiple times.
+ *   - `useRegisterSongPlayback` tells the mic recorder to mute
+ *     itself while this cell is playing, same feedback-avoidance
+ *     path the dialog uses.
+ *   - Play icon swaps to an animated equaliser glyph while
+ *     playing (same visual language as the dialog's button).
+ *
+ * When the species has no usable recording from either provider,
+ * the button is rendered disabled rather than removed so the
+ * confirmed indicator stays in the same position and users don't
+ * have to guess whether a species is confirmed.
+ */
+function SpeciesCellPlayButton({
+  commonName,
+  scientificName,
+  enabled,
+}: {
+  commonName: string;
+  /** Null until the cell has entered the viewport once (same
+   *  gating strategy as `useBirdInfo` in the parent). Keeps us
+   *  from firing a Wikipedia+iNat sound lookup for every confirmed
+   *  species in the entire roster at mount. */
+  scientificName: string | null;
+  /** Gate for the query. True once the cell has been visible and
+   *  the species is confirmed. */
+  enabled: boolean;
+}) {
+  const { data: sound } = useBirdSound(
+    enabled ? scientificName : null,
+    enabled ? commonName : null,
+  );
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // Mute the mic recorder while this cell is playing, so the
+  // speaker's output doesn't feed back into the next BirdNET
+  // window. Exactly the hook the dialog uses.
+  useRegisterSongPlayback(isPlaying);
+
+  // Reset to paused whenever the source URL changes. With 6,500
+  // cells the same SpeciesCellPlayButton instance should never see
+  // two different species, but if the sound lookup resolves late
+  // (e.g. Wikipedia → iNat fallback), the audio element's src will
+  // swap out from under us and any stale `isPlaying=true` would be
+  // pointing at a released resource.
+  useEffect(() => {
+    setIsPlaying(false);
+  }, [sound?.audioUrl]);
+
+  const disabled = !sound;
+
+  const toggle = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isPlaying) {
+      el.pause();
+      setIsPlaying(false);
+    } else {
+      // play() may reject if autoplay is blocked or the source
+      // fails to load. Swallow the rejection — the button
+      // returns to the play state and the user can retry.
+      el.play().then(
+        () => setIsPlaying(true),
+        () => setIsPlaying(false),
+      );
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={toggle}
+        disabled={disabled}
+        aria-label={
+          disabled
+            ? `${commonName} confirmed. No reference recording available.`
+            : isPlaying
+              ? `Pause ${commonName} reference song.`
+              : `Play ${commonName} reference song.`
+        }
+        aria-pressed={isPlaying}
+        className={cn(
+          // Sized up from the original 24px checkmark badge to 36px
+          // (h-9 w-9) so the play affordance reads as a primary
+          // action on the cell — users should see it as a
+          // tappable soundboard, not a status badge. Still a
+          // touch smaller than the dialog's 40px button because
+          // the cell itself is much smaller than the dialog
+          // header, but large enough to meet reasonable touch-
+          // target guidance on mobile.
+          'absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full',
+          'bg-emerald-500/95 text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm',
+          'dark:bg-emerald-400/95 dark:text-emerald-950',
+          'transition-[transform,background-color,box-shadow] duration-200',
+          'hover:bg-emerald-600/95 hover:shadow-lg active:scale-95',
+          'dark:hover:bg-emerald-300/95',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-1',
+          'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
+          // Disabled state keeps the same shape/color but drops
+          // interactivity so the confirmed indicator stays
+          // consistent even when a species has no usable
+          // recording.
+          'disabled:cursor-default disabled:hover:bg-emerald-500/95 disabled:hover:shadow-md disabled:active:scale-100',
+          'disabled:dark:hover:bg-emerald-400/95',
+        )}
+      >
+        {isPlaying ? (
+          <EqualiserBars />
+        ) : (
+          // Nudge the triangle right by 1px so it looks optically
+          // centered inside the circle (the glyph's centroid
+          // sits left of its bounding box).
+          <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
+        )}
+      </button>
+
+      {/* Hidden audio element. Only mounted when we have a usable
+          source URL so we don't ship an empty <audio src="">.
+          Looped for the same reason the dialog loops: bird
+          reference recordings are short phrases and users want to
+          hear them repeatedly while comparing to the field. */}
+      {sound ? (
+        <audio
+          ref={audioRef}
+          src={sound.audioUrl}
+          preload="none"
+          loop
+          onPause={() => setIsPlaying(false)}
+          onPlay={() => setIsPlaying(true)}
+          className="hidden"
+        >
+          Your browser does not support embedded audio.
+        </audio>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Four tiny vertical bars bouncing with staggered CSS animations,
+ * rendered inside the play button while a recording is playing.
+ * Mirrors the dialog's equaliser glyph so both surfaces speak the
+ * same visual language for "audio is active — tap to stop." Colour
+ * is `currentColor` so it inherits the button's text colour (white
+ * on emerald in light mode, emerald-950 in dark mode).
+ */
+function EqualiserBars() {
+  const delays = ['0ms', '120ms', '60ms', '180ms'];
+  return (
+    <span className="flex h-4 items-end gap-[2px]" aria-hidden>
+      {delays.map((delay, i) => (
+        <span
+          key={i}
+          className="block w-[2px] animate-pulse-bar rounded-full bg-current"
+          style={{ animationDelay: delay }}
+        />
+      ))}
+    </span>
   );
 }
 

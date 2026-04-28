@@ -112,6 +112,18 @@ export function BirdInfoDialog({
 
   const detection = subject?.kind === 'detection' ? subject.detection : null;
   const isRare = subject?.kind === 'label' ? (subject.isRare ?? false) : false;
+  // A "confirmed" subject is one the user has published a real
+  // detection for — i.e. the species wears the emerald checkmark on
+  // its roster cell. For these the dialog swaps its amber accents
+  // (play button, inline "read more" link) to emerald so the
+  // palette inside the dialog matches the palette of the cell that
+  // opened it. Pending (accumulating), not-yet-heard, and rare
+  // sightings keep the original amber accents: amber reads as
+  // "tentative / notable" in this app's vocabulary, and only a
+  // regular confirmed detection earns the confident emerald
+  // palette. See SpeciesCell.tsx for the sibling "green checkmark
+  // → play button" change that motivated this.
+  const confirmed = subject?.kind === 'detection';
   // Pending = species currently accumulating but not yet over the
   // confirmation threshold. Surfaced only via the player-bar album
   // art's new clickable state; we use it here to swap the footer's
@@ -134,7 +146,7 @@ export function BirdInfoDialog({
 
   const canDelete = Boolean(onDelete && detection?.eventId);
 
-  const song = useSongPlayer(sound, isSoundLoading);
+  const song = useSongPlayer(sound, isSoundLoading, confirmed);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -262,6 +274,16 @@ export function BirdInfoDialog({
                   text={data.extract}
                   collapseThreshold={120}
                   className="text-sm leading-relaxed text-stone-700 dark:text-stone-200"
+                  // Confirmed subjects use an all-emerald link
+                  // palette (light + dark) to match the emerald
+                  // play button and the cell's green confirmation
+                  // badge. The default (amber-in-dark) stays
+                  // reserved for pending/unheard/rare cases.
+                  toneClass={
+                    confirmed
+                      ? 'text-emerald-700 hover:text-emerald-800 dark:text-emerald-300 dark:hover:text-emerald-200'
+                      : undefined
+                  }
                 />
               ) : (
                 <p className="text-sm italic text-stone-400 dark:text-stone-500">
@@ -379,9 +401,12 @@ function CollapsibleProse({
   text: string;
   collapseThreshold: number;
   className?: string;
-  /** Tailwind classes for the inline toggle colour, tuned per
-   *  callout (emerald-only for the habitat card, emerald/amber
-   *  default for body text). */
+  /** Tailwind classes for the inline toggle colour. Default is
+   *  emerald-in-light, amber-in-dark — kept for pending / unheard
+   *  / rare subjects where the dialog's amber accents already read
+   *  as "tentative." Confirmed-detection subjects override this to
+   *  all-emerald so the link matches the emerald play button and
+   *  the cell's green confirmation badge. */
   toneClass?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -841,6 +866,7 @@ function SourcesLine({
 function useSongPlayer(
   sound: BirdSound | null | undefined,
   isLoading: boolean,
+  confirmed: boolean,
 ): {
   button: React.ReactNode;
   audio: React.ReactNode;
@@ -903,12 +929,31 @@ function useSongPlayer(
       aria-pressed={isPlaying}
       className={cn(
         'group/song inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
-        'bg-amber-500 text-white shadow-md ring-1 ring-amber-400/40',
+        'shadow-md ring-1',
         'transition-[transform,background-color,box-shadow] duration-200',
-        'hover:bg-amber-600 hover:shadow-lg active:scale-95',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 focus-visible:ring-offset-2',
+        'hover:shadow-lg active:scale-95',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
         'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
-        'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+        // Confirmed subjects (real published detections) render
+        // the button in emerald so it matches the cell's green
+        // confirmation badge — the cell opens this dialog and
+        // the colors should feel continuous. Everything else
+        // (pending, unheard roster entries, rare) keeps the
+        // original amber palette, which reads as "tentative /
+        // notable" rather than "confirmed."
+        confirmed
+          ? cn(
+              'bg-emerald-500 text-white ring-emerald-400/40',
+              'hover:bg-emerald-600',
+              'focus-visible:ring-emerald-500/60',
+              'dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300',
+            )
+          : cn(
+              'bg-amber-500 text-white ring-amber-400/40',
+              'hover:bg-amber-600',
+              'focus-visible:ring-amber-500/60',
+              'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+            ),
       )}
     >
       {isPlaying ? (
@@ -956,8 +1001,9 @@ function useSongPlayer(
 /**
  * Four vertical bars bouncing with staggered CSS animations. Used
  * inside the song button to indicate active playback. Colour is
- * `currentColor` so it inherits the button's text colour (white on
- * amber in light mode, amber-950 in dark mode).
+ * `currentColor` so it inherits the button's text colour — white on
+ * the amber/emerald background in light mode, the matching dark-950
+ * tone (amber-950 / emerald-950) in dark mode.
  */
 function EqualiserBars() {
   // Heights at rest aren't rendered here — the bars are only drawn

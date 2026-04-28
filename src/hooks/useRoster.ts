@@ -2,7 +2,7 @@
 //
 // Combines the BirdNET labels, the species-regions place table, the user's
 // resolved location (continent + country + subdivision), and their
-// kind-1007 history into four sorted lists ready to render:
+// kind-2473 history into four sorted lists ready to render:
 //
 //   visible     — current-tier's top-N in-region species by Wikipedia-
 //                 pageview popularity, plus every heard bird (heard >
@@ -31,12 +31,12 @@
 // distinct species heard across all sessions, period. Rare finds
 // (out-of-region vagrants) count. In-region obscure birds count.
 // The simple rule is the point: "hear 10 more birds" in the UI
-// means exactly that. Because kind-1007 events carry no location by
+// means exactly that. Because kind-2473 events carry no location by
 // design, the count can't be scoped to a region — it's necessarily
 // global to the user's history. Moving from Austin to Paris doesn't
 // reset progress (you *did* hear those Austin birds).
 //
-// Heard-status matching is by case-folded scientific name — the kind-1007
+// Heard-status matching is by case-folded scientific name — the kind-2473
 // event's `alt` tag carries `(Scientific name)` which history decodes into
 // `detection.scientificName`.
 //
@@ -151,7 +151,7 @@ export interface Roster {
   rareFinds: RosterEntry[];
   /** Total distinct species heard, across all sessions and all
    * regions. Drives tier advancement and the "Hear N more birds"
-   * counter on the LockedTile. kind-1007 events are location-less by
+   * counter on the LockedTile. kind-2473 events are location-less by
    * design, so this count is necessarily global. */
   heardCount: number;
   /** Active tier (1-indexed). `UNLIMITED_TIER` after tier 4 is cleared. */
