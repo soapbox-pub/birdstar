@@ -237,11 +237,15 @@ function PhaseGlyph({
   const cosI = Math.cos((phaseAngleDeg * Math.PI) / 180);
   const terminator = R * cosI;
   const rx = Math.max(0.01, Math.abs(terminator)); // SVG dislikes rx=0
-  // `sweep-flag` for the terminator arc: 1 = clockwise-ish traversal
-  // that passes through the dark side (gibbous), 0 = the other way
-  // (crescent). Anchoring the flag to the sign of the terminator
-  // matches SVG's sweep convention in a y-down coordinate system.
-  const sweep = terminator >= 0 ? 0 : 1;
+  // `sweep-flag` for the terminator arc (SVG y-down coordinate system):
+  //   • gibbous (terminator ≥ 0): sweep = 1 routes the arc through the
+  //     *left* side of the disc — the ellipse bulges into the dark
+  //     hemisphere, and the enclosed region = right half-disc ∪ left
+  //     half-ellipse ≈ almost the whole disc.
+  //   • crescent (terminator < 0): sweep = 0 routes it through the
+  //     *right* side, carving into the bright half-disc and leaving a
+  //     thin lit sliver on the far right.
+  const sweep = terminator >= 0 ? 1 : 0;
 
   // Essentially-full: just a bright disk.
   if (illumination >= 0.995) {

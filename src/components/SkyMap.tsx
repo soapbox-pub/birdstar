@@ -1510,15 +1510,20 @@ export function SkyMap({
             // coordinates y grows downward, so "counterclockwise=false"
             // traces the +x half of the circle.
             ctx.arc(0, 0, R, -Math.PI / 2, Math.PI / 2, false);
-            // Terminator: the ellipse's left half, from bottom (+y)
-            // up through the terminator point back to top (−y). The
-            // ellipse is axis-aligned with rx = |terminator|, ry = R;
-            // we pass `terminator` with its sign and traverse CCW so
-            // the arc passes through angle π, which lands at
-            // (−terminator, 0). For gibbous (terminator > 0) that's
-            // in the dark hemisphere and the lit region covers most
-            // of the disk; for crescent (terminator < 0) it's back on
-            // the bright side and the lit region shrinks to a sliver.
+            // Terminator: the ellipse's half-arc that bounds the lit
+            // region. In canvas, ctx.ellipse with `counterclockwise`
+            // controls which half-arc connects the two endpoints:
+            //   • counterclockwise = false → arc passes through t=π,
+            //     i.e. (−rx, 0) in the rotated (bright-limb-aligned)
+            //     frame. That's the *left* / dark-hemisphere side.
+            //     Combined with the right half-disc this encloses
+            //     right-half ∪ left-half-ellipse — the gibbous shape.
+            //   • counterclockwise = true → arc passes through t=0,
+            //     i.e. (+rx, 0). That's the bright-hemisphere side;
+            //     it carves into the right half-disc and leaves a
+            //     crescent sliver along the far limb.
+            // So gibbous (terminator ≥ 0) wants ccw=false, crescent
+            // (terminator < 0) wants ccw=true.
             ctx.ellipse(
               0,
               0,
@@ -1527,7 +1532,7 @@ export function SkyMap({
               0,
               Math.PI / 2,
               -Math.PI / 2,
-              terminator >= 0,
+              terminator < 0,
             );
             ctx.closePath();
 
