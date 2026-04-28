@@ -4,16 +4,16 @@
 //   1. On mount, read any cached place set from localStorage and surface
 //      it immediately so the roster can render on return visits without
 //      re-prompting the user.
-//   2. Expose a `request()` callback the UI fires when the user explicitly
-//      opts in. This calls `navigator.geolocation.getCurrentPosition`, which
-//      triggers the browser's native permission prompt the first time.
+//   2. If nothing is cached (status === 'unknown'), automatically fire
+//      the geolocation prompt. The roster can't render without a region,
+//      so sitting on an empty page waiting for the user to click a
+//      button wastes a round trip — we just ask.
 //   3. On a successful fix we resolve the lat/lon to a `UserPlaceSet`
 //      (continent + country + subdivision where available) and cache it.
 //      On denial we record that so we don't re-prompt on every subsequent
-//      visit.
-//
-// We deliberately DO NOT auto-request on mount. A geolocation prompt
-// appearing without the user having asked for it is hostile UX.
+//      visit — the manual-picker fallback takes over instead.
+//   4. `request()` is still exported so a "try again" affordance after
+//      a denial can re-trigger the prompt.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -256,6 +256,26 @@ export function useUserRegion(): UseUserRegion {
       setState({ status: 'unknown' });
     }
   }, []);
+
+  // Auto-prompt on mount when there's no cached decision. We key the
+  // effect on `state.status === 'unknown'` so a subsequent `reset()`
+  // (status → 'unknown') will re-prompt too.
+  //
+  // Guards:
+  //   - Only fire for 'unknown'. A stored 'denied' or 'unavailable'
+  //     entry means the user has already said no (or the browser can't
+  //     resolve them); re-prompting would be hostile.
+  //   - Uses a ref so the effect stays dep-stable across renders of
+  //     `request` (which changes whenever `state.status` changes).
+  const requestRef = useRef(request);
+  useEffect(() => {
+    requestRef.current = request;
+  }, [request]);
+  useEffect(() => {
+    if (state.status === 'unknown') {
+      requestRef.current();
+    }
+  }, [state.status]);
 
   const hasDecided =
     state.status === 'ready' ||

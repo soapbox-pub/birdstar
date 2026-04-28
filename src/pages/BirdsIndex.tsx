@@ -11,6 +11,7 @@ import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -782,11 +783,21 @@ const IndexInner = () => {
           {!labels ? (
             <RosterLoadingShimmer />
           ) : !placeSet ? (
-            <LocationGate
-              regionStatus={regionStatus}
-              onRequestLocation={requestRegion}
-              onCommitManual={commitManualLocation}
-            />
+            // No resolved region yet. While geolocation is still
+            // resolving (or hasn't fired yet on first paint), show a
+            // skeleton of the location card so the page has visible
+            // scaffolding instead of empty space. Once the browser
+            // reports denied/unavailable, fall through to the full
+            // LocationGate with its manual-region picker.
+            regionStatus === 'unknown' || regionStatus === 'resolving' ? (
+              <LocationGateSkeleton />
+            ) : (
+              <LocationGate
+                regionStatus={regionStatus}
+                onRequestLocation={requestRegion}
+                onCommitManual={commitManualLocation}
+              />
+            )
           ) : (
             <>
               <RosterGrid
@@ -1230,6 +1241,35 @@ function RosterLoadingShimmer() {
         />
       ))}
     </div>
+  );
+}
+
+/**
+ * Skeleton mirror of {@link LocationGate}. Rendered while we're waiting
+ * for the browser to resolve the geolocation prompt so the page has
+ * structure instead of a blank gap. Shapes (pin circle, heading,
+ * two-line body, button) match the real card so the transition is a
+ * cross-fade rather than a layout jump.
+ */
+function LocationGateSkeleton() {
+  return (
+    <Card
+      aria-hidden
+      className="mx-auto mt-8 max-w-xl overflow-hidden border-dashed border-stone-300/70 bg-white/60 shadow-sm backdrop-blur dark:border-indigo-900/60 dark:bg-indigo-950/40"
+    >
+      <CardContent className="space-y-5 p-8 text-center">
+        <Skeleton className="mx-auto h-14 w-14 rounded-full" />
+        <div className="space-y-3">
+          <Skeleton className="mx-auto h-6 w-56" />
+          <div className="space-y-2">
+            <Skeleton className="mx-auto h-3.5 w-11/12 max-w-md" />
+            <Skeleton className="mx-auto h-3.5 w-9/12 max-w-sm" />
+          </div>
+        </div>
+        <Skeleton className="mx-auto h-10 w-full max-w-sm rounded-md" />
+        <Skeleton className="mx-auto h-3 w-64" />
+      </CardContent>
+    </Card>
   );
 }
 
