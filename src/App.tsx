@@ -7,6 +7,7 @@ import { InferSeoMetaPlugin } from 'unhead/plugins';
 import { Suspense } from 'react';
 import NostrProvider from '@/components/NostrProvider';
 import { NostrSync } from '@/components/NostrSync';
+import { BirdNetProvider } from '@/components/BirdNetProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NostrLoginProvider } from '@nostrify/react/login';
@@ -56,7 +57,15 @@ export function App() {
               <TooltipProvider>
                 <Toaster />
                 <Suspense>
-                  <AppRouter />
+                  {/* BirdNetProvider owns the BirdNET worker + model for
+                      the lifetime of the page, so flipping between Birds
+                      and Stars mode doesn't tear the worker down and force
+                      a model reload on every return to Birds. The worker
+                      is still spawned lazily on the first `load()` call,
+                      so Stars-only sessions pay nothing. */}
+                  <BirdNetProvider>
+                    <AppRouter />
+                  </BirdNetProvider>
                 </Suspense>
               </TooltipProvider>
             </NostrProvider>
