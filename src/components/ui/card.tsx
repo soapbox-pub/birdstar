@@ -2,12 +2,24 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+// This project was originally authored against shadcn's v1 Card, where the
+// Card itself was a bare rounded/bordered shell and padding lived on
+// CardHeader / CardContent / CardFooter. Every Card callsite in this repo
+// follows that pattern (see e.g. StarDetailSheet, ConstellationDetailSheet,
+// BirdCard, ZapDialog — all wrap their content in <CardContent className="p-4">
+// or similar and assume the parent adds no padding of its own).
+//
+// The current shadcn primitive ships with `flex flex-col gap-6 py-6` on the
+// Card and strips padding off CardHeader/CardContent/CardFooter. Dropping
+// that default in here restores the behavior the rest of the codebase
+// expects without touching 27 callsites.
+
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-sm",
+        "rounded-xl border bg-card text-card-foreground shadow-sm",
         className
       )}
       {...props}
@@ -19,10 +31,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-header"
-      className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
-        className
-      )}
+      className={cn("flex flex-col space-y-1.5 p-6", className)}
       {...props}
     />
   )
@@ -65,7 +74,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-6", className)}
+      className={cn("p-6 pt-0", className)}
       {...props}
     />
   )
@@ -75,7 +84,7 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
-      className={cn("flex items-center px-6 [.border-t]:pt-6", className)}
+      className={cn("flex items-center p-6 pt-0", className)}
       {...props}
     />
   )
