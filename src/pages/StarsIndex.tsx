@@ -646,12 +646,25 @@ const Index = () => {
         <div className="pointer-events-auto">
           <LoginArea
             className={[
-              "[&>button]:h-10 [&>button]:p-1 [&>button]:pr-2.5 [&>button]:gap-2",
-              "[&>button]:rounded-full [&>button]:bg-black/40 [&>button]:backdrop-blur-md",
+              // Shared pill shape for both the logged-out "Join" button and
+              // the logged-in AccountSwitcher trigger.
+              "[&>button]:h-10 [&>button]:rounded-full",
+              "[&>button]:bg-black/40 [&>button]:backdrop-blur-md",
               "[&>button]:border [&>button]:border-white/10 [&>button]:text-white",
               "hover:[&>button]:bg-black/60",
-              "[&>button>span]:h-8 [&>button>span]:w-8",
-              "[&>button>div]:hidden",
+              // Logged-in: AccountSwitcher trigger contains an Avatar span
+              // (data-slot="avatar"). Compress padding so the 32px avatar
+              // sits flush and hide the chevron div on this compact HUD.
+              "[&>button:has(>[data-slot=avatar])]:p-1",
+              "[&>button:has(>[data-slot=avatar])]:pr-2.5",
+              "[&>button:has(>[data-slot=avatar])]:gap-2",
+              "[&>button>[data-slot=avatar]]:h-8",
+              "[&>button>[data-slot=avatar]]:w-8",
+              "[&>button:has(>[data-slot=avatar])>div]:hidden",
+              // Logged-out: "Join" button has a plain <span> label child, so
+              // give it horizontal padding for the label to breathe.
+              "[&>button:not(:has(>[data-slot=avatar]))]:px-5",
+              // AuthDialog portaled triggers (when rendered as siblings).
               "[&>div>button]:h-9 [&>div>button]:px-3.5 [&>div>button]:text-xs",
               "[&>div>button]:rounded-full",
             ].join(" ")}
