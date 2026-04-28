@@ -1,202 +1,157 @@
-// Deterministic "bird of the day" picker, preferring species observed
-// near the user when we have a local-species map to lean on.
+// Deterministic "bird of the day" picker, one bird per zodiac sign.
 //
-// Picks one species per (local calendar day, coarse lat/lon) so:
+// The bird is an extension of the horoscope. The horoscope already
+// produces a per-sign lucky number; that number picks the bird by
+// indexing into a ranked list of candidate species. So two signs on
+// the same day almost always see different birds (their lucky
+// numbers differ and index into different slots), and a given sign
+// sees a new bird each day because its lucky number changes.
 //
-//   - Two users in the same ~100 km square see the same bird today,
-//     enabling shared conversation ("did you look up today's bird?").
-//   - A user moving to a different region gets a fresh pick rather
-//     than carrying their last area's bird with them.
-//   - Without any geolocation signal we still render *something*
-//     from the BirdNET roster instead of going blank.
+// Candidate list:
 //
-// Ranking logic when a local-species map is available:
+//   When we have an iNat nearby-species map from `useLocalSpeciesBands`,
+//   the candidates are roster species actually observed near the user,
+//   sorted by tightest distance band first, then by observation count
+//   descending. This means low lucky numbers pick the most-local,
+//   most-abundant birds and higher lucky numbers reach into rarer or
+//   farther-afield species. The list is truncated to a reasonable cap
+//   so the modulus doesn't end up revisiting the same top bird under
+//   a different name.
 //
-//   1. Find the tightest iNat distance band that actually contains
-//      some roster species. A bird seen within 25 km beats a bird
-//      seen within 500 km — we want "bird I could plausibly spot
-//      today", not "bird observed somewhere on this continent".
-//   2. Draw one species from that band, weighted by observation
-//      count so a species with 12,000 nearby sightings is preferred
-//      over one with 2. Weighting uses sqrt(count) to soften the
-//      tail: without it the top-10 species would monopolize every
-//      daily slot for months on end, and the whole point of a
-//      "today's bird" is variety.
+//   When no map is available (no location shared, marine/remote area,
+//   iNat down, first load before fan-out completes) the candidates are
+//   the full `isBird` roster sorted by scientific name — still
+//   deterministic, still per-sign, just location-blind.
 //
-// The fallback path (no local map, or the map is empty — e.g.
-// manual-picker users, marine areas, iNat down, first load) picks
-// uniformly from the full `isBird: true` roster so the card still
-// renders usefully.
+// The PRNG primitive used elsewhere in this project isn't needed here:
+// `luckyNumber % candidates.length` is already a uniform-ish draw and
+// keeps the "lucky number picks the bird" story simple and honest.
 
 import type { BirdLabel } from "./birdnet/labels";
+import type { ZodiacId } from "./zodiac";
 import {
   lookupLocal,
   type LocalSpeciesEntry,
   type LocalSpeciesMap,
-  type LocalRadiusKm,
   LOCAL_RADII_KM,
 } from "./inat/localSpecies";
-import type { CoarseLatLon } from "@/hooks/useUserRegion";
-import { fnv1a, localDateKey, mulberry32 } from "./seededRandom";
 
 /**
- * How the bird-of-the-day was chosen. Surfaced so the UI can render
- * a contextual label ("seen within 25 km" vs. "from the BirdNET
- * roster") — otherwise a user with no iNat map and a user surrounded
- * by iNat observations would see identical cards with no hint why.
+ * Metadata about how the bird was picked. Surfaced so a caller that
+ * wants to annotate the card ("seen within 25 km") has the raw
+ * information without re-computing it; the current UI deliberately
+ * does NOT render this, but it's useful for tests and for future
+ * iterations that might want to distinguish local from fallback
+ * picks visually.
  */
 export type BirdOfTheDaySource =
-  | { kind: "nearby"; band: LocalRadiusKm; count: number }
-  | { kind: "fallback"; reason: "no-location" | "no-local-data" };
+  | { kind: "nearby"; entry: LocalSpeciesEntry }
+  | { kind: "fallback" };
 
 export interface BirdOfTheDay {
+  /** The chosen species from the BirdNET roster. */
   label: BirdLabel;
+  /** The sign the pick is for. */
+  sign: ZodiacId;
+  /** Provenance of the pick (nearby vs. fallback roster draw). */
   source: BirdOfTheDaySource;
-  /** The date key the pick was seeded with. Useful for debugging and
-   * for labelling the card with a stable "today" date string. */
-  dateKey: string;
-}
-
-/** Build the stable string we seed the PRNG with. */
-function seedKey(dateKey: string, coarse: CoarseLatLon | null): string {
-  // Joining on a character that won't appear in any of the parts
-  // makes the string unambiguously invertible, which matters only if
-  // we ever hash-collide-debug in the future. lat/lon are already
-  // integers in `CoarseLatLon` (1°-rounded) so no formatting needed.
-  if (coarse) return `bird-of-the-day:${dateKey}:${coarse.lat}:${coarse.lon}`;
-  return `bird-of-the-day:${dateKey}:noloc`;
 }
 
 /**
- * Pick the tightest radius at which at least one species from our
- * roster was actually observed. Looking at map keys alone isn't
- * enough — iNat returns species that aren't in the BirdNET labels
- * file (rare hybrids, taxonomic splits, etc.), and we can't offer
- * those as "today's bird" because they wouldn't resolve in the Birds
- * dialog. So we intersect: for each band, is there a roster species
- * that iNat put in this band or tighter?
- *
- * Returns the band plus the subset of labels that fall in it, or
- * null if no roster species was observed anywhere in the 25–500 km
- * window.
+ * How many candidates we keep in the nearby-path ranked list before
+ * modding the lucky number. Chosen to be larger than the maximum
+ * luckyNumber (99) so the modulus can reach every slot, and small
+ * enough that the list is dominated by species a birder could
+ * plausibly encounter rather than dragged down by 1-observation
+ * rarities at the 500 km edge.
  */
-function tightestBandWithSpecies(
+const NEARBY_CANDIDATE_CAP = 200;
+
+/**
+ * Rank local candidates by tightest band first, then by observation
+ * count descending, then alphabetically by scientific name as a
+ * tiebreaker. The alphabetic tiebreaker is what makes the ranking
+ * fully deterministic — two species with identical band and count
+ * would otherwise depend on the map's iteration order, which is
+ * effectively iNat's response order and not something we want to
+ * depend on.
+ */
+function rankNearby(
   birds: readonly BirdLabel[],
   map: LocalSpeciesMap,
-): { band: LocalRadiusKm; matches: { label: BirdLabel; entry: LocalSpeciesEntry }[] } | null {
-  // Walk bands from tightest to loosest. First hit wins.
-  for (const band of LOCAL_RADII_KM) {
-    const matches: { label: BirdLabel; entry: LocalSpeciesEntry }[] = [];
-    for (const label of birds) {
-      const entry = lookupLocal(map, label.scientificName);
-      if (!entry || entry.band === null) continue;
-      // Tighter-or-equal band: a species seen at 25 km is also "in"
-      // the 50/100/etc bands, but we only need to find it once.
-      if (entry.band <= band) {
-        matches.push({ label, entry });
-      }
-    }
-    if (matches.length > 0) return { band, matches };
+): { label: BirdLabel; entry: LocalSpeciesEntry }[] {
+  const rows: { label: BirdLabel; entry: LocalSpeciesEntry }[] = [];
+  for (const label of birds) {
+    const entry = lookupLocal(map, label.scientificName);
+    // Null-band entries mean the species wasn't seen within the
+    // outermost radius. We exclude them from the nearby path — if the
+    // whole map is null bands the fallback path will kick in anyway.
+    if (!entry || entry.band === null) continue;
+    rows.push({ label, entry });
   }
-  return null;
+  rows.sort((a, b) => {
+    // `band` is a LocalRadiusKm number here (null excluded above).
+    const aBand = a.entry.band as (typeof LOCAL_RADII_KM)[number];
+    const bBand = b.entry.band as (typeof LOCAL_RADII_KM)[number];
+    if (aBand !== bBand) return aBand - bBand;
+    if (a.entry.count !== b.entry.count) return b.entry.count - a.entry.count;
+    return a.label.scientificName.localeCompare(b.label.scientificName);
+  });
+  return rows.slice(0, NEARBY_CANDIDATE_CAP);
 }
 
 /**
- * Weighted-random pick from a list keyed by some weight. Uses a
- * running-total / inverse-CDF approach so a single PRNG draw is
- * sufficient — both cheaper and more deterministic than the
- * rejection-sampling alternative.
- */
-function weightedPick<T>(
-  items: readonly { value: T; weight: number }[],
-  rand: () => number,
-): T {
-  let total = 0;
-  for (const item of items) total += item.weight;
-  // Degenerate case: all weights zero. Fall back to uniform over the
-  // item indices so callers don't have to special-case empty weights.
-  if (total <= 0) return items[Math.floor(rand() * items.length)].value;
-  const target = rand() * total;
-  let acc = 0;
-  for (const item of items) {
-    acc += item.weight;
-    if (target < acc) return item.value;
-  }
-  // Floating-point slop at the very top of the range; the last item
-  // is the mathematically correct fallback.
-  return items[items.length - 1].value;
-}
-
-/**
- * Pick the bird-of-the-day for the given date and location.
+ * Pick the bird-of-the-day for one zodiac sign.
  *
- * Returns null only when the labels list has no `isBird` entries,
- * which in practice means `useBirdLabels()` hasn't resolved yet.
- * Callers should render a skeleton in that case.
+ * @param labels      Full BirdNET label list from `useBirdLabels()`.
+ * @param localMap    iNat nearby-species map from `useLocalSpeciesBands()`.
+ *                    Pass `null` when not available — the pick falls
+ *                    back to a uniform pass over the full roster sorted
+ *                    by scientific name.
+ * @param sign        The zodiac sign being rendered.
+ * @param luckyNumber The sign's lucky number for today, from
+ *                    `horoscopeFor(sign, date).luckyNumber`. This is
+ *                    the selector — the bird is
+ *                    `candidates[luckyNumber % candidates.length]`.
  *
- * @param labels  Full BirdNET label list from `useBirdLabels()`.
- * @param localMap iNat nearby-species map from `useLocalSpeciesBands()`.
- *                 Pass `null` when not available — the pick falls back
- *                 to a uniform draw over the full roster.
- * @param coarse  Coarse lat/lon from `useUserRegion()`. Pass `null`
- *                when the user hasn't shared location; the pick will
- *                still be deterministic per-day but not location-varying.
- * @param date    Normally `new Date()`; injectable for tests.
+ * Returns null only when the roster has no `isBird` entries, which
+ * in practice means `useBirdLabels()` hasn't resolved yet. Callers
+ * should render a skeleton in that case.
  */
 export function birdOfTheDay(
   labels: readonly BirdLabel[],
   localMap: LocalSpeciesMap | null,
-  coarse: CoarseLatLon | null,
-  date: Date,
+  sign: ZodiacId,
+  luckyNumber: number,
 ): BirdOfTheDay | null {
   const birds = labels.filter((l) => l.isBird);
   if (birds.length === 0) return null;
 
-  const dateKey = localDateKey(date);
-  const seed = fnv1a(seedKey(dateKey, coarse));
-  const rand = mulberry32(seed);
-
-  // Primary path: we have an iNat map and at least one roster species
-  // was observed in the 25–500 km window.
+  // Primary path: we have an iNat map with at least one roster
+  // species observed in the 25–500 km window.
   if (localMap) {
-    const tightest = tightestBandWithSpecies(birds, localMap);
-    if (tightest) {
-      const picked = weightedPick(
-        tightest.matches.map(({ label, entry }) => ({
-          value: { label, entry },
-          // sqrt(count) softens the long tail — a species with 10,000
-          // sightings shouldn't dominate a species with 100 by a
-          // factor of 100. Min weight of 1 keeps a rare-but-present
-          // species in the draw.
-          weight: Math.max(1, Math.sqrt(entry.count)),
-        })),
-        rand,
-      );
-      // `picked.entry.band` is the species's *own* tightest band,
-      // which is always <= the enclosing `tightest.band`. Report the
-      // species's own band on the card since that's the more
-      // informative "seen within X km" statement.
+    const ranked = rankNearby(birds, localMap);
+    if (ranked.length > 0) {
+      const picked = ranked[luckyNumber % ranked.length];
       return {
         label: picked.label,
-        source: {
-          kind: "nearby",
-          band: picked.entry.band as LocalRadiusKm,
-          count: picked.entry.count,
-        },
-        dateKey,
+        sign,
+        source: { kind: "nearby", entry: picked.entry },
       };
     }
   }
 
   // Fallback: no map, empty map, or no roster species observed in
-  // range. Uniform draw from the full roster.
-  const label = birds[Math.floor(rand() * birds.length)];
+  // range. Sort by scientific name for a stable pass (we can't index
+  // into the raw labels array because its file order isn't guaranteed
+  // stable across BirdNET label revisions).
+  const sorted = birds
+    .slice()
+    .sort((a, b) => a.scientificName.localeCompare(b.scientificName));
+  const label = sorted[luckyNumber % sorted.length];
   return {
     label,
-    source: {
-      kind: "fallback",
-      reason: localMap === null ? "no-location" : "no-local-data",
-    },
-    dateKey,
+    sign,
+    source: { kind: "fallback" },
   };
 }

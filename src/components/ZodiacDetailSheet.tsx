@@ -137,22 +137,28 @@ export function ZodiacDetailSheet({
   const elementMeta = s ? ELEMENT_META[s.element] : null;
   const ElementIcon = elementMeta?.icon;
 
-  // Bird-of-the-day — prefers a species recently observed near the
-  // user (iNat `/v1/observations/species_counts` via
-  // `useLocalSpeciesBands`) and falls back to a uniform draw from
-  // the full BirdNET roster when no local data is available. Seeded
-  // by (local date, coarse lat/lon) so two users in the same ~100 km
-  // square see the same bird today, and moving to a new region
-  // rerolls. `useUserRegion` auto-prompts for location on mount,
-  // but in practice the user has already been through Birds mode
-  // and the answer is cached by the time they open a zodiac sheet.
+  // Bird-of-the-day — per zodiac sign. The horoscope above already
+  // produces a per-sign lucky number; that number is used as an
+  // index into a ranked list of nearby bird species (observed within
+  // 25–500 km via iNat, ranked tightest-band-first, most-observed
+  // first) so the bird feels local. When no location is available
+  // or iNat returned nothing for the area, the picker falls back to
+  // a stable alphabetic pass over the full BirdNET roster so the
+  // card still renders. `useUserRegion` auto-prompts on mount; in
+  // practice Birds mode has already resolved that by the time the
+  // user opens a zodiac sheet and the iNat fan-out is cached.
   const { coarse } = useUserRegion();
   const { map: localSpeciesMap } = useLocalSpeciesBands(coarse);
   const { data: birdLabels } = useBirdLabels();
   const todaysBird = useMemo<BirdOfTheDay | null>(() => {
-    if (!birdLabels) return null;
-    return birdOfTheDay(birdLabels, localSpeciesMap, coarse, new Date());
-  }, [birdLabels, localSpeciesMap, coarse]);
+    if (!birdLabels || !s || !horoscope) return null;
+    return birdOfTheDay(
+      birdLabels,
+      localSpeciesMap,
+      s.id,
+      horoscope.luckyNumber,
+    );
+  }, [birdLabels, localSpeciesMap, s, horoscope]);
 
   // When the user taps the bird card, open `BirdInfoDialog` on top of
   // the zodiac sheet. Using a `label`-kind subject (no detection,
@@ -302,21 +308,19 @@ export function ZodiacDetailSheet({
                   </section>
                 )}
 
-                {/* Bird-of-the-day. Cross-promotion from Stars into
-                    Birds mode: tapping the card opens the same
-                    `BirdInfoDialog` the Birds checklist uses, so the
-                    reader can see the Wikipedia summary, range map,
-                    and reference song for a species without having to
-                    switch modes. Which bird is shown is a function of
-                    the local date AND the user's coarse lat/lon so
-                    two people on the same block see the same bird,
-                    and moving to a new region rerolls the draw. */}
+                {/* Bird of the day for this sign. Selected by the
+                    sign's lucky number from the horoscope above,
+                    indexed into a list of species recently observed
+                    near the user (iNat) so the bird is one the
+                    reader could plausibly encounter on a walk today.
+                    Cross-promotes into Birds mode: tapping opens the
+                    same `BirdInfoDialog` the Birds checklist uses. */}
                 {todaysBird && (
                   <section>
                     <div className="flex items-center gap-2 mb-3">
                       <Bird className="h-4 w-4 text-sky-200/80" />
                       <h3 className="text-xs uppercase tracking-widest text-white/50">
-                        Today's bird
+                        Your bird today
                       </h3>
                     </div>
                     <TodaysBirdCard
@@ -474,13 +478,12 @@ function FactCard({
 }
 
 /**
- * Clickable "Today's bird" card. Shows a Wikipedia thumbnail (if one
- * exists for the species) alongside the common and scientific names,
- * plus a small "seen within N km" footer when iNat nearby-species
- * data supplied the pick. Tapping it opens the shared
- * `BirdInfoDialog` — the same dialog Birds mode uses — so the reader
- * gets the full field-guide view (Wikipedia summary, iNaturalist
- * range map, reference song) without leaving the zodiac sheet.
+ * Clickable per-sign bird card. Shows a Wikipedia thumbnail (if one
+ * exists for the species) alongside the common and scientific names.
+ * Tapping it opens the shared `BirdInfoDialog` — the same dialog
+ * Birds mode uses — so the reader gets the full field-guide view
+ * (Wikipedia summary, iNaturalist range map, reference song) without
+ * leaving the zodiac sheet.
  *
  * Uses a native `<button>` so keyboard users get the click target
  * and focus ring for free. The Wikipedia lookup uses the same
@@ -494,22 +497,12 @@ function TodaysBirdCard({
   pick: BirdOfTheDay;
   onOpen: () => void;
 }) {
-  const { label, source } = pick;
+  const { label } = pick;
   const { data: info, isLoading } = useBirdInfo(
     label.scientificName,
     label.commonName,
   );
   const imageUrl = info?.imageUrl ?? null;
-
-  // Tiny footer string explaining why this species was picked. We
-  // keep this deliberately concise — a sentence would fight the
-  // "dense info card" layout — and only render it at all for the
-  // nearby path. The fallback paths (no location, no iNat data) are
-  // the uninteresting default; labelling them would just add noise.
-  const footer =
-    source.kind === "nearby"
-      ? `Seen within ${source.band} km`
-      : null;
 
   return (
     <button
@@ -555,11 +548,6 @@ function TodaysBirdCard({
           <div className="text-xs text-white/55 italic truncate">
             {label.scientificName}
           </div>
-          {footer && (
-            <div className="mt-1 text-[10px] uppercase tracking-widest text-sky-200/70 truncate">
-              {footer}
-            </div>
-          )}
         </div>
         <span className="text-[10px] uppercase tracking-widest text-white/40 shrink-0">
           Tap
