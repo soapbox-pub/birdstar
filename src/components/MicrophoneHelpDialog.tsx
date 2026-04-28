@@ -150,7 +150,7 @@ export function MicrophoneHelpDialog({ trigger }: MicrophoneHelpDialogProps) {
         <DialogHeader>
           <DialogTitle>Enable microphone access</DialogTitle>
           <DialogDescription>
-            Birdsong Spotter needs your microphone to listen for birds. Nothing is
+            Birdstar needs your microphone to listen for birds. Nothing is
             uploaded — audio is processed entirely on your device.
           </DialogDescription>
         </DialogHeader>

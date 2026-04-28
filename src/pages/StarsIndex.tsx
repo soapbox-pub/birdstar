@@ -92,13 +92,11 @@ function angleDelta(a: number, b: number): number {
 
 const Index = () => {
   useSeoMeta({
-    title: "Starpoint — Interactive Sky Map",
+    title: "Birdstar — Interactive Sky Map",
     description:
       "Point your phone at the sky to identify stars and constellations in real time.",
-    ogImage: "https://starpoint.shakespeare.wtf/og-image.jpg",
     ogImageAlt:
       "A hand holds a phone pointed up at a starry night sky with faint constellation lines traced between stars.",
-    ogUrl: "https://starpoint.shakespeare.wtf",
     twitterCard: "summary_large_image",
   });
 
@@ -503,7 +501,7 @@ const Index = () => {
         tone: "warning",
         title: "Turn on motion access",
         description:
-          "Starpoint uses your phone's motion to match the sky to where you're looking.",
+          "Birdstar uses your phone's motion to match the sky to where you're looking.",
         action: {
           label: "Enable sensors",
           onClick: () => setEnableSensorsOpen(true),
@@ -523,7 +521,7 @@ const Index = () => {
         description:
           deviceClass === "phone"
             ? "Move the sky by dragging."
-            : "For the full experience, open Starpoint on your phone.",
+            : "For the full experience, open Birdstar on your phone.",
         dismissPersist: true,
       });
     }

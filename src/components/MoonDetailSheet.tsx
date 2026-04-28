@@ -884,7 +884,7 @@ export function MoonDetailSheet({
                             No eclipses in our table
                           </div>
                           <div className="text-xs mt-1 text-white/60">
-                            Starpoint ships with NASA's published
+                            Birdstar ships with NASA's published
                             list through the late 2050s. Check{" "}
                             <a
                               href="https://eclipse.gsfc.nasa.gov/LEcat5/LEcatalog.html"

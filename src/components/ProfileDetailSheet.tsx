@@ -79,10 +79,10 @@ function ProfileContent({
   const isOwnProfile = user?.pubkey === pubkey;
 
   useSeoMeta({
-    title: `${displayName} — Starpoint`,
+    title: `${displayName} — Birdstar`,
     description:
       about ??
-      `Constellations and sky explorations by ${displayName} on Starpoint.`,
+      `Constellations and sky explorations by ${displayName} on Birdstar.`,
   });
 
   const handleEdit = (c: CustomConstellation) => {

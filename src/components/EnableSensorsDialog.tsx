@@ -39,7 +39,7 @@ export function EnableSensorsDialog({
                 Turn on motion access
               </DialogTitle>
               <DialogDescription className="text-white/60">
-                So Starpoint can match the sky to where you're pointing.
+                So Birdstar can match the sky to where you're pointing.
               </DialogDescription>
             </div>
           </div>

@@ -96,7 +96,7 @@ export function buildConstellationTags(opts: {
   return [
     ["d", d],
     ["title", title],
-    ["alt", `A custom Starpoint constellation: ${title}`],
+    ["alt", `A custom Birdstar constellation: ${title}`],
     ...edges.map(([a, b]) => ["edge", formatHipRef(a), formatHipRef(b)]),
   ];
 }

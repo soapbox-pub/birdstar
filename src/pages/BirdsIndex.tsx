@@ -277,7 +277,7 @@ function speciesKey(d: { scientificName: string; commonName: string }): string {
 
 const IndexInner = () => {
   useSeoMeta({
-    title: 'Birdsong Spotter — Your bird checklist, by ear',
+    title: 'Birdstar — Your bird checklist, by ear',
     description:
       'Listen for birds near you. Every species plausibly found where you are shows up as a checklist; hear one and it lights up.',
   });
@@ -741,34 +741,39 @@ const IndexInner = () => {
 
   return (
     <div className="relative min-h-screen bg-gradient-to-b from-sky-50 via-emerald-50/70 to-amber-50 text-stone-900 dark:bg-gradient-to-b dark:from-[#0d1230] dark:via-[#1a1740] dark:to-[#3b2a3f] dark:text-stone-100">
-      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-4 sm:pb-36 sm:pt-6">
-        {/* Floating top nav row: mode selector (left) + optional manual-
-            location pill + LoginArea (right). Sticks in the flex flow
-            rather than being absolutely positioned, so the roster below
-            never slides under it. */}
-        <div className="flex w-full items-center gap-2">
+      {/* Full-page-width top HUD: mode selector on the left, optional
+          manual-location pill + LoginArea on the right. Absolutely
+          positioned (rather than tucked inside the max-w-6xl main) so
+          the nav hugs the viewport edges on any screen, matching the
+          edge-to-edge HUD in Stars mode. `pointer-events-none` on the
+          strip + `pointer-events-auto` on each child keeps the area
+          between the two groups click-through to the roster. */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 px-4 pt-4 sm:pt-6">
+        <div className="pointer-events-auto">
           <ModeSelector />
-          <div className="flex flex-1 items-center justify-end gap-2">
-            {/* Manual-location users need a way to re-open the picker; it
-                used to live inside RosterHeader. Tucked next to the
-                LoginArea as a compact pill so manual users can rehome
-                themselves without clearing localStorage. Geo users never
-                see this — their location is re-resolved automatically. */}
-            {placeSet && usingManual ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => commitManualLocation(null)}
-                className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
-              >
-                <MapPin className="h-3.5 w-3.5" aria-hidden />
-                {formatPlaceSet(placeSet)}
-              </Button>
-            ) : null}
-            <LoginArea className="max-w-60" />
-          </div>
         </div>
+        <div className="pointer-events-auto flex flex-1 items-center justify-end gap-2">
+          {/* Manual-location users need a way to re-open the picker; it
+              used to live inside RosterHeader. Tucked next to the
+              LoginArea as a compact pill so manual users can rehome
+              themselves without clearing localStorage. Geo users never
+              see this — their location is re-resolved automatically. */}
+          {placeSet && usingManual ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => commitManualLocation(null)}
+              className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
+            >
+              <MapPin className="h-3.5 w-3.5" aria-hidden />
+              {formatPlaceSet(placeSet)}
+            </Button>
+          ) : null}
+          <LoginArea className="max-w-60" />
+        </div>
+      </div>
 
+      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-16 sm:pb-36 sm:pt-20">
         <div className="mt-6 sm:mt-8">
           <Header />
         </div>
@@ -842,9 +847,9 @@ const Header = memo(function Header() {
   return (
     <header className="flex flex-col items-center gap-4 text-center">
       <h1 className="font-serif text-4xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
-        <span className="text-stone-900 dark:text-stone-50">Birdsong</span>{' '}
+        <span className="text-stone-900 dark:text-stone-50">Bird</span>
         <span className="relative inline-block italic text-emerald-700 dark:text-amber-300">
-          Spotter
+          star
           <svg
             aria-hidden
             viewBox="0 0 220 14"
