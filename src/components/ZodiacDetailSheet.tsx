@@ -165,7 +165,7 @@ export function ZodiacDetailSheet({
                     Blurb and date range live in the card's footer so the
                     figure and the astrology one-liner read as a single
                     unit, mirroring ConstellationDetailSheet. */}
-                <Card className="bg-white/5 border-white/10 overflow-hidden">
+                <Card className="bg-white/5 border-white/10 overflow-hidden py-0 gap-0">
                   <div className="relative w-full aspect-4/3">
                     <ConstellationPreview
                       edges={s.edges}

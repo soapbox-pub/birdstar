@@ -127,7 +127,7 @@ export function ConstellationDetailSheet({
               <div className="p-5 space-y-5">
                 {/* Hero preview — a large rendering of the figure, shown in
                     the same slot Wikipedia images occupy on star views. */}
-                <Card className="bg-white/5 border-white/10 overflow-hidden">
+                <Card className="bg-white/5 border-white/10 overflow-hidden py-0 gap-0">
                   <div className="relative w-full aspect-4/3">
                     <ConstellationPreview
                       edges={c.edges}
