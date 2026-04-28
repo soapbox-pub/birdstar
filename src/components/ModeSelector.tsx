@@ -10,14 +10,6 @@ import { cn } from "@/lib/utils";
  *
  * ## Interaction model
  *
- * The toggle only has two visible sides — Birds (left) and Stars
- * (right). There is no visible "Auto" affordance. A first-time visitor
- * still loads in auto mode (the knob tracks `effectiveMode` — the
- * resolved birds/stars based on sun altitude), and the moment they
- * click the toggle, the app commits to that concrete mode and sheds
- * auto forever. That matches the mental model: if you flip the switch,
- * you meant to flip it.
- *
  * **Clicking anywhere on the toggle flips it to the opposite mode.**
  * The two halves still exist as separate buttons for keyboard and
  * screen-reader affordance (each is aria-pressed, each announces
@@ -35,9 +27,9 @@ import { cn } from "@/lib/utils";
  * users who don't parse icons.
  */
 export function ModeSelector({ className }: { className?: string }) {
-  const { effectiveMode, setMode } = useMode();
+  const { mode, setMode } = useMode();
 
-  const isBirds = effectiveMode === "birds";
+  const isBirds = mode === "birds";
 
   // Any click flips. The two half-buttons exist for a11y (each one
   // has its own aria-pressed + label), but we intentionally collapse
@@ -61,9 +53,7 @@ export function ModeSelector({ className }: { className?: string }) {
         className,
       )}
     >
-      {/* Sliding knob. Tracks effectiveMode so auto users see it at
-          whichever side the sun decided — it snaps to the opposite
-          side on their first click without needing state of its own. */}
+      {/* Sliding knob tracks the current mode. */}
       <span
         aria-hidden
         className={cn(

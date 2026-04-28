@@ -10,16 +10,15 @@ import NIP19Page from "./pages/NIP19Page";
  * Birdstar's routing.
  *
  * The root path `/` renders `Index`, which reads `useMode()` and picks
- * birds vs stars from the user's selection (or Auto's day/night logic).
+ * birds vs stars from the user's selection. Birds is the default.
  *
  * Starpoint's overlay routes (`/star/:hip`, `/zodiac/:id`, `/planet/:id`,
  * `/sun`, `/moon`, plus `/:nip19Id` for constellations and profiles)
  * also render `Index`. In stars mode they open the matching detail
- * sheet via `useOpenedView`. In birds mode (Auto during the day, or
- * user-forced birds) they still render the checklist — the overlay
- * just doesn't appear. That is fine: these URLs are only generated
- * while the sky map is actually being used, and the roster page stays
- * navigable.
+ * sheet via `useOpenedView`. In birds mode they still render the
+ * checklist — the overlay just doesn't appear. That is fine: these
+ * URLs are only generated while the sky map is actually being used,
+ * and the roster page stays navigable.
  *
  * The catch-all `*` route is a proper 404.
  */

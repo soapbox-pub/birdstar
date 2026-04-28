@@ -14,17 +14,9 @@ previously standalone apps into one viewport:
   addressable events, and browse figures drawn by anyone you follow on
   Nostr.
 
-A floating dropdown on the top-left lets you choose:
-
-- **Auto** (default) — birds while the sun is above the horizon at
-  your location, stars after it sets. The switch uses the same sun
-  position math that drives the sky map, so day/night means real
-  astronomical day/night, not a clock-based heuristic.
-- **Birds** — force bird mode.
-- **Stars** — force star mode.
-
-Auto is rendered as a bare circle with a down-chevron in the top-left;
-Birds and Stars widen into a labelled pill.
+A floating toggle on the top-left lets you switch between **Birds**
+(the default) and **Stars**. It's a two-position pill — tap either side,
+or anywhere on the pill, to flip.
 
 ## Custom event kinds
 
