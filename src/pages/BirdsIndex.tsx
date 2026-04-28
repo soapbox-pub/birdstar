@@ -867,7 +867,7 @@ const Header = memo(function Header() {
         </span>
       </h1>
       <p className="max-w-xl text-balance text-sm text-stone-600 sm:text-base dark:text-stone-300/90">
-        Go outside. Find the birds. Check them off.
+        Go outside. Find the birds. Draw the stars.
       </p>
     </header>
   );
