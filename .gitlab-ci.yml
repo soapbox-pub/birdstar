@@ -2,7 +2,7 @@ image: node:22
 
 default:
   interruptible: true
-  timeout: 1 minute
+  timeout: 20 minutes
 
 stages:
   - test
@@ -11,17 +11,21 @@ stages:
 test:
   stage: test
   script:
+    - npm ci
     - npm run test
+  rules:
+    - if: $CI_COMMIT_BRANCH
 
-pages:
+deploy:
   stage: deploy
   script:
+    - npm ci
     - npm run build
-    - rm -rf public
-    - mv dist public
-  artifacts:
-    paths:
-      - public
-  only:
-    variables:
-      - $CI_DEFAULT_BRANCH == $CI_COMMIT_REF_NAME
+    - apt-get update -qq && apt-get install -y --no-install-recommends rsync openssh-client >/dev/null
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+    - ssh-keyscan -H "${DEPLOY_TARGET##*@}" >> ~/.ssh/known_hosts 2>/dev/null
+    - rsync -av --exclude=sw.js --exclude=index.html -e "ssh -i ~/.ssh/id_ed25519" dist/ "${DEPLOY_TARGET}:/"
+    - rsync -av -e "ssh -i ~/.ssh/id_ed25519" dist/index.html "${DEPLOY_TARGET}:/"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_SSH_KEY && $DEPLOY_TARGET
