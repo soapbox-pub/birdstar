@@ -783,10 +783,6 @@ const IndexInner = () => {
           ) : (
             <BirdexGrid
               visible={birdex.visible}
-              unheardCount={Math.max(
-                0,
-                birdex.totalBirdSpecies - birdex.heardCount,
-              )}
               onSelect={handleSelectBirdex}
             />
           )}
@@ -881,16 +877,13 @@ function formatPlaceSet(placeSet: UserPlaceSet): string {
  * "rare" badge (out-of-region sighting); unconfirmed cells get a "?"
  * badge to signal "BirdNET heard *something* that might have been
  * this". There is no tier gating — the grid grows as the user hears
- * more birds, one at a time. A passive end-of-grid tile closes the
- * layout with a "+N unheard" count of species still in the BirdNET
- * catalog. */
+ * more birds, one at a time. A passive "+Many Unheard" tile closes
+ * the layout. */
 const BirdexGrid = memo(function BirdexGrid({
   visible,
-  unheardCount,
   onSelect,
 }: {
   visible: BirdexEntry[];
-  unheardCount: number;
   onSelect: (entry: BirdexEntry) => void;
 }) {
   if (visible.length === 0) {
@@ -920,7 +913,7 @@ const BirdexGrid = memo(function BirdexGrid({
           onSelect={onSelect}
         />
       ))}
-      <BirdexFooterTile unheardCount={unheardCount} />
+      <BirdexFooterTile />
     </div>
   );
 });
@@ -929,20 +922,19 @@ const BirdexGrid = memo(function BirdexGrid({
  * Passive end-of-grid tile. Shares shape (aspect-square, rounded-2xl,
  * dashed border) with SpeciesCell so it slots into the grid cleanly,
  * but without an image layer, badge, icon, or click target — just
- * the count and a caption. Replaces the old LockedTile without any
- * of its unlock-count mechanics: the number is the rest of the
- * BirdNET catalog the user hasn't confirmed yet, not a gated tier
- * target.
+ * a copy block. Replaces the old LockedTile without any of its
+ * unlock-count mechanics.
+ *
+ * Deliberately non-numeric: an exact "+6,482" count reads as a
+ * gamified completionist target, which is the opposite of the
+ * "world feels small, grown one bird at a time" tone we're going
+ * for. "Many" keeps the suggestion that the catalog is deep
+ * without turning it into a score.
  */
-const BirdexFooterTile = memo(function BirdexFooterTile({
-  unheardCount,
-}: {
-  unheardCount: number;
-}) {
-  const formatted = unheardCount.toLocaleString();
+const BirdexFooterTile = memo(function BirdexFooterTile() {
   return (
     <div
-      aria-label={`${formatted} bird species not yet heard`}
+      aria-label="Many more bird species not yet heard"
       className={cn(
         'flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl',
         'border border-dashed border-stone-300/80 bg-white/40 p-3 text-center',
@@ -950,7 +942,7 @@ const BirdexFooterTile = memo(function BirdexFooterTile({
       )}
     >
       <p className="font-serif text-2xl font-semibold leading-none text-stone-700 dark:text-stone-200">
-        +{formatted}
+        +Many
       </p>
       <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 dark:text-stone-500">
         Unheard
