@@ -5,10 +5,12 @@
 // The Birdex is a replaceable event (see NIP.md §"Kind 12473 —
 // Birdex") so at most one lives on the network per author. It exists
 // as an index over the user's kind 2473 detections: each species
-// appears as a bare `i` tag pointing at its Wikidata entity URI, in
-// chronological order of first detection. This hook parses that tag
-// array into an ordered list of URIs plus a Set for fast membership
-// checks during auto-publishing.
+// appears as an `i` tag pointing at its Wikidata entity URI,
+// immediately followed by a positional `n` tag carrying the
+// scientific name. This hook walks that tag array in order, pairs
+// each `i` with its adjacent `n`, and exposes both the ordered entry
+// list (for re-emitting on append) and a Set keyed by URI (for
+// O(1) membership checks during auto-publishing).
 //
 // Separate from useBirdHistory (which paginates kind 2473 detections
 // for rendering) because the Birdex is one small replaceable event and
@@ -27,49 +29,71 @@ const WIKIDATA_ENTITY_URI_RE = /^https:\/\/www\.wikidata\.org\/entity\/Q\d+$/;
 
 export const BIRDEX_KIND = 12473;
 
+export interface BirdexSpeciesEntry {
+  /** Wikidata entity URI — the canonical species identifier. */
+  entityUri: string;
+  /** Scientific (binomial) name carried by the paired `n` tag.
+   * Empty string when the source event omitted the `n` tag (older
+   * Birdstar events, or events authored by other tools that predate
+   * the name-pairing convention). */
+  scientificName: string;
+}
+
 export interface BirdexEventResult {
   /** The raw kind 12473 event, or null if the user has not published
    * one yet (or is logged out). Preserved so callers can use its
-   * `created_at` when deciding whether a republish is warranted and so
-   * the publisher can read back the existing species list in tag
-   * order. */
+   * `created_at` when deciding whether a republish is warranted. */
   event: NostrEvent | null;
-  /** Species URIs in their original (chronological first-seen) order,
-   * as stored in the event's tag array. Oldest first. */
-  entityUris: string[];
-  /** Fast-membership set for "is this species already on the life
-   * list?" checks during auto-publishing. */
+  /** Species entries in chronological first-seen order, as stored in
+   * the event's tag array. Each entry carries both the Wikidata URI
+   * and the scientific name paired to it positionally. */
+  entries: BirdexSpeciesEntry[];
+  /** Fast-membership set for "is this species already on the Birdex?"
+   * checks during auto-publishing. Keyed by Wikidata URI. */
   entityUriSet: Set<string>;
   isLoading: boolean;
 }
 
 /**
- * Walk the tags of a kind 12473 event in order, collecting each `i`
- * tag whose value matches the canonical Wikidata entity URI shape.
- * Non-matching tags are skipped silently.
+ * Walk the tags of a kind 12473 event in order, pairing each valid
+ * `i` tag with the immediately-following `n` tag (if any) to produce
+ * a `BirdexSpeciesEntry`.
+ *
+ * Pairing is positional: the `n` tag is accepted as this species'
+ * scientific name only when it is the very next entry in the tag
+ * array. An `i` tag not followed by an `n` yields an entry with an
+ * empty `scientificName` — still useful for membership checks and
+ * for re-emitting the URI on republish.
  *
  * Per NIP.md §"Kind 12473 — Birdex", the `k` tag that NIP-73 normally
  * pairs with `i` is deliberately omitted — the kind contract already
- * guarantees that every valid `i` is a Wikidata entity URI. The shape
- * regex is the trust boundary; no paired tag is consulted.
+ * guarantees that every valid `i` is a Wikidata entity URI. The URL-
+ * shape regex is the trust boundary.
  *
  * Deduplication keeps the first occurrence so the chronological order
  * is preserved even if a malformed event somehow contains duplicate
  * Wikidata URIs.
  */
-function parseBirdexEvent(event: NostrEvent): string[] {
+function parseBirdexEvent(event: NostrEvent): BirdexSpeciesEntry[] {
   const seen = new Set<string>();
-  const uris: string[] = [];
-  for (const tag of event.tags) {
+  const entries: BirdexSpeciesEntry[] = [];
+  const tags = event.tags;
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i];
     if (tag[0] !== 'i') continue;
-    const value = tag[1];
-    if (typeof value !== 'string') continue;
-    if (!WIKIDATA_ENTITY_URI_RE.test(value)) continue;
-    if (seen.has(value)) continue;
-    seen.add(value);
-    uris.push(value);
+    const uri = tag[1];
+    if (typeof uri !== 'string') continue;
+    if (!WIKIDATA_ENTITY_URI_RE.test(uri)) continue;
+    if (seen.has(uri)) continue;
+    seen.add(uri);
+
+    const next = tags[i + 1];
+    const scientificName =
+      next && next[0] === 'n' && typeof next[1] === 'string' ? next[1] : '';
+
+    entries.push({ entityUri: uri, scientificName });
   }
-  return uris;
+  return entries;
 }
 
 export function useBirdexEvent(): BirdexEventResult {
@@ -105,11 +129,11 @@ export function useBirdexEvent(): BirdexEventResult {
 
   return useMemo<BirdexEventResult>(() => {
     const event = query.data ?? null;
-    const entityUris = event ? parseBirdexEvent(event) : [];
-    const entityUriSet = new Set(entityUris);
+    const entries = event ? parseBirdexEvent(event) : [];
+    const entityUriSet = new Set(entries.map((e) => e.entityUri));
     return {
       event,
-      entityUris,
+      entries,
       entityUriSet,
       isLoading: Boolean(pubkey) && query.isLoading,
     };

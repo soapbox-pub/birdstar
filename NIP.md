@@ -91,6 +91,19 @@ Structured data MUST be placed in tags, not in `content`.
   NIP-73 web-content aggregators — is intentional; a species Q-id is
   not a webpage in the sense those aggregators care about.
 
+- `n` — the species' **scientific (binomial) name** as a single string,
+  e.g. `"Turdus migratorius"`. Lets clients render the detection
+  without round-tripping Wikidata just to get a species label.
+
+  ```jsonc
+  ["n", "Turdus migratorius"]
+  ```
+
+  The scientific name is advisory, not authoritative — the `i` tag is
+  the canonical species identity. If the two disagree (e.g. because a
+  taxon was renamed between publishing and rendering), clients SHOULD
+  trust the `i` tag's Q-id and treat `n` as a stale label.
+
 #### Optional
 
 _(None currently defined.)_
@@ -108,7 +121,8 @@ reliable enough to commit to the record.
   "content": "Heard from my balcony around 7am — very clear song.",
   "tags": [
     ["alt", "Bird detection: American Robin (Turdus migratorius)"],
-    ["i", "https://www.wikidata.org/entity/Q26825"]
+    ["i", "https://www.wikidata.org/entity/Q26825"],
+    ["n", "Turdus migratorius"]
   ]
 }
 ```
@@ -224,37 +238,51 @@ Non-birding clients rendering this event SHOULD prefer the `alt` tag.
 
 #### Species entries
 
-Each species on the Birdex is a single `i` tag (NIP-73) whose value is
-the species' Wikidata entity URI — the same identifier vocabulary as
-kind 2473:
+Each species on the Birdex is represented by an `i` tag (NIP-73)
+immediately followed by an `n` tag carrying the scientific name — the
+same vocabulary used on kind 2473 detections:
 
 ```jsonc
-["i", "https://www.wikidata.org/entity/Q26825"]
+["i", "https://www.wikidata.org/entity/Q26825"],
+["n", "Turdus migratorius"]
 ```
 
-The same URL-shape rules as kind 2473 apply: `https` scheme, host
-`www.wikidata.org`, path `/entity/Q<digits>`, no fragment, no query
-string, no trailing slash.
+The same URL-shape rules as kind 2473 apply to the `i` value: `https`
+scheme, host `www.wikidata.org`, path `/entity/Q<digits>`, no fragment,
+no query string, no trailing slash. The `n` value is a free-form
+single-string scientific name (binomial), advisory only — see the
+kind 2473 `n` description for the trust model.
 
 As with kind 2473, the Birdex deliberately omits the `k` tag that
 NIP-73 normally pairs with `i`. See the kind 2473 rationale — every
 `i` tag on a Birdex is known by the kind contract to be a Wikidata
 entity URI, and pairing with `k` would only add noise.
 
+**On positional pairing.** Each `n` tag is paired with the preceding
+`i` tag by position in the event's tag array. Publishers MUST emit
+every species as exactly `["i", "..."]` followed immediately by
+`["n", "..."]` with no other tags interleaved between the pair. The
+pairing is positional rather than keyed because a Wikidata URI is not
+a unique-enough identifier to use as the `n` tag's second element
+without reconstructing most of the `i` value; positional pairing keeps
+the wire format terse and the "N species on my Birdex = 2N entries"
+invariant trivially checkable. Clients that need name-first lookups
+should build an index once at parse time.
+
 #### Entry ordering
 
-`i` tags MUST be emitted in **chronological order of first detection**,
-oldest species first. The position of a species' `i` tag in the tag
-array is its ordinal rank on the Birdex ("the 7th species I ever
-identified"). Clients rendering a timeline of an author's birding
+The `i`/`n` pairs MUST be emitted in **chronological order of first
+detection**, oldest species first. The position of a species' pair in
+the tag array is its ordinal rank on the Birdex ("the 7th species I
+ever identified"). Clients rendering a timeline of an author's birding
 journey rely on this ordering — it cannot be reconstructed from the
 replaceable event alone once the underlying kind 2473 events have aged
 off relays.
 
 Each species MUST appear at most once. Republishing the event to add a
-newly confirmed species means appending the new `i` tag to the end of
-the existing tag list, preserving the historical order of all previous
-entries.
+newly confirmed species means appending the new `i`/`n` pair to the
+end of the existing tag list, preserving the historical order of all
+previous entries.
 
 ### Example
 
@@ -268,8 +296,11 @@ cardinal, then a chickadee:
   "tags": [
     ["alt", "Birdex: 3 species"],
     ["i", "https://www.wikidata.org/entity/Q26825"],      // American Robin
+    ["n", "Turdus migratorius"],
     ["i", "https://www.wikidata.org/entity/Q27014"],      // Northern Cardinal
-    ["i", "https://www.wikidata.org/entity/Q335669"]      // Black-capped Chickadee
+    ["n", "Cardinalis cardinalis"],
+    ["i", "https://www.wikidata.org/entity/Q335669"],     // Black-capped Chickadee
+    ["n", "Poecile atricapillus"]
   ]
 }
 ```
@@ -300,8 +331,11 @@ Clients SHOULD ignore an event as a Birdex if:
 When parsing species entries, clients SHOULD:
 
 1. Walk the tag array in order.
-2. Accept each `i` tag whose value matches the canonical Wikidata
-   entity URI regex; ignore any tag that does not match.
+2. For each `i` tag whose value matches the canonical Wikidata entity
+   URI regex, take its scientific name from the **next** tag if that
+   tag is `["n", "<non-empty string>"]`. `i` tags not followed by an
+   `n` tag are still accepted — the species is known by its Q-id but
+   has no local scientific-name label.
 3. Deduplicate by Wikidata URI, keeping the first occurrence — the
    chronologically earliest entry wins.
 
@@ -327,10 +361,10 @@ kind 2473 event from the same author.
 ### Deletion
 
 To retract a species from the Birdex, republish the event with that
-species' `i` tag removed. Because kind 12473 is replaceable, the new
-event supersedes the old. Separately issuing a NIP-09 deletion on the
-underlying kind 2473 events is also recommended if the user wants to
-remove the detection log, not just the Birdex entry.
+species' `i`/`n` pair removed. Because kind 12473 is replaceable, the
+new event supersedes the old. Separately issuing a NIP-09 deletion on
+the underlying kind 2473 events is also recommended if the user wants
+to remove the detection log, not just the Birdex entry.
 
 ---
 

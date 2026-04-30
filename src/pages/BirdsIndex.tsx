@@ -295,7 +295,7 @@ const IndexInner = () => {
 
   const { consider: considerPublish } = useAutoPublishDetection({
     lastPublishedAt: history.lastPublishedAt,
-    birdexEntityUris: birdexEvent.entityUris,
+    birdexEntries: birdexEvent.entries,
   });
 
   // Location: geolocation wins; manual pick is the fallback.

@@ -190,6 +190,15 @@ function buildWikidataEntityUri(qid: string): string | null {
  */
 const REPUBLISH_COOLDOWN_MS = 10 * 60 * 1000;
 
+export interface BirdexSpeciesEntry {
+  /** Wikidata entity URI — the canonical species identifier. */
+  entityUri: string;
+  /** Scientific (binomial) name paired with the URI on the wire via
+   * positional `n`-tag adjacency. Empty string when the source event
+   * omitted the `n` tag (older Birdstar events). */
+  scientificName: string;
+}
+
 export interface UseAutoPublishDetectionOptions {
   /**
    * For each Wikidata entity URI this user has previously published, the
@@ -199,12 +208,13 @@ export interface UseAutoPublishDetectionOptions {
    */
   lastPublishedAt: Map<string, number>;
   /**
-   * The author's current Birdex (kind 12473) species URIs, in
+   * The author's current Birdex (kind 12473) species entries, in
    * chronological order of first detection. Used to decide whether a
    * newly-confirmed species is a lifer (not yet on the Birdex →
-   * triggers a republish) or a known species (no Birdex change).
+   * triggers a republish) or a known species (no Birdex change), and
+   * to re-emit the `i`/`n` pairs verbatim when appending.
    */
-  birdexEntityUris: string[];
+  birdexEntries: BirdexSpeciesEntry[];
 }
 
 export interface AutoPublishApi {
@@ -218,7 +228,7 @@ export interface AutoPublishApi {
 
 export function useAutoPublishDetection({
   lastPublishedAt,
-  birdexEntityUris,
+  birdexEntries,
 }: UseAutoPublishDetectionOptions): AutoPublishApi {
   const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
@@ -232,16 +242,19 @@ export function useAutoPublishDetection({
     historyRef.current = lastPublishedAt;
   }, [lastPublishedAt]);
 
-  // Mirror the Birdex species URIs + membership set behind refs for the
-  // same reason. `birdexUrisRef` preserves chronological order so we
-  // can rebuild the replaceable event with new entries appended to the
-  // end; `birdexSetRef` gives O(1) "already on the Birdex?" checks.
-  const birdexUrisRef = useRef<string[]>(birdexEntityUris);
-  const birdexSetRef = useRef<Set<string>>(new Set(birdexEntityUris));
+  // Mirror the Birdex entries + membership set behind refs for the
+  // same reason. `birdexEntriesRef` preserves chronological order AND
+  // the paired scientific names so we can re-emit `i`/`n` pairs
+  // verbatim when appending; `birdexSetRef` gives O(1) "already on
+  // the Birdex?" checks keyed by Wikidata URI.
+  const birdexEntriesRef = useRef<BirdexSpeciesEntry[]>(birdexEntries);
+  const birdexSetRef = useRef<Set<string>>(
+    new Set(birdexEntries.map((e) => e.entityUri)),
+  );
   useEffect(() => {
-    birdexUrisRef.current = birdexEntityUris;
-    birdexSetRef.current = new Set(birdexEntityUris);
-  }, [birdexEntityUris]);
+    birdexEntriesRef.current = birdexEntries;
+    birdexSetRef.current = new Set(birdexEntries.map((e) => e.entityUri));
+  }, [birdexEntries]);
 
   // In-session publish timestamps keyed by Wikidata entity URI.
   // Complements `historyRef`, which only updates when the Nostr query
@@ -311,29 +324,42 @@ export function useAutoPublishDetection({
                   `Bird detection: ${detection.commonName} (${detection.scientificName})`,
                 ],
                 ['i', entityUri],
+                ['n', detection.scientificName],
               ],
               created_at: Math.floor(detection.timestamp / 1000),
             });
 
             // First-time species? Extend the Birdex (kind 12473) with
-            // this URI appended to the end and republish. We check the
-            // session-local set AFTER the 2473 publish succeeded so a
-            // failed detection publish doesn't leak an entry into the
-            // Birdex. We also update the ref immediately to suppress
-            // duplicate Birdex publishes in case a second detection
-            // for the same species races in before the Nostr query
-            // refetches.
+            // this URI + scientific name appended to the end and
+            // republish. We check the session-local set AFTER the
+            // 2473 publish succeeded so a failed detection publish
+            // doesn't leak an entry into the Birdex. We also update
+            // the ref immediately to suppress duplicate Birdex
+            // publishes in case a second detection for the same
+            // species races in before the Nostr query refetches.
             const isLifer = !birdexSetRef.current.has(entityUri);
             if (isLifer) {
+              const newEntry: BirdexSpeciesEntry = {
+                entityUri,
+                scientificName: detection.scientificName,
+              };
               birdexSetRef.current.add(entityUri);
-              const nextUris = [...birdexUrisRef.current, entityUri];
-              birdexUrisRef.current = nextUris;
+              const nextEntries = [...birdexEntriesRef.current, newEntry];
+              birdexEntriesRef.current = nextEntries;
 
               const birdexTags: string[][] = [
-                ['alt', `Birdex: ${nextUris.length} species`],
+                ['alt', `Birdex: ${nextEntries.length} species`],
               ];
-              for (const uri of nextUris) {
-                birdexTags.push(['i', uri]);
+              for (const entry of nextEntries) {
+                birdexTags.push(['i', entry.entityUri]);
+                // Omit the `n` tag entirely when we have no paired
+                // scientific name (older events in history). Per
+                // NIP.md clients accept unpaired `i` tags — better
+                // than emitting an empty string that readers have to
+                // special-case.
+                if (entry.scientificName) {
+                  birdexTags.push(['n', entry.scientificName]);
+                }
               }
 
               try {
@@ -355,8 +381,8 @@ export function useAutoPublishDetection({
                 // the user's Birdex can be reconstructed from history
                 // even if the replaceable event temporarily lags.
                 birdexSetRef.current.delete(entityUri);
-                birdexUrisRef.current = birdexUrisRef.current.filter(
-                  (u) => u !== entityUri,
+                birdexEntriesRef.current = birdexEntriesRef.current.filter(
+                  (e) => e.entityUri !== entityUri,
                 );
                 console.warn('Failed to publish Birdex', err);
               }

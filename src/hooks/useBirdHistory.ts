@@ -46,18 +46,26 @@ function eventToDetection(
   if (!entityUri) return null;
   if (!WIKIDATA_ENTITY_URI_RE.test(entityUri)) return null;
 
-  // Species display names live in the `alt` tag. If it's missing or
-  // malformed we drop the event — a bare Q-id gives us nothing meaningful
-  // to show the user, and resolving labels from Wikidata at render time
-  // is out of scope for the current UI.
+  // Scientific name comes from the `n` tag when present (the
+  // authoritative field per NIP.md §"Kind 2473 — Bird Detection"); we
+  // fall back to parsing the `alt` tag for events authored before the
+  // `n` tag was added, so older detections in the user's history still
+  // render.
+  //
+  // The common name still lives only in the `alt` tag — `n` is
+  // scientific-only. If `alt` is missing or malformed AND `n` is
+  // missing we drop the event, since a bare Q-id gives us nothing
+  // meaningful to show the user.
   const parsedAlt = parseAltTag(tagMap.get('alt'));
-  if (!parsedAlt) return null;
+  const scientificName = tagMap.get('n') ?? parsedAlt?.scientificName;
+  const commonName = parsedAlt?.commonName;
+  if (!scientificName || !commonName) return null;
 
   return {
     id: `history-${event.id}`,
     eventId: event.id,
-    scientificName: parsedAlt.scientificName,
-    commonName: parsedAlt.commonName,
+    scientificName,
+    commonName,
     timestamp: event.created_at * 1000,
     entityUri,
   };
