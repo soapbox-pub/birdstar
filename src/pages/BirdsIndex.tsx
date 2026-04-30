@@ -33,6 +33,7 @@ import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { SongPlaybackProvider } from '@/components/SongPlaybackProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
+import { useBirdexEvent } from '@/hooks/useBirdexEvent';
 import { useDeleteBirdDetection } from '@/hooks/useDeleteBirdDetection';
 import {
   useDetectionAccumulator,
@@ -290,9 +291,11 @@ const IndexInner = () => {
   const { status, load, predict } = useBirdNet();
 
   const history = useBirdHistory();
+  const birdexEvent = useBirdexEvent();
 
   const { consider: considerPublish } = useAutoPublishDetection({
     lastPublishedAt: history.lastPublishedAt,
+    birdexEntityUris: birdexEvent.entityUris,
   });
 
   // Location: geolocation wins; manual pick is the fallback.

@@ -2,10 +2,16 @@
 // kind 2473 event — once per species, ever. History comes from
 // useBirdHistory, and an in-memory set tracks species already published
 // during this session so we don't spam relays on every chirp.
+//
+// On each *first-time* species confirmation this hook also republishes
+// the author's Birdex (kind 12473) — a replaceable life-list event —
+// with the new species appended in chronological order. See NIP.md
+// §"Kind 12473 — Birdex (Bird Life List)" for the schema.
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
+import { BIRDEX_KIND } from '@/hooks/useBirdexEvent';
 import type { Detection } from '@/components/BirdCard';
 
 /**
@@ -191,6 +197,13 @@ export interface UseAutoPublishDetectionOptions {
    * since that timestamp.
    */
   lastPublishedAt: Map<string, number>;
+  /**
+   * The author's current Birdex (kind 12473) species URIs, in
+   * chronological order of first detection. Used to decide whether a
+   * newly-confirmed species is a lifer (not yet present → triggers a
+   * Birdex republish) or a known species (no Birdex change).
+   */
+  birdexEntityUris: string[];
 }
 
 export interface AutoPublishApi {
@@ -204,6 +217,7 @@ export interface AutoPublishApi {
 
 export function useAutoPublishDetection({
   lastPublishedAt,
+  birdexEntityUris,
 }: UseAutoPublishDetectionOptions): AutoPublishApi {
   const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
@@ -216,6 +230,17 @@ export function useAutoPublishDetection({
   useEffect(() => {
     historyRef.current = lastPublishedAt;
   }, [lastPublishedAt]);
+
+  // Mirror the Birdex species URIs + membership set behind refs for the
+  // same reason. `birdexUrisRef` preserves chronological order so we
+  // can rebuild the replaceable event with new entries appended to the
+  // end; `birdexSetRef` gives O(1) "already on life list?" checks.
+  const birdexUrisRef = useRef<string[]>(birdexEntityUris);
+  const birdexSetRef = useRef<Set<string>>(new Set(birdexEntityUris));
+  useEffect(() => {
+    birdexUrisRef.current = birdexEntityUris;
+    birdexSetRef.current = new Set(birdexEntityUris);
+  }, [birdexEntityUris]);
 
   // In-session publish timestamps keyed by Wikidata entity URI.
   // Complements `historyRef`, which only updates when the Nostr query
@@ -289,6 +314,54 @@ export function useAutoPublishDetection({
               ],
               created_at: Math.floor(detection.timestamp / 1000),
             });
+
+            // First-time species? Extend the Birdex (kind 12473) with
+            // this URI appended to the end and republish. We check the
+            // session-local set AFTER the 2473 publish succeeded so a
+            // failed detection publish doesn't leak an entry into the
+            // life list. We also update the ref immediately to
+            // suppress duplicate Birdex publishes in case a second
+            // detection for the same species races in before the
+            // Nostr query refetches.
+            const isLifer = !birdexSetRef.current.has(entityUri);
+            if (isLifer) {
+              birdexSetRef.current.add(entityUri);
+              const nextUris = [...birdexUrisRef.current, entityUri];
+              birdexUrisRef.current = nextUris;
+
+              const birdexTags: string[][] = [
+                ['alt', `Bird life list: ${nextUris.length} species`],
+              ];
+              for (const uri of nextUris) {
+                birdexTags.push(['i', uri]);
+                birdexTags.push(['k', 'web']);
+              }
+
+              try {
+                await publish({
+                  kind: BIRDEX_KIND,
+                  content: '',
+                  tags: birdexTags,
+                  created_at: Math.floor(detection.timestamp / 1000),
+                });
+                if (userRef.current) {
+                  queryClient.invalidateQueries({
+                    queryKey: ['birdex-event', userRef.current.pubkey],
+                  });
+                }
+              } catch (err) {
+                // Roll back the local Birdex state so the next first-
+                // time detection retries the publish. The underlying
+                // kind 2473 detection is already on the network, so
+                // the user's life list can be reconstructed from
+                // history even if the Birdex temporarily lags.
+                birdexSetRef.current.delete(entityUri);
+                birdexUrisRef.current = birdexUrisRef.current.filter(
+                  (u) => u !== entityUri,
+                );
+                console.warn('Failed to publish Birdex life list', err);
+              }
+            }
 
             // Invalidate so the history query eventually picks up the new
             // event and merges it back into `lastPublishedAt`.

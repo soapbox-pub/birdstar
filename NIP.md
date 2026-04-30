@@ -169,6 +169,161 @@ event authored by the same pubkey.
 
 ---
 
+## Kind 12473 — Birdex (Bird Life List)
+
+A **replaceable** event (kind `12473`, chosen as `1` prefixed onto the
+`2473` detection kind for mnemonic kinship) representing the author's
+cumulative life list of confirmed bird species — every distinct species
+they have ever published a kind 2473 detection for.
+
+Replaceable events (10000 ≤ kind < 20000) are deduplicated by relays on
+`pubkey + kind`, so each author has at most one Birdex on the network at
+any time. Republishing with a newer `created_at` replaces the prior
+copy.
+
+### Rationale
+
+Kind 2473 detections are the permanent log; the Birdex is the *index*
+derived from them. The log-vs-index split is deliberate:
+
+- **Without the Birdex**, reconstructing a user's life list requires
+  paginating their entire kind 2473 history across all relays — expensive
+  for clients, unreliable when some relays drop old events, and
+  impossible to express as a single filter.
+- **With it**, any client can fetch one replaceable event and render the
+  user's full species count, first-seen ordering, and profile-page
+  "lifer badges" in a single round-trip.
+- A new kind (rather than a generic list via NIP-51) is warranted
+  because the entries are tightly constrained (Wikidata taxon URIs only)
+  and the event has domain-specific semantics (first-seen ordering, tied
+  to the kind 2473 author's own detection history).
+
+### `content`
+
+Free-form human-readable description of the life list. MAY be empty.
+Non-birding clients rendering this event SHOULD prefer the `alt` tag.
+
+### Tags
+
+#### Required
+
+- `alt` (NIP-31) — human-readable summary, e.g.
+  `"Bird life list: 37 species"`. Lets clients that don't implement
+  this NIP still render something meaningful.
+
+#### Species entries
+
+Each species on the life list is represented by an `i` / `k` tag pair
+using NIP-73 `web`-type external IDs pointing at the species' Wikidata
+entity URI — the same identifier vocabulary as kind 2473:
+
+```jsonc
+["i", "https://www.wikidata.org/entity/Q26825"],
+["k", "web"]
+```
+
+The same URL-shape rules as kind 2473 apply: `https` scheme, host
+`www.wikidata.org`, path `/entity/Q<digits>`, no fragment, no query
+string, no trailing slash.
+
+#### Entry ordering
+
+Tags MUST be emitted in **chronological order of first detection**,
+oldest species first. The position of a species' `i` tag in the tag
+array is its ordinal rank on the life list ("the 7th species I ever
+identified"). Clients rendering a timeline of an author's birding
+journey rely on this ordering — it cannot be reconstructed from the
+replaceable event alone once the underlying kind 2473 events have aged
+off relays.
+
+Each species MUST appear at most once. Republishing the event to add a
+newly confirmed species means appending the new `i` / `k` pair to the
+end of the existing tag list, preserving the historical order of all
+previous entries.
+
+### Example
+
+An author who has confirmed three species — first a robin, then a
+cardinal, then a chickadee:
+
+```jsonc
+{
+  "kind": 12473,
+  "content": "",
+  "tags": [
+    ["alt", "Bird life list: 3 species"],
+    ["i", "https://www.wikidata.org/entity/Q26825"],      // American Robin
+    ["k", "web"],
+    ["i", "https://www.wikidata.org/entity/Q27014"],      // Northern Cardinal
+    ["k", "web"],
+    ["i", "https://www.wikidata.org/entity/Q335669"],     // Black-capped Chickadee
+    ["k", "web"]
+  ]
+}
+```
+
+### Query Patterns
+
+A specific user's life list:
+
+```jsonc
+{ "kinds": [12473], "authors": ["<hex-pubkey>"], "limit": 1 }
+```
+
+All users who have ever confirmed a given species on their life list:
+
+```jsonc
+{ "kinds": [12473], "#i": ["https://www.wikidata.org/entity/Q26825"] }
+```
+
+### Validation
+
+Clients SHOULD ignore an event as a Birdex if:
+
+- `kind !== 12473`
+- It is not authored by the pubkey whose life list is being queried
+  (replaceable events are per-author; the `authors` filter is the trust
+  boundary — never trust a 12473 event on its `d`-tag or content alone).
+
+When parsing species entries, clients SHOULD:
+
+1. Walk the tag array in order.
+2. For each `i` tag whose value matches the canonical Wikidata entity
+   URI regex, pair it with the **next** `k` tag and accept the entry
+   only if that `k` value is `"web"`. Tags not matching this shape are
+   skipped.
+3. Deduplicate by Wikidata URI, keeping the first occurrence — the
+   chronologically earliest entry wins.
+
+### Publishing
+
+Birdstar publishes the Birdex automatically for logged-in users. The
+publish flow is tied to kind 2473 detections:
+
+1. When a kind 2473 detection is about to be published for a species,
+   check whether that species' Wikidata URI is already present in the
+   author's existing Birdex (loaded via a single kind 12473 query on
+   login).
+2. If absent, publish the kind 2473 detection as normal, then publish a
+   new kind 12473 event containing every previously-known URI **plus**
+   the new one appended at the end.
+3. If present, only the kind 2473 event is (re)published subject to the
+   usual 10-minute cooldown; the Birdex does not change.
+
+This couples Birdex growth to confirmed detections so the life list can
+never diverge from the underlying log: every entry in the Birdex has a
+corresponding kind 2473 event from the same author.
+
+### Deletion
+
+To retract a species from the life list, republish the Birdex with the
+species' `i` / `k` pair removed. Because kind 12473 is replaceable, the
+new event supersedes the old. Separately issuing a NIP-09 deletion on
+the underlying kind 2473 events is also recommended if the user wants
+to remove the detection log, not just the life-list entry.
+
+---
+
 ## Kind 30621 — Custom Constellation (from Starpoint)
 
 An **addressable** event (kind `30621`) representing a single constellation
