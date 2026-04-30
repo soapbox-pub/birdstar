@@ -15,17 +15,16 @@
 // observed to enter the viewport at least once. After that, the query is
 // enabled permanently so scrolling back up doesn't re-fetch.
 //
-// Three top-right badge treatments, mutually exclusive:
+// Two top-right badge treatments, mutually exclusive:
 //   - Rare heard:   amber "Rare" chip (non-interactive).
 //   - Confirmed:    emerald play button that triggers reference-song
 //                   playback inline, without opening the dialog.
-//   - Unconfirmed:  stone "?" chip (non-interactive) signalling
-//                   "BirdNET heard *something* that might have been
-//                   this bird, but we're not sure".
-// Plain unheard / starter-set cells get no badge.
+// Plain unheard / starter-set / unconfirmed cells get no badge —
+// unconfirmed birds render identically to unheard ones (grayed out,
+// no icon) so the grid reads as a simple heard/not-heard checklist.
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bird, HelpCircle, Play, Sparkles } from 'lucide-react';
+import { Bird, Play, Sparkles } from 'lucide-react';
 import type { BirdexEntry } from '@/hooks/useBirdex';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound } from '@/hooks/useBirdSound';
@@ -38,7 +37,7 @@ interface SpeciesCellProps {
 }
 
 function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
-  const { label, heard, isRare, isUnconfirmed } = entry;
+  const { label, heard, isRare } = entry;
 
   // Lazy-enable the Wikipedia query once the cell has entered the
   // viewport. This keeps the cost at "N visible cells" rather than "all
@@ -135,9 +134,7 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
         aria-label={
           heard
             ? `Heard ${label.commonName}. Show details.`
-            : isUnconfirmed
-              ? `${label.commonName}. Possibly heard. Show details.`
-              : `${label.commonName}. Not yet heard. Show details.`
+            : `${label.commonName}. Not yet heard. Show details.`
         }
         className="peer absolute inset-0 rounded-2xl text-left focus:outline-none"
       />
@@ -168,13 +165,10 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
                 // on the clip wrapper rather than the individual
                 // layers so the effect is uniform and survives the
                 // image-loading handoff from gradient to photo.
-                // Unconfirmed cells fade slightly less than plain
-                // starter cells — they've produced at least one hit,
-                // so they deserve to read a bit "warmer" than a
-                // never-encountered popular species.
-                isUnconfirmed
-                  ? 'opacity-75 group-hover:opacity-90'
-                  : 'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
+                // Unconfirmed cells share this exact treatment — the
+                // grid reads as a simple heard/not-heard checklist,
+                // with no visual distinction for "possibly heard".
+                'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
               ),
         )}
       >
@@ -195,7 +189,7 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
             className={cn(
               'absolute inset-0 h-full w-full object-cover object-[50%_25%]',
               'transition-transform duration-500 group-hover:scale-[1.04]',
-              !heard && !isUnconfirmed && 'saturate-50',
+              !heard && 'saturate-50',
             )}
           />
         ) : (
@@ -231,8 +225,8 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
       {/* Top-right badge region. Mutually exclusive treatments:
           - Rare heard:   amber "Rare" chip (non-interactive).
           - Confirmed:    emerald play button (inline soundboard).
-          - Unconfirmed:  stone "?" chip (non-interactive).
-          - Starter/unheard/unseen: no badge. */}
+          - Starter/unheard/unconfirmed: no badge — unconfirmed
+            cells render identically to unheard ones. */}
       {heard ? (
         isRare ? (
           <span className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow ring-1 ring-white/20 backdrop-blur-sm">
@@ -246,13 +240,6 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
             enabled={confirmed && hasBeenVisible}
           />
         )
-      ) : isUnconfirmed ? (
-        <span
-          aria-label="Possible detection — not confirmed"
-          className="pointer-events-none absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-stone-700/70 text-white shadow ring-1 ring-white/20 backdrop-blur-sm dark:bg-indigo-950/80"
-        >
-          <HelpCircle className="h-4 w-4" aria-hidden />
-        </span>
       ) : null}
     </div>
   );

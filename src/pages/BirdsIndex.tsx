@@ -877,11 +877,12 @@ function formatPlaceSet(placeSet: UserPlaceSet): string {
 
 /** The main birdex grid. Renders a flat list of confirmed, unconfirmed,
  * and starter-set cells in that order. Confirmed cells may carry the
- * "rare" badge (out-of-region sighting); unconfirmed cells get a "?"
- * badge to signal "BirdNET heard *something* that might have been
- * this". There is no tier gating — the grid grows as the user hears
- * more birds, one at a time. A passive "+Many Unheard" tile closes
- * the layout. */
+ * "rare" badge (out-of-region sighting). Unconfirmed cells render
+ * identically to plain unheard cells — grayed out with no badge — so
+ * the grid reads as a simple heard/not-heard checklist; the detail
+ * dialog is where "possibly heard" gets surfaced. There is no tier
+ * gating — the grid grows as the user hears more birds, one at a
+ * time. A passive "+Many Unheard" tile closes the layout. */
 const BirdexGrid = memo(function BirdexGrid({
   visible,
   onSelect,
