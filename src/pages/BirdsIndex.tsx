@@ -420,23 +420,19 @@ const IndexInner = () => {
     [placeSet, speciesRegions, localSpeciesMap, nearest],
   );
 
-  // Warm caches for species the user is actively hearing, and record
-  // them in the durable encountered-species store that feeds the
-  // birdex's "unconfirmed" bucket. Fires from useDetectionAccumulator's
-  // ingest on every floored prediction; deduped via the in-flight set
-  // + memory caches so repeat hits are effectively free.
+  // Warm caches for species the user is actively hearing. Fires from
+  // useDetectionAccumulator's ingest on every floored prediction;
+  // deduped via the in-flight set + memory caches so repeat hits are
+  // effectively free.
+  //
+  // NOTE: this deliberately does NOT record encounters any more —
+  // recording lives on `handleEncounterQualified` below, which fires
+  // only once a species' rolling-window sum crosses 60% of the
+  // confirmation threshold. Cache-warming stays eager (we want the
+  // nearest-observation resolver ready for the NEXT ingest) while
+  // "populate the birdex unconfirmed bucket" stays tight.
   const handleSpeciesHit = useCallback(
-    (label: BirdLabel, timestamp: number) => {
-      // Always record the encounter first — this is the canonical
-      // "BirdNET produced a qualifying hit for this species on this
-      // device" signal. The store is idempotent + optimistic so it
-      // costs effectively nothing on repeat hits.
-      recordEncountered({
-        scientificName: label.scientificName,
-        commonName: label.commonName,
-        timestamp,
-      });
-
+    (label: BirdLabel) => {
       if (!coarse) return;
       if (!localSpeciesMap) return;
       // Don't bother refining if this species wasn't seen near the
@@ -481,7 +477,28 @@ const IndexInner = () => {
           taxonIdInFlightRef.current.delete(key);
         });
     },
-    [coarse, localSpeciesMap, nearest, recordEncountered],
+    [coarse, localSpeciesMap, nearest],
+  );
+
+  // Record a species in the durable encountered-species store that
+  // feeds the birdex's "unconfirmed" bucket. Fires only when the
+  // accumulator's rolling-window sum for this species crosses
+  // ENCOUNTER_QUALIFY_SUM (60% of the confirmation threshold), so
+  // the dex's unconfirmed row stays reserved for species that
+  // genuinely came close to being confirmed. The store is idempotent
+  // + optimistic so repeat crossings cost effectively nothing.
+  const handleEncounterQualified = useCallback(
+    (
+      info: { scientificName: string; commonName: string },
+      timestamp: number,
+    ) => {
+      recordEncountered({
+        scientificName: info.scientificName,
+        commonName: info.commonName,
+        timestamp,
+      });
+    },
+    [recordEncountered],
   );
 
   const { ingest, confirmedSightings, forgetConfirmed, pendingLeader, latestHit } =
@@ -489,6 +506,7 @@ const IndexInner = () => {
       onConfirm: (detection) => considerPublish(detection),
       locationAdjuster,
       onSpeciesHit: handleSpeciesHit,
+      onEncounterQualified: handleEncounterQualified,
     });
 
   const { deleteDetection, pendingIds: deletingIds } = useDeleteBirdDetection();

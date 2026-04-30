@@ -1,11 +1,14 @@
 // Durable "species encountered ever" map for the birdex.
 //
-// A species gets recorded the first time BirdNET produces a prediction
-// for it that clears MIN_RAW_CONFIDENCE (the same floor the rolling-
-// window accumulator uses to gate hits into birdHitStore). Unlike the
-// raw hit log, this store is never pruned — encountered species show
-// up in the birdex's "unconfirmed" section forever, even after the
-// raw hits that produced them rotate out of the 24h log.
+// A species gets recorded the first time its γ-shaped rolling-window
+// sum crosses ENCOUNTER_QUALIFY_SUM — i.e. when the accumulator came
+// within 60% of confirming it (see useDetectionAccumulator). Weak
+// isolated blips that never build toward confirmation are
+// deliberately NOT recorded, so the birdex's unconfirmed bucket
+// stays reserved for species the user almost heard. Unlike the raw
+// hit log, this store is never pruned — encountered species show up
+// in the birdex's "unconfirmed" section forever, even after the raw
+// hits that produced them rotate out of the 24h log.
 //
 // The hook hydrates once at mount from encounteredSpeciesStore, then
 // returns:

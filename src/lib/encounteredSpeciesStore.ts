@@ -1,16 +1,22 @@
 // Local-only IndexedDB log of *species* the user has ever encountered —
 // one row per scientific name, upserted on first contact and touched on
 // every subsequent hit. Unlike birdHitStore (per-prediction, 24h TTL,
-// feeds the accumulator), this store is "did we ever hear a blip of
-// this bird?" and is NEVER pruned.
+// feeds the accumulator), this store is "did we ever hear a bird that
+// was almost confirmed?" and is NEVER pruned.
 //
 // The birdex uses it to populate the "unconfirmed" bucket: species
-// that have produced at least one qualifying prediction (≥
-// MIN_RAW_CONFIDENCE after damping) but haven't accumulated enough
-// evidence to be promoted to a confirmed, Nostr-published sighting.
-// That lets the grid show a ghostly "we think we heard this" entry
-// the next time the user opens the app, months later, even though
-// the raw hit log has long since been pruned.
+// whose γ-shaped rolling-window sum crossed ENCOUNTER_QUALIFY_SUM
+// (60% of the confirmation threshold) but never fully confirmed.
+// That threshold is deliberately tight — weak, isolated blips don't
+// land here, only species the accumulator came genuinely close to
+// confirming. The consequence is that the dex's unconfirmed row
+// stays meaningful instead of getting flooded with near-noise
+// species the user never really heard.
+//
+// Historical note: before the threshold tightening, ANY qualifying
+// (≥ MIN_RAW_CONFIDENCE after damping) hit recorded an encounter.
+// Entries from that era will remain until the user wipes them;
+// we don't retroactively prune.
 //
 // Mirrors the domain-keyed DB-name pattern used by birdHitStore.ts and
 // dmMessageStore.ts so multiple apps on the same origin don't collide.

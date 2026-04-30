@@ -115,6 +115,25 @@ export const CONFIRMATION_GAMMA = 2;
 // species to "confirmed". In raw-score terms: one 0.67 hit, two 0.48
 // hits, three 0.39 hits, or roughly four 0.34 hits are enough.
 export const CONFIRMATION_THRESHOLD = 0.45;
+// Fraction of CONFIRMATION_THRESHOLD a species must cross — in γ-shaped
+// contribution units, accumulated in the rolling window — before it
+// "qualifies as encountered" and gets recorded into the durable
+// encountered-species store that populates the birdex's unconfirmed
+// bucket. Below this, we still accumulate internally (so genuine soft
+// calls can still confirm), but nothing shows up in the dex.
+//
+// At 0.6, the effective bar is a γ-sum of 0.27 out of 0.45. In raw-
+// BirdNET terms that's roughly one 0.52 hit, two 0.37 hits, or four
+// 0.26 hits within the 3-minute window. Meaning: to land in the
+// unconfirmed bucket, a species has to have come genuinely close to
+// being confirmed — not just produced a single weak blip. Users have
+// explicitly asked for "almost-confirmed only" in the dex so the
+// unconfirmed bucket stays meaningful.
+export const ENCOUNTER_QUALIFY_FRACTION = 0.6;
+// Derived absolute γ-sum bar. Exposed so hydrate + ingest can apply
+// the same math.
+export const ENCOUNTER_QUALIFY_SUM =
+  CONFIRMATION_THRESHOLD * ENCOUNTER_QUALIFY_FRACTION;
 // How long raw hits live on disk before the startup prune deletes them.
 export const RAW_LOG_RETENTION_MS = 24 * 60 * 60 * 1000;
 // Multiplier applied to scores for species whose known range doesn't
@@ -252,9 +271,7 @@ export interface AccumulatorOptions {
    * floor checks, regardless of whether it ultimately confirms. Used
    * by the host to opportunistically warm caches for species the user
    * is actively hearing — notably the iNat nearest-observation lookup
-   * that refines confidence damping beyond the 5-band bulk signal,
-   * and the durable encountered-species store that populates the
-   * birdex's "unconfirmed" bucket.
+   * that refines confidence damping beyond the 5-band bulk signal.
    *
    * Fire-and-forget from the accumulator's perspective — the callback
    * runs after the prediction is ingested, so any async work it kicks
@@ -265,8 +282,43 @@ export interface AccumulatorOptions {
    *
    * Captured in a ref like `locationAdjuster` so handlers can freely
    * re-identify on render.
+   *
+   * NOTE: this fires on EVERY qualifying hit. If you want a tighter
+   * "nearly confirmed" signal for the birdex's unconfirmed bucket,
+   * use `onEncounterQualified` instead.
    */
   onSpeciesHit?: (label: BirdLabel, timestamp: number) => void;
+
+  /**
+   * Called when a species' γ-shaped rolling-window sum crosses
+   * ENCOUNTER_QUALIFY_SUM (60% of the confirmation threshold) —
+   * i.e. when the species has become "almost confirmed". Fires
+   * at most once per species per rolling window; a species that
+   * qualifies, confirms, and re-accumulates will fire again after
+   * the post-confirmation window reset.
+   *
+   * This is the signal the birdex uses to decide whether a species
+   * belongs in the unconfirmed bucket. It's deliberately tighter than
+   * `onSpeciesHit` so the dex only surfaces species the accumulator
+   * genuinely almost confirmed, not every weak blip that cleared the
+   * MIN_RAW_CONFIDENCE floor.
+   *
+   * Also fires during hydration for any species whose restored window
+   * is already above the qualify bar, so app restarts don't drop
+   * the signal on the floor.
+   *
+   * The payload is just scientific + common names — no `index` or
+   * `isBird`, because hydrate has no ready access to either and
+   * the only current consumer (the encountered-species store) doesn't
+   * need them. If a future consumer wants the full `BirdLabel`, it
+   * can look it up from the labels table by scientific name.
+   *
+   * Captured in a ref, same as the other callbacks.
+   */
+  onEncounterQualified?: (
+    info: { scientificName: string; commonName: string },
+    timestamp: number,
+  ) => void;
 }
 
 export interface AccumulatorApi {
@@ -316,7 +368,8 @@ export interface AccumulatorApi {
 export function useDetectionAccumulator(
   options: AccumulatorOptions = {},
 ): AccumulatorApi {
-  const { onConfirm, locationAdjuster, onSpeciesHit } = options;
+  const { onConfirm, locationAdjuster, onSpeciesHit, onEncounterQualified } =
+    options;
 
   // Rolling window per species. Stored in a ref since it's updated on every
   // chunk and shouldn't trigger renders on its own — only the confirmed map
@@ -347,6 +400,23 @@ export function useDetectionAccumulator(
   useEffect(() => {
     onSpeciesHitRef.current = onSpeciesHit;
   }, [onSpeciesHit]);
+
+  // onEncounterQualified — fires the first time a species' γ-sum
+  // crosses ENCOUNTER_QUALIFY_SUM in the current rolling window.
+  // Tracked separately from `onSpeciesHit` so cache-warming stays
+  // eager (every hit) while "populate the birdex unconfirmed bucket"
+  // stays tight (only species that nearly confirmed).
+  const onEncounterQualifiedRef = useRef(onEncounterQualified);
+  useEffect(() => {
+    onEncounterQualifiedRef.current = onEncounterQualified;
+  }, [onEncounterQualified]);
+
+  // Set of species keys that have already fired onEncounterQualified
+  // for their current rolling window. Cleared on confirmation (so the
+  // species can re-qualify next time) and on window eviction (handled
+  // implicitly — if the window empties we drop the entry; see
+  // refreshPendingLeader).
+  const qualifiedRef = useRef<Set<string>>(new Set());
 
   const [confirmedSightings, setConfirmedSightings] = useState<
     Map<string, Detection>
@@ -401,6 +471,9 @@ export function useDetectionAccumulator(
       const live = hits.filter((h) => h.timestamp >= cutoff);
       if (live.length === 0) {
         windowsRef.current.delete(key);
+        // Let this species fire onEncounterQualified again if it
+        // reaccumulates from scratch — the window has fully aged out.
+        qualifiedRef.current.delete(key);
         continue;
       }
       if (live.length !== hits.length) {
@@ -556,6 +629,38 @@ export function useDetectionAccumulator(
         }
       }
       windowsRef.current = windows;
+
+      // Replay onEncounterQualified for any species whose restored
+      // window is already above the qualify bar — otherwise a reload
+      // mid-accumulation would drop the signal and the species would
+      // silently fail to land in the birdex's unconfirmed bucket
+      // even though the accumulator was clearly on track to confirm.
+      // Uses the species' most-recent hit timestamp so the
+      // encountered-species store records a plausible lastSeenAt.
+      for (const [key, hits] of windows) {
+        const sum = hits.reduce((acc, h) => acc + h.contribution, 0);
+        if (sum < ENCOUNTER_QUALIFY_SUM) continue;
+        if (qualifiedRef.current.has(key)) continue;
+        qualifiedRef.current.add(key);
+        const nm = names.get(key);
+        if (!nm) continue;
+        const lastTs = hits[hits.length - 1]?.timestamp ?? now;
+        try {
+          onEncounterQualifiedRef.current?.(
+            {
+              scientificName: nm.scientificName,
+              commonName: nm.commonName,
+            },
+            lastTs,
+          );
+        } catch (error) {
+          console.warn(
+            '[useDetectionAccumulator] onEncounterQualified failed (hydrate)',
+            error,
+          );
+        }
+      }
+
       refreshPendingLeader(now);
       setIsHydrating(false);
     })().catch((err) => {
@@ -663,6 +768,11 @@ export function useDetectionAccumulator(
         // useAutoPublishDetection separately guards against re-publishing
         // too aggressively.
         windowsRef.current.delete(key);
+        // A confirmed species is strictly "more qualified than
+        // encountered" — clearing this lets the species re-fire
+        // onEncounterQualified if it accumulates again after
+        // confirmation (rare, but keeps the two signals independent).
+        qualifiedRef.current.delete(key);
 
         const detection: Detection = {
           // Session id — kept stable per species so React can reuse the
@@ -691,6 +801,29 @@ export function useDetectionAccumulator(
       } else {
         // Not yet confirmed — just stash the updated window back.
         windowsRef.current.set(key, pruned);
+
+        // Fire the "encountered" signal the first time this species'
+        // rolling-window sum crosses the qualify bar. Fire-and-
+        // forget: wrapped in try/catch so a misbehaving host handler
+        // can't break the audio pipeline, same policy as
+        // onSpeciesHit above.
+        if (sum >= ENCOUNTER_QUALIFY_SUM && !qualifiedRef.current.has(key)) {
+          qualifiedRef.current.add(key);
+          try {
+            onEncounterQualifiedRef.current?.(
+              {
+                scientificName: label.scientificName,
+                commonName: label.commonName,
+              },
+              timestamp,
+            );
+          } catch (error) {
+            console.warn(
+              '[useDetectionAccumulator] onEncounterQualified failed',
+              error,
+            );
+          }
+        }
       }
 
       // Refresh the leader so the pie overlay reflects either this

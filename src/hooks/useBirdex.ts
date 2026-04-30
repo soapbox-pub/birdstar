@@ -13,11 +13,17 @@
 //                      mixed right in rather than shunted to a
 //                      separate section.
 //                   2. Encountered-but-unconfirmed species (newest
-//                      encounter first). These have produced a
-//                      qualifying prediction at some point but never
-//                      accumulated enough evidence to promote to a
-//                      full detection. Flagged `isUnconfirmed` so
-//                      the cell can render a "?" badge.
+//                      encounter first). These are species whose
+//                      γ-shaped rolling-window sum crossed the
+//                      "almost confirmed" bar (60% of the
+//                      confirmation threshold) but never made it all
+//                      the way. Flagged `isUnconfirmed` so downstream
+//                      consumers can style them specifically — the
+//                      grid renders them visually identical to
+//                      unheard cells (grayed out, no badge) so the
+//                      dex reads as a clean heard/not-heard
+//                      checklist; the "possibly heard" detail
+//                      surfaces in the info dialog.
 //                   3. Starter set — the top-STARTER_VISIBLE in-region
 //                      popular species that are neither confirmed nor
 //                      unconfirmed yet. Guarantees the grid has at
@@ -34,9 +40,10 @@
 //   - Range filtering is minimal: we only use it to tag heard birds
 //     as `isRare` (for the badge) and to choose starter-set
 //     candidates. We do NOT prune unconfirmed entries by range —
-//     if BirdNET produced a qualifying hit for a species, it goes
-//     into the unconfirmed bucket regardless of whether it "should"
-//     be here. The user knows what they heard.
+//     if a species accumulated close enough to confirmation to land
+//     in the encountered store, it goes into the unconfirmed bucket
+//     regardless of whether it "should" be here. The user knows
+//     what they heard.
 //
 // Heard-status matching is by case-folded scientific name — the
 // kind-2473 event's `alt` tag carries `(Scientific name)` which
