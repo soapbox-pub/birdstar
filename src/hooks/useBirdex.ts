@@ -107,6 +107,12 @@ export interface Birdex {
   heardCount: number;
   /** Total distinct species encountered (including heard ones). */
   encounteredCount: number;
+  /** Total BirdNET bird species (everything with `isBird: true` in
+   * the label table). Stable across renders — this is just the
+   * catalog size. Paired with `heardCount` it gives the footer tile
+   * its "+N unheard" count without the consumer having to recount
+   * the labels. */
+  totalBirdSpecies: number;
   /** True when we know the user's place AND have loaded the range
    * table, so `isRare` classification is meaningful. */
   isRegionalized: boolean;
@@ -148,6 +154,7 @@ export function useBirdex({
         visible: [],
         heardCount: 0,
         encounteredCount: 0,
+        totalBirdSpecies: 0,
         isRegionalized: false,
       };
     }
@@ -192,9 +199,11 @@ export function useBirdex({
     const confirmed: BirdexEntry[] = [];
     const unconfirmed: BirdexEntry[] = [];
     const inRegionUnseen: BirdexEntry[] = []; // starter-set candidates
+    let totalBirdSpecies = 0;
 
     for (const label of labels) {
       if (!label.isBird) continue;
+      totalBirdSpecies += 1;
 
       const key = label.scientificName.toLowerCase();
       const detection = detectionByName.get(key);
@@ -324,6 +333,7 @@ export function useBirdex({
       visible,
       heardCount: confirmed.length,
       encounteredCount: confirmed.length + unconfirmed.length,
+      totalBirdSpecies,
       isRegionalized,
     };
   }, [labels, regions, placeSet, detections, encountered, localSpeciesMap]);

@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { MapPin } from 'lucide-react';
+import { Bird, MapPin } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
   BirdInfoDialog,
@@ -783,6 +783,10 @@ const IndexInner = () => {
           ) : (
             <BirdexGrid
               visible={birdex.visible}
+              unheardCount={Math.max(
+                0,
+                birdex.totalBirdSpecies - birdex.heardCount,
+              )}
               onSelect={handleSelectBirdex}
             />
           )}
@@ -876,13 +880,17 @@ function formatPlaceSet(placeSet: UserPlaceSet): string {
  * and starter-set cells in that order. Confirmed cells may carry the
  * "rare" badge (out-of-region sighting); unconfirmed cells get a "?"
  * badge to signal "BirdNET heard *something* that might have been
- * this". There is no locked tile and no tier gating — the grid grows
- * as the user hears more birds, one at a time. */
+ * this". There is no tier gating — the grid grows as the user hears
+ * more birds, one at a time. A passive end-of-grid tile closes the
+ * layout with a "+N unheard" count of species still in the BirdNET
+ * catalog. */
 const BirdexGrid = memo(function BirdexGrid({
   visible,
+  unheardCount,
   onSelect,
 }: {
   visible: BirdexEntry[];
+  unheardCount: number;
   onSelect: (entry: BirdexEntry) => void;
 }) {
   if (visible.length === 0) {
@@ -912,6 +920,51 @@ const BirdexGrid = memo(function BirdexGrid({
           onSelect={onSelect}
         />
       ))}
+      <BirdexFooterTile unheardCount={unheardCount} />
+    </div>
+  );
+});
+
+/**
+ * Passive end-of-grid tile. Shares shape (aspect-square, rounded-2xl,
+ * dashed border) with SpeciesCell so it slots into the grid cleanly,
+ * but without an image layer, badge, or click target — it's a count
+ * + a glyph, nothing more. Replaces the old LockedTile without any
+ * of its unlock-count mechanics: the number is the rest of the
+ * BirdNET catalog the user hasn't confirmed yet, not a gated tier
+ * target.
+ */
+const BirdexFooterTile = memo(function BirdexFooterTile({
+  unheardCount,
+}: {
+  unheardCount: number;
+}) {
+  const formatted = unheardCount.toLocaleString();
+  return (
+    <div
+      aria-label={`${formatted} bird species not yet heard`}
+      className={cn(
+        'flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl',
+        'border border-dashed border-stone-300/80 bg-white/40 p-3 text-center',
+        'dark:border-indigo-800/40 dark:bg-indigo-950/30',
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-11 w-11 items-center justify-center rounded-full',
+          'bg-stone-200/80 text-stone-500',
+          'dark:bg-indigo-900/50 dark:text-stone-400',
+        )}
+        aria-hidden
+      >
+        <Bird className="h-5 w-5" strokeWidth={1.75} />
+      </div>
+      <p className="font-serif text-lg font-semibold leading-none text-stone-700 dark:text-stone-200">
+        +{formatted}
+      </p>
+      <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 dark:text-stone-500">
+        Unheard
+      </p>
     </div>
   );
 });
