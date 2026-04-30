@@ -1,61 +1,47 @@
 // Birdex hook for the checklist home page.
 //
-// Combines the BirdNET labels, the species-regions place table, the user's
-// resolved location (continent + country + subdivision), and their
-// kind-2473 history into four sorted lists ready to render:
+// Combines the BirdNET labels, the species-regions place table, the
+// user's resolved location, their kind-2473 history, AND the durable
+// "encountered species" store into one sorted list ready to render:
 //
-//   visible     — current-tier's top-N in-region species by Wikipedia-
-//                 pageview popularity, plus every heard bird (heard >
-//                 unheard even when the heard bird isn't in the popular
-//                 set). This is what the user sees by default.
-//   hidden      — the rest of the in-region birdex (obscure, range-
-//                 tagged, but not popular enough to show at the current
-//                 tier). Species that cross into `visible` when the
-//                 user advances a tier come out of this bucket.
-//   rareFinds   — birds the user has heard whose known range excludes
-//                 their location (out-of-region "vagrant" finds).
-//   unknownRange— birds with no range data in the table. Joined to
-//                 `hidden` by default (rather than visible) because
-//                 they'd dilute the "popular species first" UX without
-//                 a popularity score of their own.
+//   visible     — every cell the grid should show, in render order.
+//                 A flat list of tagged entries (`isRare`,
+//                 `isUnconfirmed`) — no separate buckets, no tier
+//                 gates. Order:
+//                   1. Confirmed heard birds (newest first), with
+//                      any out-of-region ones flagged `isRare` but
+//                      mixed right in rather than shunted to a
+//                      separate section.
+//                   2. Encountered-but-unconfirmed species (newest
+//                      encounter first). These have produced a
+//                      qualifying prediction at some point but never
+//                      accumulated enough evidence to promote to a
+//                      full detection. Flagged `isUnconfirmed` so
+//                      the cell can render a "?" badge.
+//                   3. Starter set — the top-STARTER_VISIBLE in-region
+//                      popular species that are neither confirmed nor
+//                      unconfirmed yet. Guarantees the grid has at
+//                      least 10 targets to listen for on day one,
+//                      even before the user has heard anything.
 //
-// Progressive tiers: the visible budget steps up as the user hears
-// more *distinct birds ever*:
+// Design shift from the old tiered model:
+//   - No auto-unlocking of swaths of species at 10/50/150/300 heard.
+//     The world feels small: you see the 10 household names on day
+//     one and grow the grid one bird at a time from there.
+//   - "Rare finds" are no longer a separate section; out-of-region
+//     heard birds are just normal confirmed cells with the rare
+//     badge.
+//   - Range filtering is minimal: we only use it to tag heard birds
+//     as `isRare` (for the badge) and to choose starter-set
+//     candidates. We do NOT prune unconfirmed entries by range —
+//     if BirdNET produced a qualifying hit for a species, it goes
+//     into the unconfirmed bucket regardless of whether it "should"
+//     be here. The user knows what they heard.
 //
-//   10 heard  → reveal tier 2, budget = 50
-//   50 heard  → reveal tier 3, budget = 150
-//   150 heard → reveal tier 4, budget = 300
-//   300 heard → full birdex (locked tile vanishes)
-//
-// The count that drives advancement is `heardCount` — just total
-// distinct species heard across all sessions, period. Rare finds
-// (out-of-region vagrants) count. In-region obscure birds count.
-// The simple rule is the point: "hear 10 more birds" in the UI
-// means exactly that. Because kind-2473 events carry no location by
-// design, the count can't be scoped to a region — it's necessarily
-// global to the user's history. Moving from Austin to Paris doesn't
-// reset progress (you *did* hear those Austin birds).
-//
-// Heard-status matching is by case-folded scientific name — the kind-2473
-// event's `alt` tag carries `(Scientific name)` which history decodes into
-// `detection.scientificName`.
-//
-// Ordering inside each bucket:
-//   - Heard birds first, newest-heard first.
-//   - Unheard birds after, sorted by EFFECTIVE popularity in `visible`,
-//     alphabetical by common name in `hidden`.
-// The `rareFinds` bucket only contains heard birds by definition.
-//
-// Effective popularity = raw Wikipedia-pageview score +
-// iNaturalist-local-observation bonus (see BAND_TO_POPULARITY_BONUS
-// in lib/inat/localSpecies.ts). The bonus is additive: species with
-// recent nearby observations outrank globally famous species that
-// don't actually occur in the user's area, without ever penalizing
-// species absent from the iNat signal (iNat coverage gaps would
-// otherwise hide real birds in rural areas). When no local map is
-// supplied (manual-picker users, offline, pre-fetch), effective
-// popularity equals raw popularity — behavior is identical to
-// pre-iNat-integration.
+// Heard-status matching is by case-folded scientific name — the
+// kind-2473 event's `alt` tag carries `(Scientific name)` which
+// history decodes into `detection.scientificName`. The encountered
+// store keys on the same lower-cased scientific name.
 
 import { useMemo } from 'react';
 import type { BirdLabel } from '@/lib/birdnet/labels';
@@ -64,6 +50,7 @@ import type { UserPlaceSet } from '@/lib/geo/continent';
 import type { Detection } from '@/components/BirdCard';
 import { useBirdLabels } from '@/hooks/useBirdLabels';
 import { useSpeciesRegions } from '@/hooks/useSpeciesRegions';
+import type { EncounteredSpecies } from '@/lib/encounteredSpeciesStore';
 import {
   BAND_TO_POPULARITY_BONUS,
   POPULARITY_BONUS_SCALE,
@@ -72,61 +59,36 @@ import {
 } from '@/lib/inat/localSpecies';
 
 /**
- * Progressive visibility tiers. Each entry is the total number of
- * distinct species the user must have heard to advance INTO that
- * tier. Tier 1 (budget 10) is the default starting point; after
- * hearing 10 birds they enter tier 2 (budget 50); etc.
- *
- * Chosen to feel like a gentle on-ramp: 10 is "just the household
- * names", 50 is "common backyard birds", 150 is "regional regulars",
- * 300 is "you know your area". Beyond 300 we stop auto-advancing.
+ * How many popular in-region species to show as a starter set on top
+ * of whatever the user has confirmed or encountered. Chosen so day-
+ * one users always have a concrete list of "common birds near me" to
+ * listen for, even before the mic has picked up anything.
  */
-export const BIRDEX_TIERS: readonly number[] = [10, 50, 150, 300];
-
-/**
- * The tier reached when the user has heard every bird in tier 4 (300).
- * `budget = Infinity` expresses "no auto-cap; every in-region species
- * is visible at this point".
- */
-export const UNLIMITED_TIER = BIRDEX_TIERS.length + 1;
-
-/**
- * Compute the active tier + budget from a count of distinct heard
- * birds. Pure function so the toast side effect in Index.tsx can
- * invoke it against a tracked previous value without re-running the
- * birdex memo.
- */
-export function tierForHeardCount(heardTotal: number): {
-  /** 1-indexed tier number. 1..BIRDEX_TIERS.length, or UNLIMITED_TIER
-   * when the user has cleared the final tier. */
-  tier: number;
-  /** Visible budget for unheard popular species in this tier. Equal to
-   * `BIRDEX_TIERS[tier-1]` for ordinary tiers; `Infinity` for
-   * `UNLIMITED_TIER` (no auto-cap; every in-region species is shown). */
-  budget: number;
-} {
-  for (let i = 0; i < BIRDEX_TIERS.length; i++) {
-    if (heardTotal < BIRDEX_TIERS[i]) {
-      return { tier: i + 1, budget: BIRDEX_TIERS[i] };
-    }
-  }
-  return { tier: UNLIMITED_TIER, budget: Infinity };
-}
+export const STARTER_VISIBLE = 10;
 
 export interface BirdexEntry {
   label: BirdLabel;
   /** The matching Nostr/session detection, if the user has heard this
-   * species. Undefined for not-yet-heard entries. */
+   * species. Undefined for unconfirmed and starter entries. */
   detection?: Detection;
+  /** True when a confirmed detection exists (in-region OR rare). */
   heard: boolean;
+  /** True when the confirmed detection is for a species whose known
+   * range excludes the user's location. Used by the cell to show the
+   * "Rare" badge. Only meaningful when `heard` is also true. */
+  isRare: boolean;
+  /** True when BirdNET has produced a qualifying prediction for this
+   * species (at or above MIN_RAW_CONFIDENCE, logged in the durable
+   * encountered-species store) but accumulation never promoted it to
+   * a confirmed sighting. Mutually exclusive with `heard`. */
+  isUnconfirmed: boolean;
   /** Log-scaled Wikipedia-pageview popularity score (from BRN3). Higher
-   * is more popular; 0 means "unknown". Used to drive the visible vs.
-   * hidden split. */
+   * is more popular; 0 means "unknown". Used only for starter-set
+   * selection; not surfaced in the cell. */
   popularity: number;
   /** Effective popularity after any iNat-local-observation bonus has
-   * been blended in. Used for sorting; `popularity` is retained for
-   * consumers that want the raw .bin score. Equal to `popularity`
-   * when no local-species map is available. */
+   * been blended in. Used for sorting the starter set; equal to
+   * `popularity` when no local-species map is available. */
   effectivePopularity: number;
   /** The iNat distance band the species was observed in near the user,
    * if any. `null` means no map available or species absent from all
@@ -136,54 +98,42 @@ export interface BirdexEntry {
 }
 
 export interface Birdex {
-  /** The default-visible birdex: the current tier's top-N in-region
-   * species by popularity, UNIONED with every heard bird (regardless
-   * of rank or region). Heard birds surface first (newest-first); the
-   * top-N popular set always renders in full below, even if the user
-   * has heard 0 of them. This guarantees there are at least N popular
-   * cells on screen to look at + listen for. */
+  /** Flat render-order list of every cell the grid should display.
+   * Confirmed first (newest first), then unconfirmed (newest
+   * encounter first), then the starter popular set. */
   visible: BirdexEntry[];
-  /** In-region species that are neither heard nor in the current
-   * tier's top-N popular set. Not rendered in the grid; represented
-   * only by the trailing LockedTile count. Alphabetical. */
-  hidden: BirdexEntry[];
-  /** Birds the user has heard that aren't plausibly here. Newest-first. */
-  rareFinds: BirdexEntry[];
-  /** Total distinct species heard, across all sessions and all
-   * regions. Drives tier advancement and the "Hear N more birds"
-   * counter on the LockedTile. kind-2473 events are location-less by
-   * design, so this count is necessarily global. */
+  /** Total distinct species heard, across all sessions. Surfaced so
+   * any header UI that cares can display progress. */
   heardCount: number;
-  /** Active tier (1-indexed). `UNLIMITED_TIER` after tier 4 is cleared. */
-  tier: number;
-  /** How many distinct birds must be heard to unlock the next tier.
-   * Equals `BIRDEX_TIERS[tier-1]` for tiers 1-4, `Infinity` for the
-   * unlimited final tier. */
-  tierTarget: number;
-  /** Number of cells actually rendered in `visible`. */
-  visibleCount: number;
-  /** Total count across visible + hidden. */
-  totalCount: number;
-  /** True when we know the user's place AND have loaded the range table. */
+  /** Total distinct species encountered (including heard ones). */
+  encounteredCount: number;
+  /** True when we know the user's place AND have loaded the range
+   * table, so `isRare` classification is meaningful. */
   isRegionalized: boolean;
 }
 
 interface UseBirdexOptions {
   placeSet: UserPlaceSet | null;
-  /** Detections from history + the live session, already deduped by the
-   * caller. Used to flip `heard` status on the matching birdex entries. */
+  /** Detections from history + the live session, already deduped by
+   * the caller. Used to flip `heard` status on the matching birdex
+   * entries. */
   detections: Detection[];
+  /** Durable map of every species that has ever produced a qualifying
+   * BirdNET prediction on this device. Keyed by lower-cased
+   * scientific name. Null while hydrating from IndexedDB. Species in
+   * this map that AREN'T in `detections` become unconfirmed entries. */
+  encountered: Map<string, EncounteredSpecies> | null;
   /** Optional iNat-derived local species map (from useLocalSpeciesBands).
    * When present, species observed near the user get a popularity
-   * bonus proportional to how close they've been seen; this pulls
-   * locally-abundant species above globally-famous ones in the
-   * tier-1 visible set. Absent/null means today's .bin-only ordering. */
+   * bonus so the starter set favors locally-abundant species over
+   * globally-famous ones. */
   localSpeciesMap?: LocalSpeciesMap | null;
 }
 
 export function useBirdex({
   placeSet,
   detections,
+  encountered,
   localSpeciesMap,
 }: UseBirdexOptions): Birdex {
   const labelsQuery = useBirdLabels();
@@ -196,17 +146,14 @@ export function useBirdex({
     if (!labels) {
       return {
         visible: [],
-        hidden: [],
-        rareFinds: [],
         heardCount: 0,
-        tier: 1,
-        tierTarget: BIRDEX_TIERS[0],
-        visibleCount: 0,
-        totalCount: 0,
+        encounteredCount: 0,
         isRegionalized: false,
       };
     }
 
+    // Index detections by lower-case scientific name. Multiple hits
+    // for the same species keep only the newest.
     const detectionByName = new Map<string, Detection>();
     for (const d of detections) {
       const key = d.scientificName.toLowerCase();
@@ -218,15 +165,12 @@ export function useBirdex({
 
     const isRegionalized = Boolean(placeSet && regions?.loaded);
 
-    const birdexEntries: BirdexEntry[] = [];
-    const rareEntries: BirdexEntry[] = [];
-
-    // Helper: compute the (popularity, effectivePopularity, localBand)
-    // triple for a given label. iNat local-observation presence is
-    // layered on top of the .bin pageview score as an ADDITIVE bonus;
-    // absence is NEVER a penalty, so species missing from the iNat
-    // map fall back to pure .bin-based ordering. This keeps rural /
-    // under-covered areas from losing birds that really are there.
+    // Compute the (popularity, effectivePopularity, localBand) triple.
+    // iNat local-observation presence is layered on top of the .bin
+    // pageview score as an ADDITIVE bonus; absence is NEVER a
+    // penalty, so species missing from the iNat map fall back to
+    // pure .bin-based ordering. Keeps rural / under-covered areas
+    // from losing birds that really are there.
     const computePopularity = (label: BirdLabel) => {
       const popularity = regions?.popularityFor(label.index) ?? 0;
       const local = lookupLocal(localSpeciesMap, label.scientificName);
@@ -242,19 +186,78 @@ export function useBirdex({
       };
     };
 
+    // Single pass over every bird label produces three candidate
+    // arrays. We defer ordering + starter-set selection until after
+    // so the logic for each bucket stays local.
+    const confirmed: BirdexEntry[] = [];
+    const unconfirmed: BirdexEntry[] = [];
+    const inRegionUnseen: BirdexEntry[] = []; // starter-set candidates
+
     for (const label of labels) {
       if (!label.isBird) continue;
 
-      const detection = detectionByName.get(label.scientificName.toLowerCase());
+      const key = label.scientificName.toLowerCase();
+      const detection = detectionByName.get(key);
       const heard = Boolean(detection);
+      const encounteredRow = encountered?.get(key);
       const { popularity, effectivePopularity, localBand } =
         computePopularity(label);
 
-      if (!isRegionalized || !placeSet || !regions) {
-        birdexEntries.push({
+      if (heard) {
+        // Heard birds are always shown. Range classification only
+        // decides the `isRare` badge — it does NOT exclude the
+        // bird from the grid. Even out-of-region sightings sit in
+        // the main flow now.
+        let isRare = false;
+        if (isRegionalized && placeSet && regions) {
+          const status = classifySpeciesInRegion(
+            label.index,
+            placeSet.places,
+            regions,
+          );
+          isRare = status === 'out-of-region';
+        }
+        confirmed.push({
           label,
           detection,
-          heard,
+          heard: true,
+          isRare,
+          isUnconfirmed: false,
+          popularity,
+          effectivePopularity,
+          localBand,
+        });
+        continue;
+      }
+
+      if (encounteredRow) {
+        // Encountered but never confirmed. These go in regardless of
+        // range — if BirdNET thought it heard this species at least
+        // once, the user should know.
+        unconfirmed.push({
+          label,
+          heard: false,
+          isRare: false,
+          isUnconfirmed: true,
+          popularity,
+          effectivePopularity,
+          localBand,
+        });
+        continue;
+      }
+
+      // Starter-set candidate. Only in-region species qualify —
+      // we don't want to surface obscure vagrants as "birds near
+      // you" before the user has shown any sign of being in a
+      // region where they'd plausibly hear them.
+      if (!isRegionalized || !placeSet || !regions) {
+        // Pre-region: treat every bird as a candidate. The starter
+        // slice below will just pick the N globally most popular.
+        inRegionUnseen.push({
+          label,
+          heard: false,
+          isRare: false,
+          isUnconfirmed: false,
           popularity,
           effectivePopularity,
           localBand,
@@ -267,107 +270,61 @@ export function useBirdex({
         placeSet.places,
         regions,
       );
-
-      if (status === 'out-of-region') {
-        if (heard) {
-          rareEntries.push({
-            label,
-            detection,
-            heard,
-            popularity,
-            effectivePopularity,
-            localBand,
-          });
-        }
-        continue;
-      }
-      // in-region or unknown — both count as birdex candidates.
-      birdexEntries.push({
+      if (status === 'out-of-region') continue;
+      inRegionUnseen.push({
         label,
-        detection,
-        heard,
+        heard: false,
+        isRare: false,
+        isUnconfirmed: false,
         popularity,
         effectivePopularity,
         localBand,
       });
     }
 
-    // Total distinct heard species (in-region + unknown + out-of-region
-    // vagrants). This is the single counter the user sees in the
-    // LockedTile. `detectionByName` already deduped by scientific name,
-    // so its size is the exact answer.
-    const heardCount = detectionByName.size;
-    const { tier, budget } = tierForHeardCount(heardCount);
-    const tierTarget = Number.isFinite(budget) ? budget : birdexEntries.length;
+    // Order confirmed birds newest-first by detection timestamp. Ties
+    // broken by common name for determinism.
+    confirmed.sort((a, b) => {
+      const diff =
+        (b.detection?.timestamp ?? 0) - (a.detection?.timestamp ?? 0);
+      if (diff !== 0) return diff;
+      return a.label.commonName.localeCompare(b.label.commonName);
+    });
 
-    // Rank the in-region birdex by EFFECTIVE popularity (pageviews +
-    // iNat local-observation bonus). This pulls locally-abundant
-    // species above globally-famous ones that don't occur near the
-    // user. Falls back to raw popularity when no local map is loaded.
-    // Ties broken by raw popularity first (so a non-local famous bird
-    // still beats a non-local obscure bird), then alphabetically.
-    const byPopularity = [...birdexEntries].sort((a, b) => {
+    // Order unconfirmed by the encounter store's lastSeenAt,
+    // newest first. Falls back to common-name alphabetical when
+    // timestamps tie (shouldn't happen in practice — timestamps
+    // are ms precision).
+    unconfirmed.sort((a, b) => {
+      const aRow = encountered?.get(a.label.scientificName.toLowerCase());
+      const bRow = encountered?.get(b.label.scientificName.toLowerCase());
+      const diff = (bRow?.lastSeenAt ?? 0) - (aRow?.lastSeenAt ?? 0);
+      if (diff !== 0) return diff;
+      return a.label.commonName.localeCompare(b.label.commonName);
+    });
+
+    // Starter set: the top-N in-region unseen species by effective
+    // popularity. Tie-break on raw popularity first (so a non-local
+    // famous bird still beats a non-local obscure bird), then
+    // alphabetical. This is the same ordering the old tier-1 list
+    // used, just capped at a fixed 10 instead of the old 10/50/
+    // 150/300 ladder.
+    inRegionUnseen.sort((a, b) => {
       if (b.effectivePopularity !== a.effectivePopularity) {
         return b.effectivePopularity - a.effectivePopularity;
       }
       if (b.popularity !== a.popularity) return b.popularity - a.popularity;
       return a.label.commonName.localeCompare(b.label.commonName);
     });
+    const starter = inRegionUnseen.slice(0, STARTER_VISIBLE);
 
-    // Visible assembly — the invariant is:
-    //   1. Every in-region heard bird is visible.
-    //   2. The top-`budget` most popular in-region birds are visible,
-    //      full stop. Heard status doesn't shrink this window.
-    //   3. Render heard birds first (newest-first), then the unheard
-    //      popular tail — no duplicates.
-    // This matters at low tiers: if a user heard 6 obscure in-region
-    // birds, they still want to see all 10 tier-1 popular birds to go
-    // hunt for next. Under the old "cap total cells at budget" rule,
-    // they'd only see 4 popular cells, which is the bug we're fixing.
-    const popularSlice = Number.isFinite(budget)
-      ? byPopularity.slice(0, budget)
-      : byPopularity;
-    const popularSet = new Set(popularSlice.map((e) => e.label.index));
-
-    const heardEntries = birdexEntries
-      .filter((e) => e.heard)
-      .sort(
-        (a, b) =>
-          (b.detection?.timestamp ?? 0) - (a.detection?.timestamp ?? 0),
-      );
-    const heardIndices = new Set(heardEntries.map((e) => e.label.index));
-
-    // Unheard popular cells — the tier window minus the heard ones
-    // we're about to prepend. Preserves popularity order.
-    const popularUnheardCells = popularSlice.filter(
-      (e) => !heardIndices.has(e.label.index),
-    );
-
-    const visible = [...heardEntries, ...popularUnheardCells];
-
-    // Hidden = every in-region entry that's neither heard nor in the
-    // tier's top-N popular set. Used only for the LockedTile's count
-    // ("Hear N more birds to unlock more") — not rendered in the grid.
-    const hidden = birdexEntries
-      .filter(
-        (e) => !e.heard && !popularSet.has(e.label.index),
-      )
-      .sort((a, b) => a.label.commonName.localeCompare(b.label.commonName));
-
-    rareEntries.sort(
-      (a, b) => (b.detection?.timestamp ?? 0) - (a.detection?.timestamp ?? 0),
-    );
+    const visible = [...confirmed, ...unconfirmed, ...starter];
 
     return {
       visible,
-      hidden,
-      rareFinds: rareEntries,
-      heardCount,
-      tier,
-      tierTarget,
-      visibleCount: visible.length,
-      totalCount: birdexEntries.length,
+      heardCount: confirmed.length,
+      encounteredCount: confirmed.length + unconfirmed.length,
       isRegionalized,
     };
-  }, [labels, regions, placeSet, detections, localSpeciesMap]);
+  }, [labels, regions, placeSet, detections, encountered, localSpeciesMap]);
 }

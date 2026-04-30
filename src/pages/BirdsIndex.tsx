@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Lock, MapPin, Sparkles } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
   BirdInfoDialog,
@@ -41,7 +41,8 @@ import {
 } from '@/hooks/useDetectionAccumulator';
 import { useUserRegion } from '@/hooks/useUserRegion';
 import { useSpeciesRegions } from '@/hooks/useSpeciesRegions';
-import { useBirdex, type BirdexEntry, BIRDEX_TIERS } from '@/hooks/useBirdex';
+import { useBirdex, type BirdexEntry } from '@/hooks/useBirdex';
+import { useEncounteredSpecies } from '@/hooks/useEncounteredSpecies';
 import { useLocalSpeciesBands } from '@/hooks/useLocalSpeciesBands';
 import { useNearestObservation } from '@/hooks/useNearestObservation';
 import { isSpeciesInRegion } from '@/lib/birdnet/speciesRegions';
@@ -52,7 +53,6 @@ import {
   lookupLocal,
 } from '@/lib/inat/localSpecies';
 import { fetchInatTaxonId } from '@/hooks/useInatTaxonId';
-import { toast } from '@/hooks/useToast';
 import { cn } from '@/lib/utils';
 
 // Memoized wrapper around the stock LoginArea component. LoginArea owns
@@ -336,6 +336,14 @@ const IndexInner = () => {
   // the .bin-only behavior when the map isn't available.
   const { map: localSpeciesMap } = useLocalSpeciesBands(coarse);
 
+  // Durable record of every species the user has ever heard a
+  // qualifying (>= MIN_RAW_CONFIDENCE) prediction for. Drives the
+  // birdex's "unconfirmed" bucket — species that produced at least
+  // one hit but never accumulated enough evidence to be promoted.
+  // The imperative `record` callback is stable across renders; we
+  // fire it from the accumulator's per-hit hook below.
+  const { encountered, record: recordEncountered } = useEncounteredSpecies();
+
   // Lazy per-species nearest-observation resolver. Calls `resolve`
   // warm the cache; the damper uses `peek` to read synchronously on
   // the hot path.
@@ -409,12 +417,23 @@ const IndexInner = () => {
     [placeSet, speciesRegions, localSpeciesMap, nearest],
   );
 
-  // Warm caches for species the user is actively hearing. Fires from
-  // useDetectionAccumulator's ingest on every floored prediction;
-  // deduped via the in-flight set + memory caches so repeat hits are
-  // effectively free.
+  // Warm caches for species the user is actively hearing, and record
+  // them in the durable encountered-species store that feeds the
+  // birdex's "unconfirmed" bucket. Fires from useDetectionAccumulator's
+  // ingest on every floored prediction; deduped via the in-flight set
+  // + memory caches so repeat hits are effectively free.
   const handleSpeciesHit = useCallback(
-    (label: BirdLabel) => {
+    (label: BirdLabel, timestamp: number) => {
+      // Always record the encounter first — this is the canonical
+      // "BirdNET produced a qualifying hit for this species on this
+      // device" signal. The store is idempotent + optimistic so it
+      // costs effectively nothing on repeat hits.
+      recordEncountered({
+        scientificName: label.scientificName,
+        commonName: label.commonName,
+        timestamp,
+      });
+
       if (!coarse) return;
       if (!localSpeciesMap) return;
       // Don't bother refining if this species wasn't seen near the
@@ -459,7 +478,7 @@ const IndexInner = () => {
           taxonIdInFlightRef.current.delete(key);
         });
     },
-    [coarse, localSpeciesMap, nearest],
+    [coarse, localSpeciesMap, nearest, recordEncountered],
   );
 
   const { ingest, confirmedSightings, forgetConfirmed, pendingLeader, latestHit } =
@@ -519,69 +538,31 @@ const IndexInner = () => {
   const birdex = useBirdex({
     placeSet,
     detections: mergedDetections,
+    encountered,
     localSpeciesMap,
   });
 
-  // Tier-unlock toast. The tier is derived purely from birdex state —
-  // no persistence. On the first render for a given region we silently
-  // capture the tier (so an existing user with 47 heard birds doesn't
-  // get slammed with 3 replayed toasts on page load); subsequent
-  // *increases* during the same session trigger a toast.
-  //
-  // Region-keyed: changing location resets the baseline so moving from
-  // Texas to Paris doesn't spuriously toast.
-  const regionKey = placeSet
-    ? `${placeSet.continent}/${placeSet.country ?? ''}/${placeSet.subdivision ?? ''}`
-    : '';
-  const lastTierRef = useRef<{ region: string; tier: number } | null>(null);
-  useEffect(() => {
-    if (!birdex.isRegionalized) return;
-    const current = birdex.tier;
-    const prev = lastTierRef.current;
-    // Region changed (or first ever) — silently seed the baseline.
-    if (!prev || prev.region !== regionKey) {
-      lastTierRef.current = { region: regionKey, tier: current };
-      return;
+  // Selecting a cell opens the info dialog. Unheard cells surface as
+  // either plain starter entries or "unconfirmed" (encountered but
+  // never promoted). The entry carries its own rare/unconfirmed
+  // flags so the dialog can theme itself appropriately without us
+  // re-deriving them from range classification.
+  const handleSelectBirdex = useCallback((entry: BirdexEntry) => {
+    if (entry.detection) {
+      setSelectedSubject({ kind: 'detection', detection: entry.detection });
+    } else {
+      setSelectedSubject({
+        kind: 'label',
+        label: entry.label,
+        isRare: entry.isRare || undefined,
+      });
     }
-    if (current > prev.tier) {
-      // Cleared one or more tiers since last render. Toast the count
-      // the user just crossed (BIRDEX_TIERS is 0-indexed by tier-1; we
-      // toast the *previous* tier's target since that's the milestone
-      // they reached). Only toast once per transition — multi-tier
-      // jumps within a single session are rare but possible if
-      // history arrives after initial render.
-      const milestoneIdx = prev.tier - 1; // 0-indexed
-      const milestone = BIRDEX_TIERS[milestoneIdx];
-      if (typeof milestone === 'number') {
-        toast({
-          title: `${milestone} birds unlocked`,
-          description: 'Keep listening — more species revealed.',
-        });
-      }
-      lastTierRef.current = { region: regionKey, tier: current };
-    }
-  }, [regionKey, birdex.tier, birdex.isRegionalized]);
-
-  const handleSelectBirdex = useCallback(
-    (label: BirdLabel, detection: Detection | undefined) => {
-      if (detection) {
-        setSelectedSubject({ kind: 'detection', detection });
-      } else {
-        setSelectedSubject({ kind: 'label', label });
-      }
-    },
-    [],
-  );
-  const handleSelectRare = useCallback(
-    (label: BirdLabel, detection: Detection | undefined) => {
-      if (detection) {
-        setSelectedSubject({ kind: 'detection', detection });
-      } else {
-        setSelectedSubject({ kind: 'label', label, isRare: true });
-      }
-    },
-    [],
-  );
+    // Note: `entry.isUnconfirmed` is not threaded into the dialog
+    // today — the dialog already treats "label kind, not heard" as
+    // its unheard state, which is visually appropriate. If we ever
+    // want dedicated copy for encountered-but-unconfirmed birds on
+    // the dialog, this is the seam.
+  }, []);
 
   const handleDelete = useCallback(
     async (detection: Detection) => {
@@ -800,22 +781,10 @@ const IndexInner = () => {
               />
             )
           ) : (
-            <>
-              <BirdexGrid
-                visible={birdex.visible}
-                hidden={birdex.hidden}
-                tier={birdex.tier}
-                tierTarget={birdex.tierTarget}
-                heardCount={birdex.heardCount}
-                onSelect={handleSelectBirdex}
-              />
-              {birdex.rareFinds.length > 0 ? (
-                <RareFindsSection
-                  entries={birdex.rareFinds}
-                  onSelect={handleSelectRare}
-                />
-              ) : null}
-            </>
+            <BirdexGrid
+              visible={birdex.visible}
+              onSelect={handleSelectBirdex}
+            />
           )}
         </section>
 
@@ -903,28 +872,20 @@ function formatPlaceSet(placeSet: UserPlaceSet): string {
   return parts.join(' · ');
 }
 
-/** The main birdex grid. Renders the current-tier popular set plus any
- * heard birds at the top, and — if more in-region species exist beyond
- * the current tier — appends a single `LockedTile` at the end of the
- * grid as the sole discovery affordance. There is intentionally no
- * manual "show all" button; the only way to reveal rarer birds is to
- * hear more of the current tier. */
+/** The main birdex grid. Renders a flat list of confirmed, unconfirmed,
+ * and starter-set cells in that order. Confirmed cells may carry the
+ * "rare" badge (out-of-region sighting); unconfirmed cells get a "?"
+ * badge to signal "BirdNET heard *something* that might have been
+ * this". There is no locked tile and no tier gating — the grid grows
+ * as the user hears more birds, one at a time. */
 const BirdexGrid = memo(function BirdexGrid({
   visible,
-  hidden,
-  tier,
-  tierTarget,
-  heardCount,
   onSelect,
 }: {
   visible: BirdexEntry[];
-  hidden: BirdexEntry[];
-  tier: number;
-  tierTarget: number;
-  heardCount: number;
-  onSelect: (label: BirdLabel, detection: Detection | undefined) => void;
+  onSelect: (entry: BirdexEntry) => void;
 }) {
-  if (visible.length === 0 && hidden.length === 0) {
+  if (visible.length === 0) {
     return (
       <Card className="mt-8 border-dashed bg-white/40 dark:bg-indigo-950/30">
         <CardContent className="py-12 text-center">
@@ -937,12 +898,6 @@ const BirdexGrid = memo(function BirdexGrid({
     );
   }
 
-  // Only show the locked tile when there are actually more species to
-  // unlock. At the unlimited tier (cleared 300) `tierTarget` is
-  // Infinity and `hidden` is empty — nothing left to lock.
-  const showLocked = hidden.length > 0 && Number.isFinite(tierTarget);
-  const remaining = Math.max(0, tierTarget - heardCount);
-
   return (
     <div
       className={cn(
@@ -953,112 +908,11 @@ const BirdexGrid = memo(function BirdexGrid({
       {visible.map((entry) => (
         <SpeciesCell
           key={entry.label.index}
-          label={entry.label}
-          detection={entry.detection}
-          heard={entry.heard}
+          entry={entry}
           onSelect={onSelect}
         />
       ))}
-      {showLocked ? (
-        <LockedTile tier={tier} remaining={remaining} />
-      ) : null}
     </div>
-  );
-});
-
-/**
- * End-of-grid tile that stands in for the "hidden" bucket. Shaped like
- * a SpeciesCell so it slots into the same grid without breaking the
- * layout. Passive: no onClick — the only way to advance is to hear more
- * birds. The subtitle adapts to how many the user still needs.
- */
-const LockedTile = memo(function LockedTile({
-  tier,
-  remaining,
-}: {
-  tier: number;
-  remaining: number;
-}) {
-  const subtitle =
-    remaining === 1
-      ? 'Hear 1 more bird to unlock more'
-      : `Hear ${remaining.toLocaleString()} more birds to unlock more`;
-
-  return (
-    <div
-      aria-label={subtitle}
-      className={cn(
-        'group flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl',
-        'border border-dashed border-stone-300/80 bg-white/40 p-3 text-center',
-        'dark:border-indigo-800/40 dark:bg-indigo-950/30',
-      )}
-    >
-      <div
-        className={cn(
-          'flex h-11 w-11 items-center justify-center rounded-full',
-          'bg-stone-200/80 text-stone-500',
-          'dark:bg-indigo-900/50 dark:text-stone-400',
-        )}
-        aria-hidden
-      >
-        <Lock className="h-5 w-5" />
-      </div>
-      <p className="text-[11px] font-medium leading-tight text-stone-600 sm:text-xs dark:text-stone-300">
-        {subtitle}
-      </p>
-      <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 dark:text-stone-500">
-        Tier {tier}
-      </p>
-    </div>
-  );
-});
-
-const RareFindsSection = memo(function RareFindsSection({
-  entries,
-  onSelect,
-}: {
-  entries: BirdexEntry[];
-  onSelect: (label: BirdLabel, detection: Detection | undefined) => void;
-}) {
-  return (
-    <section className="mt-14">
-      <div className="flex items-end justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <div className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-amber-700 dark:text-amber-300">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            Rare finds
-          </div>
-          <h2 className="font-serif text-xl font-semibold leading-tight text-stone-900 sm:text-2xl dark:text-stone-50">
-            {entries.length === 1
-              ? '1 bird outside your region'
-              : `${entries.length} birds outside your region`}
-          </h2>
-          <p className="max-w-xl text-sm text-stone-500 dark:text-stone-400">
-            These birds weren't expected here — maybe a vagrant, a pet, or a
-            detection the model isn't sure about. They're listed separately
-            so they don't crowd your regular checklist.
-          </p>
-        </div>
-      </div>
-
-      <div
-        className={cn(
-          'mt-6 grid gap-3 sm:gap-4',
-          'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
-        )}
-      >
-        {entries.map((entry) => (
-          <SpeciesCell
-            key={entry.label.index}
-            label={entry.label}
-            detection={entry.detection}
-            heard={entry.heard}
-            rare
-            onSelect={onSelect}
-          />
-        ))}
-      </div>
-    </section>
   );
 });
 

@@ -252,16 +252,21 @@ export interface AccumulatorOptions {
    * floor checks, regardless of whether it ultimately confirms. Used
    * by the host to opportunistically warm caches for species the user
    * is actively hearing — notably the iNat nearest-observation lookup
-   * that refines confidence damping beyond the 5-band bulk signal.
+   * that refines confidence damping beyond the 5-band bulk signal,
+   * and the durable encountered-species store that populates the
+   * birdex's "unconfirmed" bucket.
    *
    * Fire-and-forget from the accumulator's perspective — the callback
    * runs after the prediction is ingested, so any async work it kicks
-   * off doesn't block the ingest hot path.
+   * off doesn't block the ingest hot path. `timestamp` is the ingest
+   * time (ms epoch) so persistent consumers can stamp first/last-seen
+   * without reading `Date.now()` and disagreeing with the audio
+   * chunk clock.
    *
    * Captured in a ref like `locationAdjuster` so handlers can freely
    * re-identify on render.
    */
-  onSpeciesHit?: (label: BirdLabel) => void;
+  onSpeciesHit?: (label: BirdLabel, timestamp: number) => void;
 }
 
 export interface AccumulatorApi {
@@ -600,7 +605,7 @@ export function useDetectionAccumulator(
       // the NEXT ingest. Fire after the floor check so we don't
       // spend cache budget on noise below threshold.
       try {
-        onSpeciesHitRef.current?.(label);
+        onSpeciesHitRef.current?.(label, timestamp);
       } catch (error) {
         // Never let a misbehaving host callback crash the audio
         // pipeline — this is a fire-and-forget hint, not a

@@ -15,42 +15,31 @@
 // observed to enter the viewport at least once. After that, the query is
 // enabled permanently so scrolling back up doesn't re-fetch.
 //
-// Confirmed (heard && !rare) cells additionally expose an inline
-// "play reference song" button in the same top-right slot that
-// would otherwise hold the green checkmark badge. Clicking it
-// toggles playback of the species' reference recording (Wikipedia/
-// Commons first, iNaturalist fallback — the same source the
-// BirdInfoDialog uses) without opening the dialog. Pending and
-// unheard species don't get this affordance — we only hand out the
-// quick-soundboard control once a species is conclusively in the
-// checklist.
+// Three top-right badge treatments, mutually exclusive:
+//   - Rare heard:   amber "Rare" chip (non-interactive).
+//   - Confirmed:    emerald play button that triggers reference-song
+//                   playback inline, without opening the dialog.
+//   - Unconfirmed:  stone "?" chip (non-interactive) signalling
+//                   "BirdNET heard *something* that might have been
+//                   this bird, but we're not sure".
+// Plain unheard / starter-set cells get no badge.
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bird, Play, Sparkles } from 'lucide-react';
-import type { BirdLabel } from '@/lib/birdnet/labels';
-import type { Detection } from '@/components/BirdCard';
+import { Bird, HelpCircle, Play, Sparkles } from 'lucide-react';
+import type { BirdexEntry } from '@/hooks/useBirdex';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound } from '@/hooks/useBirdSound';
 import { useRegisterSongPlayback } from '@/hooks/useSongPlayback';
 import { cn } from '@/lib/utils';
 
 interface SpeciesCellProps {
-  label: BirdLabel;
-  detection?: Detection;
-  heard: boolean;
-  /** Visual treatment flag: heard-but-out-of-region. Renders a "rare"
-   * badge and a warmer palette. */
-  rare?: boolean;
-  onSelect: (label: BirdLabel, detection: Detection | undefined) => void;
+  entry: BirdexEntry;
+  onSelect: (entry: BirdexEntry) => void;
 }
 
-function SpeciesCellImpl({
-  label,
-  detection,
-  heard,
-  rare = false,
-  onSelect,
-}: SpeciesCellProps) {
+function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
+  const { label, heard, isRare, isUnconfirmed } = entry;
+
   // Lazy-enable the Wikipedia query once the cell has entered the
   // viewport. This keeps the cost at "N visible cells" rather than "all
   // 6,500 cells at mount", which would saturate the network + cache on
@@ -67,8 +56,8 @@ function SpeciesCellImpl({
     // ahead + behind so scrolling feels instant even on slow networks.
     const observer = new IntersectionObserver(
       (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
+        for (const e of entries) {
+          if (e.isIntersecting) {
             setHasBeenVisible(true);
             observer.disconnect();
             break;
@@ -89,7 +78,7 @@ function SpeciesCellImpl({
   // Confirmed (heard && !rare) cells expose the inline play control;
   // everyone else gets the normal click-to-open-dialog behavior
   // without a soundboard.
-  const confirmed = heard && !rare;
+  const confirmed = heard && !isRare;
 
   return (
     <div
@@ -125,9 +114,7 @@ function SpeciesCellImpl({
         'transition-[transform,filter] duration-300',
         'hover:-translate-y-0.5',
         heard
-          ? rare
-            ? 'drop-shadow-md hover:drop-shadow-lg'
-            : 'drop-shadow-md hover:drop-shadow-lg'
+          ? 'drop-shadow-md hover:drop-shadow-lg'
           : 'drop-shadow-sm hover:drop-shadow-md',
       )}
     >
@@ -144,11 +131,13 @@ function SpeciesCellImpl({
           peer/group variants keep the semantics correct. */}
       <button
         type="button"
-        onClick={() => onSelect(label, detection)}
+        onClick={() => onSelect(entry)}
         aria-label={
           heard
             ? `Heard ${label.commonName}. Show details.`
-            : `${label.commonName}. Not yet heard. Show details.`
+            : isUnconfirmed
+              ? `${label.commonName}. Possibly heard. Show details.`
+              : `${label.commonName}. Not yet heard. Show details.`
         }
         className="peer absolute inset-0 rounded-2xl text-left focus:outline-none"
       />
@@ -166,7 +155,7 @@ function SpeciesCellImpl({
           'peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
           'peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-[#0d1230]',
           heard
-            ? rare
+            ? isRare
               ? 'border-amber-300/80 bg-amber-50/80 peer-focus-visible:ring-amber-500/60 dark:border-amber-700/50 dark:bg-amber-950/30 dark:peer-focus-visible:ring-amber-400/60'
               : 'border-emerald-300/80 bg-white/90 peer-focus-visible:ring-emerald-500/60 dark:border-emerald-700/50 dark:bg-indigo-950/60 dark:peer-focus-visible:ring-amber-400/60'
             : cn(
@@ -179,7 +168,13 @@ function SpeciesCellImpl({
                 // on the clip wrapper rather than the individual
                 // layers so the effect is uniform and survives the
                 // image-loading handoff from gradient to photo.
-                'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
+                // Unconfirmed cells fade slightly less than plain
+                // starter cells — they've produced at least one hit,
+                // so they deserve to read a bit "warmer" than a
+                // never-encountered popular species.
+                isUnconfirmed
+                  ? 'opacity-75 group-hover:opacity-90'
+                  : 'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
               ),
         )}
       >
@@ -200,7 +195,7 @@ function SpeciesCellImpl({
             className={cn(
               'absolute inset-0 h-full w-full object-cover object-[50%_25%]',
               'transition-transform duration-500 group-hover:scale-[1.04]',
-              !heard && 'saturate-50',
+              !heard && !isUnconfirmed && 'saturate-50',
             )}
           />
         ) : (
@@ -233,13 +228,13 @@ function SpeciesCellImpl({
         </div>
       </div>
 
-      {/* Top-right badge region. Three mutually-exclusive treatments:
-          - Rare heard: amber "Rare" chip (non-interactive).
-          - Confirmed (heard && !rare): emerald play button that
-            triggers the same reference-song playback as the dialog.
-          - Unheard: no badge. */}
+      {/* Top-right badge region. Mutually exclusive treatments:
+          - Rare heard:   amber "Rare" chip (non-interactive).
+          - Confirmed:    emerald play button (inline soundboard).
+          - Unconfirmed:  stone "?" chip (non-interactive).
+          - Starter/unheard/unseen: no badge. */}
       {heard ? (
-        rare ? (
+        isRare ? (
           <span className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow ring-1 ring-white/20 backdrop-blur-sm">
             <Sparkles className="h-2.5 w-2.5" aria-hidden />
             Rare
@@ -251,6 +246,13 @@ function SpeciesCellImpl({
             enabled={confirmed && hasBeenVisible}
           />
         )
+      ) : isUnconfirmed ? (
+        <span
+          aria-label="Possible detection — not confirmed"
+          className="pointer-events-none absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-stone-700/70 text-white shadow ring-1 ring-white/20 backdrop-blur-sm dark:bg-indigo-950/80"
+        >
+          <HelpCircle className="h-4 w-4" aria-hidden />
+        </span>
       ) : null}
     </div>
   );
@@ -451,14 +453,22 @@ function BirdGlyph({ faded }: { faded?: boolean }) {
 }
 
 // Memo aggressively — the parent grid re-renders whenever any detection
-// is added, so 6,500 cells re-evaluating props would be catastrophic.
+// is added, so 6,500 cells re-evaluating their DOM would be
+// catastrophic. `useBirdex` rebuilds its entry objects on every
+// render (they capture popularity / localBand as well, which can
+// drift as iNat data loads), so we compare the fields that actually
+// drive the cell's rendered output rather than relying on reference
+// equality.
 export const SpeciesCell = memo(SpeciesCellImpl, (prev, next) => {
+  if (prev.onSelect !== next.onSelect) return false;
+  const a = prev.entry;
+  const b = next.entry;
   return (
-    prev.label === next.label &&
-    prev.detection?.eventId === next.detection?.eventId &&
-    prev.detection?.timestamp === next.detection?.timestamp &&
-    prev.heard === next.heard &&
-    prev.rare === next.rare &&
-    prev.onSelect === next.onSelect
+    a.label === b.label &&
+    a.heard === b.heard &&
+    a.isRare === b.isRare &&
+    a.isUnconfirmed === b.isUnconfirmed &&
+    a.detection?.eventId === b.detection?.eventId &&
+    a.detection?.timestamp === b.detection?.timestamp
   );
 });
