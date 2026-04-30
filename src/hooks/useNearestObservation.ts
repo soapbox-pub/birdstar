@@ -33,7 +33,7 @@
 // ref (via useRef) so they can call it from hot-path callbacks
 // without re-identifying them on every render.
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { CoarseLatLon } from '@/hooks/useUserRegion';
 import { fetchNearestObservationDistance } from '@/lib/inat/localSpecies';
 import {
@@ -63,28 +63,30 @@ export interface UseNearestObservationApi {
 export function useNearestObservation(
   coarse: CoarseLatLon | null,
 ): UseNearestObservationApi {
-  // In-memory cache so the damper can look up a distance
-  // synchronously after a successful resolve. Key is inatTaxonId;
-  // reset whenever the coarse coord changes.
+  // In-memory caches. Resetting them when the coord changes happens
+  // in an effect — writes during render would trigger
+  // react-hooks/refs (Strict Mode double-invocation would split the
+  // two `.current = new Map()` assignments across renders and tear
+  // the cache mid-read).
   //
-  // Value encoding:
+  // Value encoding for `memoryCache`:
   //   number → known distance in km
   //   null   → resolved as "no observation found"
   //   undefined (i.e. key absent) → not resolved yet
   const memoryCache = useRef<Map<number, number | null>>(new Map());
-
-  // Track in-flight requests so concurrent calls dedupe.
   const inFlight = useRef<Map<number, Promise<number | null>>>(new Map());
 
-  // Track the last coord so we can clear the memory cache on move.
-  // Storing the serialized form keeps the dependency array stable.
-  const lastCoordKey = useRef<string | null>(null);
   const coordKeyStr = coarse ? `${coarse.lat},${coarse.lon}` : null;
-  if (lastCoordKey.current !== coordKeyStr) {
+  const lastCoordKey = useRef<string | null>(coordKeyStr);
+  useEffect(() => {
+    if (lastCoordKey.current === coordKeyStr) return;
+    // Coord moved: throw out the session caches so a species that
+    // was 5 km from the old location doesn't get served as a "nearby"
+    // answer at the new one.
     memoryCache.current = new Map();
     inFlight.current = new Map();
     lastCoordKey.current = coordKeyStr;
-  }
+  }, [coordKeyStr]);
 
   const resolve = useCallback<UseNearestObservationApi['resolve']>(
     async (inatTaxonId) => {
@@ -130,8 +132,7 @@ export function useNearestObservation(
   );
 
   const peek = useCallback<UseNearestObservationApi['peek']>((inatTaxonId) => {
-    const v = memoryCache.current.get(inatTaxonId);
-    return v;
+    return memoryCache.current.get(inatTaxonId);
   }, []);
 
   return { resolve, peek };

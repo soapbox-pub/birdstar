@@ -251,11 +251,18 @@ export function ZapDialog({ target, children, className }: ZapDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    if (target) {
-      setComment('Zapped with MKStack!');
-    }
-  }, [target]);
+  // Seed the comment with the default whenever the target changes
+  // (including first mount). Done as an in-render state adjustment
+  // rather than an effect — React explicitly supports setState during
+  // render when it's keyed off a changing input, and doing it here
+  // avoids a redundant render pass + silences
+  // react-hooks/set-state-in-effect.
+  const [prevTargetId, setPrevTargetId] = useState<string | null>(null);
+  const targetId = `${target.kind}:${target.id}`;
+  if (prevTargetId !== targetId) {
+    setPrevTargetId(targetId);
+    setComment('Zapped with MKStack!');
+  }
 
   // Generate QR code
   useEffect(() => {
@@ -313,20 +320,22 @@ export function ZapDialog({ target, children, className }: ZapDialogProps) {
     }
   };
 
-  useEffect(() => {
-    if (open) {
-      setAmount(100);
-      setInvoice(null);
-      setCopied(false);
-      setQrCodeUrl('');
-    } else {
-      // Clean up state when dialog closes
-      setAmount(100);
-      setInvoice(null);
-      setCopied(false);
-      setQrCodeUrl('');
-    }
-  }, [open, setInvoice]);
+  // Reset dialog-local state on every open/close transition. Doing
+  // this in-render (keyed off a `prevOpen` sentinel) rather than
+  // in an effect sidesteps react-hooks/set-state-in-effect and
+  // avoids an extra render cycle when the dialog toggles.
+  //
+  // `setInvoice` comes from `useZaps`, not a local setter, so it's
+  // still fine to call during render — the same reasoning applies:
+  // it's state that resets on a prop edge.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
+    setAmount(100);
+    setInvoice(null);
+    setCopied(false);
+    setQrCodeUrl('');
+  }
 
   const handleZap = () => {
     const finalAmount = typeof amount === 'string' ? parseInt(amount, 10) : amount;

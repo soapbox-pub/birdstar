@@ -28,7 +28,7 @@
 // action appears at the bottom of the dialog so the user can retract
 // their published sighting.
 import { HelpCircle, Loader2, Play, Sparkles, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Detection } from '@/components/BirdCard';
 import type { BirdLabel } from '@/lib/birdnet/labels';
 import {
@@ -438,14 +438,20 @@ function CollapsibleProse({
   toneClass?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const shouldCollapse = text.length > collapseThreshold;
-
   // Reset collapse state when the text itself changes (species
   // switch). Prevents the dialog from inheriting "expanded" from a
-  // previous bird whose extract may have been much longer.
-  useEffect(() => {
+  // previous bird whose extract may have been much longer. Done as
+  // an in-render state adjustment (tracking the previous `text` in
+  // a sibling useState) rather than an effect: React explicitly
+  // allows setting state during render when it's keyed off a
+  // changing input, and avoiding the effect skips an extra render
+  // cycle + silences the react-hooks/set-state-in-effect lint.
+  const [prevText, setPrevText] = useState(text);
+  if (prevText !== text) {
+    setPrevText(text);
     setExpanded(false);
-  }, [text]);
+  }
+  const shouldCollapse = text.length > collapseThreshold;
 
   if (!shouldCollapse) {
     return <p className={className}>{text}</p>;
@@ -915,10 +921,14 @@ function useSongPlayer(
   // Reset to paused state whenever the source changes (e.g. opening
   // the dialog on a different species). Without this, switching
   // birds while one is playing would leave `isPlaying=true` pointing
-  // at a stale audio element.
-  useEffect(() => {
+  // at a stale audio element. In-render adjustment (see
+  // CollapsibleProse above) rather than an effect so there's no
+  // extra render cycle and no lint warning about setState-in-effect.
+  const [prevAudioUrl, setPrevAudioUrl] = useState<string | undefined>(sound?.audioUrl);
+  if (prevAudioUrl !== sound?.audioUrl) {
+    setPrevAudioUrl(sound?.audioUrl);
     setIsPlaying(false);
-  }, [sound?.audioUrl]);
+  }
 
   const toggle = () => {
     const el = audioRef.current;

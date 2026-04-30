@@ -95,11 +95,29 @@ export function ConstellationDrawer({
     return arr;
   }, [drawingStars]);
 
-  // Ensure the Mine tab is active whenever the user has a drawing in progress,
-  // since that's where the draw pane now lives.
-  useEffect(() => {
-    if (open && drawingStars.length > 0) setTab("mine");
-  }, [open, drawingStars.length]);
+  // Ensure the Mine tab is active whenever the sheet opens or the user
+  // starts/extends an in-progress drawing, since that's where the draw
+  // pane now lives. Tracks previous `open` and drawing-empty state in
+  // siblings refs and adjusts during render rather than in an effect,
+  // which avoids the react-hooks/set-state-in-effect warning and cuts
+  // an extra render cycle on every tab switch.
+  const [prevOpen, setPrevOpen] = useState(open);
+  const [prevHasDrawing, setPrevHasDrawing] = useState(drawingStars.length > 0);
+  const hasDrawing = drawingStars.length > 0;
+  if (prevOpen !== open || prevHasDrawing !== hasDrawing) {
+    setPrevOpen(open);
+    setPrevHasDrawing(hasDrawing);
+    // Fire on the open false→true edge (reopening with a drawing) and
+    // on the hasDrawing false→true edge (starting a drawing with the
+    // sheet already open). Don't fire on the opposite edges — we
+    // don't want to snap back to "mine" when the user clears their
+    // drawing or closes the sheet.
+    const openedWithDrawing = !prevOpen && open && hasDrawing;
+    const startedDrawingWhileOpen = open && !prevHasDrawing && hasDrawing;
+    if ((openedWithDrawing || startedDrawingWhileOpen) && tab !== "mine") {
+      setTab("mine");
+    }
+  }
 
   // Listen for the cross-component "edit this constellation" event so
   // that Edit triggered from elsewhere (profile sheet, our own kebab

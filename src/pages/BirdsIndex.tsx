@@ -39,6 +39,7 @@ import {
   useDetectionAccumulator,
   MIN_RAW_CONFIDENCE,
   OUT_OF_REGION_MULTIPLIER,
+  type PendingLeader,
 } from '@/hooks/useDetectionAccumulator';
 import { useUserRegion } from '@/hooks/useUserRegion';
 import { useSpeciesRegions } from '@/hooks/useSpeciesRegions';
@@ -529,17 +530,26 @@ const IndexInner = () => {
   // or clears entirely we leave the dialog alone -- auto-closing or
   // auto-swapping the subject would yank the dialog out from under
   // the user mid-read.
-  useEffect(() => {
-    if (!pendingLeader) return;
-    setSelectedSubject((prev) => {
-      if (prev?.kind !== 'pending') return prev;
-      if (prev.label.scientificName !== pendingLeader.scientificName) {
-        return prev;
-      }
-      if (prev.progress === pendingLeader.progress) return prev;
-      return { ...prev, progress: pendingLeader.progress };
-    });
-  }, [pendingLeader]);
+  //
+  // Done as an in-render state adjustment keyed on `pendingLeader`
+  // identity rather than a setState-in-effect, so we don't eat the
+  // react-hooks/set-state-in-effect warning and so the dialog's
+  // progress is always consistent with the just-rendered
+  // `pendingLeader` (no one-frame lag).
+  const [prevLeader, setPrevLeader] = useState<PendingLeader | null>(null);
+  if (prevLeader !== pendingLeader) {
+    setPrevLeader(pendingLeader);
+    if (pendingLeader) {
+      setSelectedSubject((prev) => {
+        if (prev?.kind !== 'pending') return prev;
+        if (prev.label.scientificName !== pendingLeader.scientificName) {
+          return prev;
+        }
+        if (prev.progress === pendingLeader.progress) return prev;
+        return { ...prev, progress: pendingLeader.progress };
+      });
+    }
+  }
 
   const mergedDetections = useMemo<Detection[]>(() => {
     const byKey = new Map<string, Detection>();
@@ -624,9 +634,14 @@ const IndexInner = () => {
 
   const [userPaused, setUserPaused] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
-  useEffect(() => {
-    if (recorder.isRecording || recorder.error) setIsStarting(false);
-  }, [recorder.isRecording, recorder.error]);
+  // Clear the "starting" spinner once the recorder actually starts
+  // (or reports an error). Done as an in-render adjustment keyed on
+  // the recorder status, rather than a setState-in-effect — it's a
+  // pure state clear conditional on prop values, so it fits React's
+  // "adjust state during render" pattern precisely.
+  if (isStarting && (recorder.isRecording || recorder.error)) {
+    setIsStarting(false);
+  }
 
   const mode: Mode = useMemo(() => {
     if (status.state === 'error' || recorder.error) return 'error';

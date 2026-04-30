@@ -78,14 +78,38 @@ export function useLocalSpeciesBands(
   // actually changing.
   const lastCoordRef = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!coarse) {
+  // Handle the null-coarse case via an in-render state adjustment.
+  // When `coarse` transitions back to null (user loses geolocation,
+  // permission revoked, etc.), we need to drop any cached map so we
+  // don't keep serving a stale one — but the resets are pure state
+  // changes, no async work, so there's no reason to run them from
+  // an effect. Doing it here avoids react-hooks/set-state-in-effect
+  // and skips an extra render cycle on the transition. The
+  // coord-tracking ref is cleared in a small effect below so we
+  // don't end up writing to a ref during render.
+  const [prevHasCoarse, setPrevHasCoarse] = useState<boolean>(!!coarse);
+  const hasCoarse = !!coarse;
+  if (prevHasCoarse !== hasCoarse) {
+    setPrevHasCoarse(hasCoarse);
+    if (!hasCoarse) {
       setCachedMap(null);
       setCacheRead(true);
       setCacheWasStale(false);
-      lastCoordRef.current = null;
-      return;
     }
+  }
+
+  // The ref-clear half of the same reset: isolated into its own
+  // effect so it doesn't trigger react-hooks/refs (refs should
+  // never be written during render). Runs in the same commit as
+  // the state reset above, and the main `useEffect` below short-
+  // circuits on null `coarse` so there's no race where we'd try
+  // to fetch with a stale `lastCoordRef`.
+  useEffect(() => {
+    if (!coarse) lastCoordRef.current = null;
+  }, [coarse]);
+
+  useEffect(() => {
+    if (!coarse) return;
     const key = `${coarse.lat},${coarse.lon}`;
     if (lastCoordRef.current === key) return;
     lastCoordRef.current = key;

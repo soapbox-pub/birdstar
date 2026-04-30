@@ -289,15 +289,18 @@ export function SkyMap({
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   // Recompute star sky positions every ~2 seconds (time moves slowly)
-  const [now, setNow] = useState<Date>(date ?? new Date());
+  // when the parent doesn't pin a specific `date`. When it does, we
+  // simply use that prop directly — no local state sync needed.
+  // Keeping the `tickingNow` piece of state for the interval-driven
+  // path and deriving the final `now` from `date ?? tickingNow` lets
+  // us avoid a setState-in-effect.
+  const [tickingNow, setTickingNow] = useState<Date>(() => new Date());
   useEffect(() => {
-    if (date) {
-      setNow(date);
-      return;
-    }
-    const id = window.setInterval(() => setNow(new Date()), 2000);
+    if (date) return; // parent drives the time; no ticker needed.
+    const id = window.setInterval(() => setTickingNow(new Date()), 2000);
     return () => window.clearInterval(id);
   }, [date]);
+  const now = date ?? tickingNow;
 
   // Compute horizontal coordinates of all stars for this location/time
   const starHorz = useMemo(() => {

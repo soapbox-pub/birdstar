@@ -306,10 +306,16 @@ function SpeciesCellPlayButton({
   // two different species, but if the sound lookup resolves late
   // (e.g. Wikipedia → iNat fallback), the audio element's src will
   // swap out from under us and any stale `isPlaying=true` would be
-  // pointing at a released resource.
-  useEffect(() => {
+  // pointing at a released resource. In-render adjustment instead
+  // of an effect so there's no extra render cycle and no
+  // react-hooks/set-state-in-effect warning.
+  const [prevAudioUrl, setPrevAudioUrl] = useState<string | undefined>(
+    sound?.audioUrl,
+  );
+  if (prevAudioUrl !== sound?.audioUrl) {
+    setPrevAudioUrl(sound?.audioUrl);
     setIsPlaying(false);
-  }, [sound?.audioUrl]);
+  }
 
   const disabled = !sound;
 
