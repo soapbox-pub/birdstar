@@ -2,7 +2,7 @@
 //
 // The bulk useLocalSpeciesBands gives us a 5-way distance band for
 // every species observed within 500 km; that's enough to drive
-// roster ranking. For CONFIDENCE DAMPING though, we often want
+// birdex ranking. For CONFIDENCE DAMPING though, we often want
 // finer granularity — a species whose nearest observation is 35 km
 // away (inside the 50 km band) shouldn't get quite the same damping
 // treatment as one at 5 km (inside the 25 km band). This hook

@@ -1,4 +1,4 @@
-// Roster hook for the checklist home page.
+// Birdex hook for the checklist home page.
 //
 // Combines the BirdNET labels, the species-regions place table, the user's
 // resolved location (continent + country + subdivision), and their
@@ -8,7 +8,7 @@
 //                 pageview popularity, plus every heard bird (heard >
 //                 unheard even when the heard bird isn't in the popular
 //                 set). This is what the user sees by default.
-//   hidden      — the rest of the in-region roster (obscure, range-
+//   hidden      — the rest of the in-region birdex (obscure, range-
 //                 tagged, but not popular enough to show at the current
 //                 tier). Species that cross into `visible` when the
 //                 user advances a tier come out of this bucket.
@@ -25,7 +25,7 @@
 //   10 heard  → reveal tier 2, budget = 50
 //   50 heard  → reveal tier 3, budget = 150
 //   150 heard → reveal tier 4, budget = 300
-//   300 heard → full roster (locked tile vanishes)
+//   300 heard → full birdex (locked tile vanishes)
 //
 // The count that drives advancement is `heardCount` — just total
 // distinct species heard across all sessions, period. Rare finds
@@ -81,39 +81,39 @@ import {
  * names", 50 is "common backyard birds", 150 is "regional regulars",
  * 300 is "you know your area". Beyond 300 we stop auto-advancing.
  */
-export const ROSTER_TIERS: readonly number[] = [10, 50, 150, 300];
+export const BIRDEX_TIERS: readonly number[] = [10, 50, 150, 300];
 
 /**
  * The tier reached when the user has heard every bird in tier 4 (300).
  * `budget = Infinity` expresses "no auto-cap; every in-region species
  * is visible at this point".
  */
-export const UNLIMITED_TIER = ROSTER_TIERS.length + 1;
+export const UNLIMITED_TIER = BIRDEX_TIERS.length + 1;
 
 /**
  * Compute the active tier + budget from a count of distinct heard
  * birds. Pure function so the toast side effect in Index.tsx can
  * invoke it against a tracked previous value without re-running the
- * roster memo.
+ * birdex memo.
  */
 export function tierForHeardCount(heardTotal: number): {
-  /** 1-indexed tier number. 1..ROSTER_TIERS.length, or UNLIMITED_TIER
+  /** 1-indexed tier number. 1..BIRDEX_TIERS.length, or UNLIMITED_TIER
    * when the user has cleared the final tier. */
   tier: number;
   /** Visible budget for unheard popular species in this tier. Equal to
-   * `ROSTER_TIERS[tier-1]` for ordinary tiers; `Infinity` for
+   * `BIRDEX_TIERS[tier-1]` for ordinary tiers; `Infinity` for
    * `UNLIMITED_TIER` (no auto-cap; every in-region species is shown). */
   budget: number;
 } {
-  for (let i = 0; i < ROSTER_TIERS.length; i++) {
-    if (heardTotal < ROSTER_TIERS[i]) {
-      return { tier: i + 1, budget: ROSTER_TIERS[i] };
+  for (let i = 0; i < BIRDEX_TIERS.length; i++) {
+    if (heardTotal < BIRDEX_TIERS[i]) {
+      return { tier: i + 1, budget: BIRDEX_TIERS[i] };
     }
   }
   return { tier: UNLIMITED_TIER, budget: Infinity };
 }
 
-export interface RosterEntry {
+export interface BirdexEntry {
   label: BirdLabel;
   /** The matching Nostr/session detection, if the user has heard this
    * species. Undefined for not-yet-heard entries. */
@@ -135,20 +135,20 @@ export interface RosterEntry {
   localBand: import('@/lib/inat/localSpecies').LocalBand | undefined;
 }
 
-export interface Roster {
-  /** The default-visible roster: the current tier's top-N in-region
+export interface Birdex {
+  /** The default-visible birdex: the current tier's top-N in-region
    * species by popularity, UNIONED with every heard bird (regardless
    * of rank or region). Heard birds surface first (newest-first); the
    * top-N popular set always renders in full below, even if the user
    * has heard 0 of them. This guarantees there are at least N popular
    * cells on screen to look at + listen for. */
-  visible: RosterEntry[];
+  visible: BirdexEntry[];
   /** In-region species that are neither heard nor in the current
    * tier's top-N popular set. Not rendered in the grid; represented
    * only by the trailing LockedTile count. Alphabetical. */
-  hidden: RosterEntry[];
+  hidden: BirdexEntry[];
   /** Birds the user has heard that aren't plausibly here. Newest-first. */
-  rareFinds: RosterEntry[];
+  rareFinds: BirdexEntry[];
   /** Total distinct species heard, across all sessions and all
    * regions. Drives tier advancement and the "Hear N more birds"
    * counter on the LockedTile. kind-2473 events are location-less by
@@ -157,7 +157,7 @@ export interface Roster {
   /** Active tier (1-indexed). `UNLIMITED_TIER` after tier 4 is cleared. */
   tier: number;
   /** How many distinct birds must be heard to unlock the next tier.
-   * Equals `ROSTER_TIERS[tier-1]` for tiers 1-4, `Infinity` for the
+   * Equals `BIRDEX_TIERS[tier-1]` for tiers 1-4, `Infinity` for the
    * unlimited final tier. */
   tierTarget: number;
   /** Number of cells actually rendered in `visible`. */
@@ -168,10 +168,10 @@ export interface Roster {
   isRegionalized: boolean;
 }
 
-interface UseRosterOptions {
+interface UseBirdexOptions {
   placeSet: UserPlaceSet | null;
   /** Detections from history + the live session, already deduped by the
-   * caller. Used to flip `heard` status on the matching roster entries. */
+   * caller. Used to flip `heard` status on the matching birdex entries. */
   detections: Detection[];
   /** Optional iNat-derived local species map (from useLocalSpeciesBands).
    * When present, species observed near the user get a popularity
@@ -181,18 +181,18 @@ interface UseRosterOptions {
   localSpeciesMap?: LocalSpeciesMap | null;
 }
 
-export function useRoster({
+export function useBirdex({
   placeSet,
   detections,
   localSpeciesMap,
-}: UseRosterOptions): Roster {
+}: UseBirdexOptions): Birdex {
   const labelsQuery = useBirdLabels();
   const regionsQuery = useSpeciesRegions();
 
   const labels = labelsQuery.data;
   const regions = regionsQuery.data;
 
-  return useMemo<Roster>(() => {
+  return useMemo<Birdex>(() => {
     if (!labels) {
       return {
         visible: [],
@@ -200,7 +200,7 @@ export function useRoster({
         rareFinds: [],
         heardCount: 0,
         tier: 1,
-        tierTarget: ROSTER_TIERS[0],
+        tierTarget: BIRDEX_TIERS[0],
         visibleCount: 0,
         totalCount: 0,
         isRegionalized: false,
@@ -218,8 +218,8 @@ export function useRoster({
 
     const isRegionalized = Boolean(placeSet && regions?.loaded);
 
-    const rosterEntries: RosterEntry[] = [];
-    const rareEntries: RosterEntry[] = [];
+    const birdexEntries: BirdexEntry[] = [];
+    const rareEntries: BirdexEntry[] = [];
 
     // Helper: compute the (popularity, effectivePopularity, localBand)
     // triple for a given label. iNat local-observation presence is
@@ -251,7 +251,7 @@ export function useRoster({
         computePopularity(label);
 
       if (!isRegionalized || !placeSet || !regions) {
-        rosterEntries.push({
+        birdexEntries.push({
           label,
           detection,
           heard,
@@ -281,8 +281,8 @@ export function useRoster({
         }
         continue;
       }
-      // in-region or unknown — both count as roster candidates.
-      rosterEntries.push({
+      // in-region or unknown — both count as birdex candidates.
+      birdexEntries.push({
         label,
         detection,
         heard,
@@ -298,15 +298,15 @@ export function useRoster({
     // so its size is the exact answer.
     const heardCount = detectionByName.size;
     const { tier, budget } = tierForHeardCount(heardCount);
-    const tierTarget = Number.isFinite(budget) ? budget : rosterEntries.length;
+    const tierTarget = Number.isFinite(budget) ? budget : birdexEntries.length;
 
-    // Rank the in-region roster by EFFECTIVE popularity (pageviews +
+    // Rank the in-region birdex by EFFECTIVE popularity (pageviews +
     // iNat local-observation bonus). This pulls locally-abundant
     // species above globally-famous ones that don't occur near the
     // user. Falls back to raw popularity when no local map is loaded.
     // Ties broken by raw popularity first (so a non-local famous bird
     // still beats a non-local obscure bird), then alphabetically.
-    const byPopularity = [...rosterEntries].sort((a, b) => {
+    const byPopularity = [...birdexEntries].sort((a, b) => {
       if (b.effectivePopularity !== a.effectivePopularity) {
         return b.effectivePopularity - a.effectivePopularity;
       }
@@ -329,7 +329,7 @@ export function useRoster({
       : byPopularity;
     const popularSet = new Set(popularSlice.map((e) => e.label.index));
 
-    const heardEntries = rosterEntries
+    const heardEntries = birdexEntries
       .filter((e) => e.heard)
       .sort(
         (a, b) =>
@@ -348,7 +348,7 @@ export function useRoster({
     // Hidden = every in-region entry that's neither heard nor in the
     // tier's top-N popular set. Used only for the LockedTile's count
     // ("Hear N more birds to unlock more") — not rendered in the grid.
-    const hidden = rosterEntries
+    const hidden = birdexEntries
       .filter(
         (e) => !e.heard && !popularSet.has(e.label.index),
       )
@@ -366,7 +366,7 @@ export function useRoster({
       tier,
       tierTarget,
       visibleCount: visible.length,
-      totalCount: rosterEntries.length,
+      totalCount: birdexEntries.length,
       isRegionalized,
     };
   }, [labels, regions, placeSet, detections, localSpeciesMap]);

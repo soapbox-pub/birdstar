@@ -13,7 +13,7 @@ export interface BirdLabel {
 // Non-bird labels baked into BirdNET V2.4. These are scientificName values.
 // BirdNET V2.4 ships a handful of ambient mammals, amphibians and insects
 // that vocalize in bird-recording contexts (a dog barking, a frog calling,
-// cicadas...); we exclude them from the roster because the checklist is
+// cicadas...); we exclude them from the birdex because the checklist is
 // specifically about birds, even though the model itself will detect them.
 const NON_BIRD_LABELS = new Set([
   // Synthetic / non-animal classes

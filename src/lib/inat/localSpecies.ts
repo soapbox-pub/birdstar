@@ -7,7 +7,7 @@
 // iNaturalist within 50 km of you in the last 5 years. The latter is
 // a much tighter signal for two downstream consumers:
 //
-//   - Roster ranking (useRoster): birds observed near you should
+//   - Birdex ranking (useBirdex): birds observed near you should
 //     outrank globally popular birds that don't actually occur in
 //     your neighborhood. A user in Austin shouldn't see a Boat-tailed
 //     Grackle in their tier-1 top-10 when it's a coastal species the
@@ -36,7 +36,7 @@
 //     refine its band to a specific distance by calling
 //     /v1/observations?taxon_id=...&order_by=distance&per_page=1. Caches
 //     the result for 7 days. Only fires for species the user is
-//     actually hearing, not the whole roster — so this is a rare
+//     actually hearing, not the whole birdex — so this is a rare
 //     operation that can't runaway.
 //
 // Rate limiting: iNat's guideline is 60 req/min soft, 100 req/min hard,
@@ -169,7 +169,7 @@ export const BAND_TO_DAMPING: Record<LocalRadiusKm, number> = {
 
 /**
  * Popularity bonuses by distance band, added to the base (pageview-
- * derived) popularity in useRoster's visible-bucket ordering.
+ * derived) popularity in useBirdex's visible-bucket ordering.
  *
  * The values are chosen to be large enough that a nearby sparrow
  * outranks a globally famous species that doesn't occur locally,

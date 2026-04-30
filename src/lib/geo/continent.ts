@@ -15,7 +15,7 @@
 //     just the coarse continent.
 //
 //   resolveUserPlaces(lat, lon) → UserPlaceSet | null
-//     The new call the checklist roster uses. Returns the full hierarchy
+//     The new call the checklist birdex uses. Returns the full hierarchy
 //     of places the user is in — e.g. { continent: 'NA', country: 'US',
 //     subdivision: 'US-TX' }, plus a flattened Set<Place> for matching.
 //
@@ -111,7 +111,7 @@ export function regionToMask(region: RegionCode): number {
 // specific country (and optionally a subdivision within that country).
 // Checks are ordered most-specific-first: subdivisions before their
 // countries, then the country-only fallbacks. A user who lands outside
-// every bounding box keeps just their continent — the roster will still
+// every bounding box keeps just their continent — the birdex will still
 // work, just coarser.
 //
 // Bounding boxes are intentionally generous at coastal edges so a user
@@ -137,9 +137,9 @@ interface PlaceBox {
 // US ecoregion boxes. A point can match several (they overlap
 // intentionally): a user in central Texas lands in US-SE + US-MW + US-SW,
 // which is the union of "Native birds of..." regions Wikipedia uses for
-// species there. Broad overlaps are fine because the roster uses set
+// species there. Broad overlaps are fine because the birdex uses set
 // intersection — being in an extra ecoregion only adds candidates to
-// the roster, never removes correct ones.
+// the birdex, never removes correct ones.
 const US_ECOREGIONS: PlaceBox[] = [
   // Hawaii (state-only place)
   { box: [18.5, 22.5, -161, -154.5], country: 'US', subdivision: 'US-HI' },
@@ -348,7 +348,7 @@ const COUNTRY_BOXES: PlaceBox[] = [
  * lands in US-SE + US-MW + US-SW simultaneously, reflecting the way
  * Wikipedia actually categorizes the avifauna there (central Texas
  * species carry overlapping region tags). Being in an extra ecoregion
- * only adds candidates to the roster, never removes real ones.
+ * only adds candidates to the birdex, never removes real ones.
  *
  * The first country/continent match wins for the summary `country` /
  * `subdivision` fields (used for labeling "Texas · United States" in

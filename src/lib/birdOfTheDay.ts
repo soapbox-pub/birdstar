@@ -10,7 +10,7 @@
 // Candidate list:
 //
 //   When we have an iNat nearby-species map from `useLocalSpeciesBands`,
-//   the candidates are roster species actually observed near the user,
+//   the candidates are birdex species actually observed near the user,
 //   sorted by tightest distance band first, then by observation count
 //   descending. This means low lucky numbers pick the most-local,
 //   most-abundant birds and higher lucky numbers reach into rarer or
@@ -20,7 +20,7 @@
 //
 //   When no map is available (no location shared, marine/remote area,
 //   iNat down, first load before fan-out completes) the candidates are
-//   the full `isBird` roster sorted by scientific name — still
+//   the full `isBird` birdex sorted by scientific name — still
 //   deterministic, still per-sign, just location-blind.
 //
 // The PRNG primitive used elsewhere in this project isn't needed here:
@@ -49,11 +49,11 @@ export type BirdOfTheDaySource =
   | { kind: "fallback" };
 
 export interface BirdOfTheDay {
-  /** The chosen species from the BirdNET roster. */
+  /** The chosen species from the BirdNET birdex. */
   label: BirdLabel;
   /** The sign the pick is for. */
   sign: ZodiacId;
-  /** Provenance of the pick (nearby vs. fallback roster draw). */
+  /** Provenance of the pick (nearby vs. fallback birdex draw). */
   source: BirdOfTheDaySource;
 }
 
@@ -106,7 +106,7 @@ function rankNearby(
  * @param labels      Full BirdNET label list from `useBirdLabels()`.
  * @param localMap    iNat nearby-species map from `useLocalSpeciesBands()`.
  *                    Pass `null` when not available — the pick falls
- *                    back to a uniform pass over the full roster sorted
+ *                    back to a uniform pass over the full birdex sorted
  *                    by scientific name.
  * @param sign        The zodiac sign being rendered.
  * @param luckyNumber The sign's lucky number for today, from
@@ -114,7 +114,7 @@ function rankNearby(
  *                    the selector — the bird is
  *                    `candidates[luckyNumber % candidates.length]`.
  *
- * Returns null only when the roster has no `isBird` entries, which
+ * Returns null only when the birdex has no `isBird` entries, which
  * in practice means `useBirdLabels()` hasn't resolved yet. Callers
  * should render a skeleton in that case.
  */
@@ -127,7 +127,7 @@ export function birdOfTheDay(
   const birds = labels.filter((l) => l.isBird);
   if (birds.length === 0) return null;
 
-  // Primary path: we have an iNat map with at least one roster
+  // Primary path: we have an iNat map with at least one birdex
   // species observed in the 25–500 km window.
   if (localMap) {
     const ranked = rankNearby(birds, localMap);
@@ -141,7 +141,7 @@ export function birdOfTheDay(
     }
   }
 
-  // Fallback: no map, empty map, or no roster species observed in
+  // Fallback: no map, empty map, or no birdex species observed in
   // range. Sort by scientific name for a stable pass (we can't index
   // into the raw labels array because its file order isn't guaranteed
   // stable across BirdNET label revisions).

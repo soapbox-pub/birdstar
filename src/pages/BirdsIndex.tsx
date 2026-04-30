@@ -41,7 +41,7 @@ import {
 } from '@/hooks/useDetectionAccumulator';
 import { useUserRegion } from '@/hooks/useUserRegion';
 import { useSpeciesRegions } from '@/hooks/useSpeciesRegions';
-import { useRoster, type RosterEntry, ROSTER_TIERS } from '@/hooks/useRoster';
+import { useBirdex, type BirdexEntry, BIRDEX_TIERS } from '@/hooks/useBirdex';
 import { useLocalSpeciesBands } from '@/hooks/useLocalSpeciesBands';
 import { useNearestObservation } from '@/hooks/useNearestObservation';
 import { isSpeciesInRegion } from '@/lib/birdnet/speciesRegions';
@@ -81,7 +81,7 @@ const CONTINENTS: { code: RegionCode; label: string }[] = [
 ];
 
 // Countries the scraper assigns first-class country codes to. Users
-// in these countries can narrow their roster from continent to country.
+// in these countries can narrow their birdex from continent to country.
 // Keep in sync with the PLACE_TO_CODES table in
 // `scripts/build-species-regions.ts`.
 const COUNTRIES: {
@@ -332,7 +332,7 @@ const IndexInner = () => {
 
   // iNat local-observation signal. Only active when geolocation is
   // granted (useLocalSpeciesBands returns a null map for manual-picker
-  // users). This is additive: the roster and damper both fall back to
+  // users). This is additive: the birdex and damper both fall back to
   // the .bin-only behavior when the map isn't available.
   const { map: localSpeciesMap } = useLocalSpeciesBands(coarse);
 
@@ -516,13 +516,13 @@ const IndexInner = () => {
     return Array.from(byKey.values());
   }, [history.detections, confirmedSightings]);
 
-  const roster = useRoster({
+  const birdex = useBirdex({
     placeSet,
     detections: mergedDetections,
     localSpeciesMap,
   });
 
-  // Tier-unlock toast. The tier is derived purely from roster state —
+  // Tier-unlock toast. The tier is derived purely from birdex state —
   // no persistence. On the first render for a given region we silently
   // capture the tier (so an existing user with 47 heard birds doesn't
   // get slammed with 3 replayed toasts on page load); subsequent
@@ -535,8 +535,8 @@ const IndexInner = () => {
     : '';
   const lastTierRef = useRef<{ region: string; tier: number } | null>(null);
   useEffect(() => {
-    if (!roster.isRegionalized) return;
-    const current = roster.tier;
+    if (!birdex.isRegionalized) return;
+    const current = birdex.tier;
     const prev = lastTierRef.current;
     // Region changed (or first ever) — silently seed the baseline.
     if (!prev || prev.region !== regionKey) {
@@ -545,13 +545,13 @@ const IndexInner = () => {
     }
     if (current > prev.tier) {
       // Cleared one or more tiers since last render. Toast the count
-      // the user just crossed (ROSTER_TIERS is 0-indexed by tier-1; we
+      // the user just crossed (BIRDEX_TIERS is 0-indexed by tier-1; we
       // toast the *previous* tier's target since that's the milestone
       // they reached). Only toast once per transition — multi-tier
       // jumps within a single session are rare but possible if
       // history arrives after initial render.
       const milestoneIdx = prev.tier - 1; // 0-indexed
-      const milestone = ROSTER_TIERS[milestoneIdx];
+      const milestone = BIRDEX_TIERS[milestoneIdx];
       if (typeof milestone === 'number') {
         toast({
           title: `${milestone} birds unlocked`,
@@ -560,9 +560,9 @@ const IndexInner = () => {
       }
       lastTierRef.current = { region: regionKey, tier: current };
     }
-  }, [regionKey, roster.tier, roster.isRegionalized]);
+  }, [regionKey, birdex.tier, birdex.isRegionalized]);
 
-  const handleSelectRoster = useCallback(
+  const handleSelectBirdex = useCallback(
     (label: BirdLabel, detection: Detection | undefined) => {
       if (detection) {
         setSelectedSubject({ kind: 'detection', detection });
@@ -749,14 +749,14 @@ const IndexInner = () => {
           the nav hugs the viewport edges on any screen, matching the
           edge-to-edge HUD in Stars mode. `pointer-events-none` on the
           strip + `pointer-events-auto` on each child keeps the area
-          between the two groups click-through to the roster. */}
+          between the two groups click-through to the birdex. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 p-4">
         <div className="pointer-events-auto">
           <ModeSelector />
         </div>
         <div className="pointer-events-auto flex flex-1 items-center justify-end gap-2">
           {/* Manual-location users need a way to re-open the picker; it
-              used to live inside RosterHeader. Tucked next to the
+              used to live inside BirdexHeader. Tucked next to the
               LoginArea as a compact pill so manual users can rehome
               themselves without clearing localStorage. Geo users never
               see this — their location is re-resolved automatically. */}
@@ -782,7 +782,7 @@ const IndexInner = () => {
 
         <section className="mt-8 w-full">
           {!labels ? (
-            <RosterLoadingShimmer />
+            <BirdexLoadingShimmer />
           ) : !placeSet ? (
             // No resolved region yet. While geolocation is still
             // resolving (or hasn't fired yet on first paint), show a
@@ -801,17 +801,17 @@ const IndexInner = () => {
             )
           ) : (
             <>
-              <RosterGrid
-                visible={roster.visible}
-                hidden={roster.hidden}
-                tier={roster.tier}
-                tierTarget={roster.tierTarget}
-                heardCount={roster.heardCount}
-                onSelect={handleSelectRoster}
+              <BirdexGrid
+                visible={birdex.visible}
+                hidden={birdex.hidden}
+                tier={birdex.tier}
+                tierTarget={birdex.tierTarget}
+                heardCount={birdex.heardCount}
+                onSelect={handleSelectBirdex}
               />
-              {roster.rareFinds.length > 0 ? (
+              {birdex.rareFinds.length > 0 ? (
                 <RareFindsSection
-                  entries={roster.rareFinds}
+                  entries={birdex.rareFinds}
                   onSelect={handleSelectRare}
                 />
               ) : null}
@@ -903,13 +903,13 @@ function formatPlaceSet(placeSet: UserPlaceSet): string {
   return parts.join(' · ');
 }
 
-/** The main roster grid. Renders the current-tier popular set plus any
+/** The main birdex grid. Renders the current-tier popular set plus any
  * heard birds at the top, and — if more in-region species exist beyond
  * the current tier — appends a single `LockedTile` at the end of the
  * grid as the sole discovery affordance. There is intentionally no
  * manual "show all" button; the only way to reveal rarer birds is to
  * hear more of the current tier. */
-const RosterGrid = memo(function RosterGrid({
+const BirdexGrid = memo(function BirdexGrid({
   visible,
   hidden,
   tier,
@@ -917,8 +917,8 @@ const RosterGrid = memo(function RosterGrid({
   heardCount,
   onSelect,
 }: {
-  visible: RosterEntry[];
-  hidden: RosterEntry[];
+  visible: BirdexEntry[];
+  hidden: BirdexEntry[];
   tier: number;
   tierTarget: number;
   heardCount: number;
@@ -1017,7 +1017,7 @@ const RareFindsSection = memo(function RareFindsSection({
   entries,
   onSelect,
 }: {
-  entries: RosterEntry[];
+  entries: BirdexEntry[];
   onSelect: (label: BirdLabel, detection: Detection | undefined) => void;
 }) {
   return (
@@ -1222,7 +1222,7 @@ function LocationGate({
 }
 
 /** Initial shimmer while labels are loading. */
-function RosterLoadingShimmer() {
+function BirdexLoadingShimmer() {
   return (
     <div
       className={cn(

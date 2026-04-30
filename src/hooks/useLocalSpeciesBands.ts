@@ -5,10 +5,10 @@
 // Shape chosen to be as close to zero-cost as possible for consumers:
 //
 //   - Returns a plain `map` reference (not wrapped in a query object)
-//     because downstream hooks (useRoster, useDetectionAccumulator's
+//     because downstream hooks (useBirdex, useDetectionAccumulator's
 //     locationAdjuster) just want to do case-insensitive lookups and
 //     don't care about fetch status.
-//   - Returns `isLoading` so the roster can optionally show a stable
+//   - Returns `isLoading` so the birdex can optionally show a stable
 //     "personalizing" hint on the very first cold load, and so tests
 //     can verify the hook doesn't block when the user hasn't granted
 //     geolocation.
@@ -55,7 +55,7 @@ export interface UseLocalSpeciesBandsResult {
   map: LocalSpeciesMap | null;
   /** True while the first-ever fetch for this coord is in flight
    * (i.e. no stale entry was available to serve). Consumers usually
-   * DON'T need to gate on this; the roster renders fine without a
+   * DON'T need to gate on this; the birdex renders fine without a
    * local map. */
   isLoading: boolean;
   /** True if the currently-served map came from an expired cache
@@ -68,7 +68,7 @@ export function useLocalSpeciesBands(
 ): UseLocalSpeciesBandsResult {
   // Seed state from the synchronous-looking path: we try the cache on
   // mount and surface whatever we find before the network call even
-  // starts. This avoids a "flash of unranked roster" on warm loads.
+  // starts. This avoids a "flash of unranked birdex" on warm loads.
   const [cachedMap, setCachedMap] = useState<LocalSpeciesMap | null>(null);
   const [cacheRead, setCacheRead] = useState(false);
   const [cacheWasStale, setCacheWasStale] = useState(false);

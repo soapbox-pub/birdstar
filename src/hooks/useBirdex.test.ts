@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   tierForHeardCount,
-  ROSTER_TIERS,
+  BIRDEX_TIERS,
   UNLIMITED_TIER,
-} from './useRoster';
+} from './useBirdex';
 
 describe('tierForHeardCount', () => {
   it('starts at tier 1 with budget 10 for a fresh user', () => {
@@ -38,15 +38,15 @@ describe('tierForHeardCount', () => {
   });
 
   it('UNLIMITED_TIER is exactly one past the configured ladder', () => {
-    expect(UNLIMITED_TIER).toBe(ROSTER_TIERS.length + 1);
+    expect(UNLIMITED_TIER).toBe(BIRDEX_TIERS.length + 1);
   });
 
-  it('ROSTER_TIERS matches the product brief', () => {
+  it('BIRDEX_TIERS matches the product brief', () => {
     // This test exists specifically to catch accidental changes to the
     // tier ladder. The current 10/50/150/300 ladder was chosen
     // intentionally (household names → backyard birds → regional
     // regulars → "you know your area"); updating it is a UX call, not
     // a refactor.
-    expect(ROSTER_TIERS).toEqual([10, 50, 150, 300]);
+    expect(BIRDEX_TIERS).toEqual([10, 50, 150, 300]);
   });
 });

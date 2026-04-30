@@ -42,10 +42,10 @@
 // score is ~23500, at 100/day ~10000, at 2/day ~2384. A value of 0 means
 // "pageviews unknown" (article not resolved, script failed, etc.) — the
 // runtime treats unknown as a low-but-nonzero score so those species
-// sink to the bottom of the visible roster rather than being hidden.
+// sink to the bottom of the visible birdex rather than being hidden.
 //
 // BRN2 files are rejected at load: the popularity field is load-bearing
-// for the visible-roster UX and silently defaulting to zero would hide
+// for the visible-birdex UX and silently defaulting to zero would hide
 // every bird. Users pick up the new file on next page load.
 //
 // The file is built offline by `scripts/build-species-regions.ts`, which
@@ -73,12 +73,12 @@ export interface SpeciesRegionsTable {
    * array when the index is out of range or the species has no data. */
   placesForLabel(labelIndex: number): readonly Place[];
   /** Iterate every label index whose place list contains any of the
-   * given places. Used by the roster to enumerate locals efficiently
+   * given places. Used by the birdex to enumerate locals efficiently
    * without scanning every label individually. */
   labelsMatchingAny(places: ReadonlySet<Place>): number[];
   /** Log-scaled Wikipedia pageview score for a label (see file header
    * for scaling). 0 means "unknown / not resolved". Used to rank the
-   * visible roster — highest scores first. */
+   * visible birdex — highest scores first. */
   popularityFor(labelIndex: number): number;
 }
 
@@ -276,7 +276,7 @@ export function parseTable(
 
   // Inverted lookup: place → list of label indices. Built lazily because
   // most callers only need the forward lookup (labelsMatchingAny is used
-  // by the roster at mount, placesForLabel is used per-cell).
+  // by the birdex at mount, placesForLabel is used per-cell).
   let inverted: Map<Place, number[]> | null = null;
   const buildInverted = (): Map<Place, number[]> => {
     const m = new Map<Place, number[]>();
@@ -328,7 +328,7 @@ export function parseTable(
  *   out-of-region — species has place data, none of it matches.
  *   unknown       — species has no place data, or the table isn't loaded.
  *
- * The roster uses this tri-state: "unknown" species join the roster
+ * The birdex uses this tri-state: "unknown" species join the birdex
  * (being conservative about missing data) while "out-of-region" species
  * only surface if the user has actually heard one (rare finds).
  */

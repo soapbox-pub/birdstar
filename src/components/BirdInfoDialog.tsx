@@ -1,8 +1,8 @@
 // Dialog that shows the full Wikipedia summary for a bird — either one
 // the user has just heard (a `Detection`) or one they haven't heard yet (a
-// plain `BirdLabel` from the checklist roster). Opens when the user taps a
-// roster cell, a "rare finds" card, or the "album art" in the player bar.
-// Reuses the same `useBirdInfo` query that powers the roster so the data
+// plain `BirdLabel` from the checklist birdex). Opens when the user taps a
+// birdex cell, a "rare finds" card, or the "album art" in the player bar.
+// Reuses the same `useBirdInfo` query that powers the birdex so the data
 // is already cached by the time the dialog opens.
 //
 // The dialog surfaces two field-guide affordances for every bird,
@@ -59,7 +59,7 @@ import { cn } from '@/lib/utils';
 
 /**
  * Subject of the dialog. Either a heard detection (has a timestamp +
- * confidence, possibly an eventId) or a not-yet-heard roster entry (just
+ * confidence, possibly an eventId) or a not-yet-heard birdex entry (just
  * a label). Both share `commonName` + `scientificName` which is all the
  * Wikipedia lookup and header rendering need.
  */
@@ -70,7 +70,7 @@ export type BirdSubject =
   // threshold but not yet confirmed. Opened when the user taps the
   // player-bar "album art" thumbnail during its pending state: the
   // thumbnail is the only surface in the app that exposes pending
-  // species (the roster only cares about confirmed/heard status and
+  // species (the birdex only cares about confirmed/heard status and
   // the pendingLeader is intentionally transient). The dialog
   // shows the same Wikipedia/sound/map content as a confirmed
   // sighting, but the footer swaps in an amber "Unconfirmed
@@ -114,7 +114,7 @@ export function BirdInfoDialog({
   const isRare = subject?.kind === 'label' ? (subject.isRare ?? false) : false;
   // A "confirmed" subject is one the user has published a real
   // detection for — i.e. the species wears the emerald checkmark on
-  // its roster cell. For these the dialog swaps its amber accents
+  // its birdex cell. For these the dialog swaps its amber accents
   // (play button, inline "read more" link) to emerald so the
   // palette inside the dialog matches the palette of the cell that
   // opened it. Pending (accumulating), not-yet-heard, and rare
@@ -204,7 +204,7 @@ export function BirdInfoDialog({
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/60 to-transparent" />
 
               {/* "Rare find" chip overlay — shown for out-of-region heard
-                  birds so the context from the roster carries through
+                  birds so the context from the birdex carries through
                   into the detail dialog. */}
               {isRare ? (
                 <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm">
@@ -484,7 +484,7 @@ function truncateAtWordBoundary(text: string, max: number): string {
  *      detections (logged-out users) and not-yet-heard labels:
  *      nothing (the timestamp alone is low-value UI noise, and the
  *      fact that a bird is unheard is already conveyed by the
- *      absence of the emerald "heard" badge on its roster tile).
+ *      absence of the emerald "heard" badge on its birdex tile).
  *   2. Sources footer. Single bullet-separated line crediting the
  *      content providers: Wikipedia for the text, Wikimedia
  *      Commons or iNaturalist for the song, and the map tile
@@ -494,7 +494,7 @@ function truncateAtWordBoundary(text: string, max: number): string {
  *      provider).
  *
  * The confidence score is deliberately dropped. It was useful in
- * the roster chronology view but not here — the user is looking at
+ * the birdex chronology view but not here — the user is looking at
  * a single bird they tapped, not comparing detections, and BirdNET
  * scores aren't calibrated probabilities anyway (they're relative
  * within a single inference, not absolute "% chance it was this
@@ -938,7 +938,7 @@ function useSongPlayer(
         // the button in emerald so it matches the cell's green
         // confirmation badge — the cell opens this dialog and
         // the colors should feel continuous. Everything else
-        // (pending, unheard roster entries, rare) keeps the
+        // (pending, unheard birdex entries, rare) keeps the
         // original amber palette, which reads as "tentative /
         // notable" rather than "confirmed."
         confirmed

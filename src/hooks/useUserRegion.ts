@@ -1,11 +1,11 @@
-// User-location resolution for the roster + confidence damping.
+// User-location resolution for the birdex + confidence damping.
 //
 // The flow is:
 //   1. On mount, read any cached place set from localStorage and surface
-//      it immediately so the roster can render on return visits without
+//      it immediately so the birdex can render on return visits without
 //      re-prompting the user.
 //   2. If nothing is cached (status === 'unknown'), automatically fire
-//      the geolocation prompt. The roster can't render without a region,
+//      the geolocation prompt. The birdex can't render without a region,
 //      so sitting on an empty page waiting for the user to click a
 //      button wastes a round trip — we just ask.
 //   3. On a successful fix we resolve the lat/lon to a `UserPlaceSet`

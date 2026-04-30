@@ -18,7 +18,7 @@ import NIP19Page from "./pages/NIP19Page";
  * sheet via `useOpenedView`. In birds mode they still render the
  * checklist — the overlay just doesn't appear. That is fine: these
  * URLs are only generated while the sky map is actually being used,
- * and the roster page stays navigable.
+ * and the birdex page stays navigable.
  *
  * The catch-all `*` route is a proper 404.
  */

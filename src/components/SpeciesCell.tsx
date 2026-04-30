@@ -1,4 +1,4 @@
-// A single roster cell in the location-based bird checklist. Renders as a
+// A single birdex cell in the location-based bird checklist. Renders as a
 // button that opens the info dialog; visual state depends on whether the
 // user has heard this species.
 //
@@ -293,7 +293,7 @@ function SpeciesCellPlayButton({
   /** Null until the cell has entered the viewport once (same
    *  gating strategy as `useBirdInfo` in the parent). Keeps us
    *  from firing a Wikipedia+iNat sound lookup for every confirmed
-   *  species in the entire roster at mount. */
+   *  species in the entire birdex at mount. */
   scientificName: string | null;
   /** Gate for the query. True once the cell has been visible and
    *  the species is confirmed. */

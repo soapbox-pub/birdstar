@@ -45,7 +45,7 @@ export function ModeSelector({ className }: { className?: string }) {
       aria-label="Switch between birds and stars"
       className={cn(
         "relative inline-flex h-10 w-[168px] items-center rounded-full border p-1 backdrop-blur-md",
-        // Dark frosted pill — works over the bird roster's light
+        // Dark frosted pill — works over the bird birdex's light
         // background (via the white/10 border) and the sky's black.
         "border-white/10 bg-black/40 text-white",
         "focus-within:ring-2 focus-within:ring-white/40",

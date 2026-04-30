@@ -143,7 +143,7 @@ export function ZodiacDetailSheet({
   // 25–500 km via iNat, ranked tightest-band-first, most-observed
   // first) so the bird feels local. When no location is available
   // or iNat returned nothing for the area, the picker falls back to
-  // a stable alphabetic pass over the full BirdNET roster so the
+  // a stable alphabetic pass over the full BirdNET birdex so the
   // card still renders. `useUserRegion` auto-prompts on mount; in
   // practice Birds mode has already resolved that by the time the
   // user opens a zodiac sheet and the iNat fan-out is cached.
