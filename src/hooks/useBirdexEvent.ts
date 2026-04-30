@@ -1,10 +1,11 @@
 // Loads the current user's Birdex (kind 12473) — their Nostr-persisted
-// life list of every confirmed bird species they've ever published.
+// cumulative set of every confirmed bird species they've ever
+// published.
 //
-// The Birdex is a replaceable event (see NIP.md §"Kind 12473 — Birdex
-// (Bird Life List)") so at most one lives on the network per author. It
-// exists as an index over the user's kind 2473 detections: each species
-// appears as an `i` / `k` pair pointing at its Wikidata entity URI, in
+// The Birdex is a replaceable event (see NIP.md §"Kind 12473 —
+// Birdex") so at most one lives on the network per author. It exists
+// as an index over the user's kind 2473 detections: each species
+// appears as a bare `i` tag pointing at its Wikidata entity URI, in
 // chronological order of first detection. This hook parses that tag
 // array into an ordered list of URIs plus a Set for fast membership
 // checks during auto-publishing.
@@ -43,11 +44,14 @@ export interface BirdexEventResult {
 }
 
 /**
- * Walk the tags of a kind 12473 event in order, pairing each `i` tag
- * that matches the Wikidata URI shape with the NEXT tag in the array
- * when that next tag is `["k", "web"]`. This matches the publishing
- * convention (emit `i` immediately followed by its `k`) and rejects
- * half-specified entries whose `k` is missing or wrong.
+ * Walk the tags of a kind 12473 event in order, collecting each `i`
+ * tag whose value matches the canonical Wikidata entity URI shape.
+ * Non-matching tags are skipped silently.
+ *
+ * Per NIP.md §"Kind 12473 — Birdex", the `k` tag that NIP-73 normally
+ * pairs with `i` is deliberately omitted — the kind contract already
+ * guarantees that every valid `i` is a Wikidata entity URI. The shape
+ * regex is the trust boundary; no paired tag is consulted.
  *
  * Deduplication keeps the first occurrence so the chronological order
  * is preserved even if a malformed event somehow contains duplicate
@@ -56,15 +60,11 @@ export interface BirdexEventResult {
 function parseBirdexEvent(event: NostrEvent): string[] {
   const seen = new Set<string>();
   const uris: string[] = [];
-  const tags = event.tags;
-  for (let i = 0; i < tags.length; i++) {
-    const tag = tags[i];
+  for (const tag of event.tags) {
     if (tag[0] !== 'i') continue;
     const value = tag[1];
     if (typeof value !== 'string') continue;
     if (!WIKIDATA_ENTITY_URI_RE.test(value)) continue;
-    const next = tags[i + 1];
-    if (!next || next[0] !== 'k' || next[1] !== 'web') continue;
     if (seen.has(value)) continue;
     seen.add(value);
     uris.push(value);

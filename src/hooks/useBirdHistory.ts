@@ -38,11 +38,12 @@ function eventToDetection(
     if (!tagMap.has(name) && typeof value === 'string') tagMap.set(name, value);
   }
 
-  // Must be a `web`-keyed NIP-73 external ID pointing at a Wikidata
-  // entity — that's the canonical species identity per NIP.md.
+  // Must carry a NIP-73 `i` tag pointing at a Wikidata entity — that's
+  // the canonical species identity per NIP.md. The `k` tag that NIP-73
+  // normally pairs with `i` is deliberately omitted by this app (see
+  // NIP.md §"Kind 2473"), so we validate on URL shape alone.
   const entityUri = tagMap.get('i');
-  const k = tagMap.get('k');
-  if (!entityUri || k !== 'web') return null;
+  if (!entityUri) return null;
   if (!WIKIDATA_ENTITY_URI_RE.test(entityUri)) return null;
 
   // Species display names live in the `alt` tag. If it's missing or

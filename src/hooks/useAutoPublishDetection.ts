@@ -4,9 +4,10 @@
 // during this session so we don't spam relays on every chirp.
 //
 // On each *first-time* species confirmation this hook also republishes
-// the author's Birdex (kind 12473) — a replaceable life-list event —
-// with the new species appended in chronological order. See NIP.md
-// §"Kind 12473 — Birdex (Bird Life List)" for the schema.
+// the author's Birdex (kind 12473) — a replaceable event holding the
+// cumulative set of species the author has ever detected, in
+// chronological order. See NIP.md §"Kind 12473 — Birdex" for the
+// schema.
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -200,8 +201,8 @@ export interface UseAutoPublishDetectionOptions {
   /**
    * The author's current Birdex (kind 12473) species URIs, in
    * chronological order of first detection. Used to decide whether a
-   * newly-confirmed species is a lifer (not yet present → triggers a
-   * Birdex republish) or a known species (no Birdex change).
+   * newly-confirmed species is a lifer (not yet on the Birdex →
+   * triggers a republish) or a known species (no Birdex change).
    */
   birdexEntityUris: string[];
 }
@@ -234,7 +235,7 @@ export function useAutoPublishDetection({
   // Mirror the Birdex species URIs + membership set behind refs for the
   // same reason. `birdexUrisRef` preserves chronological order so we
   // can rebuild the replaceable event with new entries appended to the
-  // end; `birdexSetRef` gives O(1) "already on life list?" checks.
+  // end; `birdexSetRef` gives O(1) "already on the Birdex?" checks.
   const birdexUrisRef = useRef<string[]>(birdexEntityUris);
   const birdexSetRef = useRef<Set<string>>(new Set(birdexEntityUris));
   useEffect(() => {
@@ -310,7 +311,6 @@ export function useAutoPublishDetection({
                   `Bird detection: ${detection.commonName} (${detection.scientificName})`,
                 ],
                 ['i', entityUri],
-                ['k', 'web'],
               ],
               created_at: Math.floor(detection.timestamp / 1000),
             });
@@ -319,10 +319,10 @@ export function useAutoPublishDetection({
             // this URI appended to the end and republish. We check the
             // session-local set AFTER the 2473 publish succeeded so a
             // failed detection publish doesn't leak an entry into the
-            // life list. We also update the ref immediately to
-            // suppress duplicate Birdex publishes in case a second
-            // detection for the same species races in before the
-            // Nostr query refetches.
+            // Birdex. We also update the ref immediately to suppress
+            // duplicate Birdex publishes in case a second detection
+            // for the same species races in before the Nostr query
+            // refetches.
             const isLifer = !birdexSetRef.current.has(entityUri);
             if (isLifer) {
               birdexSetRef.current.add(entityUri);
@@ -330,11 +330,10 @@ export function useAutoPublishDetection({
               birdexUrisRef.current = nextUris;
 
               const birdexTags: string[][] = [
-                ['alt', `Bird life list: ${nextUris.length} species`],
+                ['alt', `Birdex: ${nextUris.length} species`],
               ];
               for (const uri of nextUris) {
                 birdexTags.push(['i', uri]);
-                birdexTags.push(['k', 'web']);
               }
 
               try {
@@ -353,13 +352,13 @@ export function useAutoPublishDetection({
                 // Roll back the local Birdex state so the next first-
                 // time detection retries the publish. The underlying
                 // kind 2473 detection is already on the network, so
-                // the user's life list can be reconstructed from
-                // history even if the Birdex temporarily lags.
+                // the user's Birdex can be reconstructed from history
+                // even if the replaceable event temporarily lags.
                 birdexSetRef.current.delete(entityUri);
                 birdexUrisRef.current = birdexUrisRef.current.filter(
                   (u) => u !== entityUri,
                 );
-                console.warn('Failed to publish Birdex life list', err);
+                console.warn('Failed to publish Birdex', err);
               }
             }
 
