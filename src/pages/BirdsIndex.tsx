@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Bird, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
   BirdInfoDialog,
@@ -928,8 +928,8 @@ const BirdexGrid = memo(function BirdexGrid({
 /**
  * Passive end-of-grid tile. Shares shape (aspect-square, rounded-2xl,
  * dashed border) with SpeciesCell so it slots into the grid cleanly,
- * but without an image layer, badge, or click target — it's a count
- * + a glyph, nothing more. Replaces the old LockedTile without any
+ * but without an image layer, badge, icon, or click target — just
+ * the count and a caption. Replaces the old LockedTile without any
  * of its unlock-count mechanics: the number is the rest of the
  * BirdNET catalog the user hasn't confirmed yet, not a gated tier
  * target.
@@ -949,17 +949,7 @@ const BirdexFooterTile = memo(function BirdexFooterTile({
         'dark:border-indigo-800/40 dark:bg-indigo-950/30',
       )}
     >
-      <div
-        className={cn(
-          'flex h-11 w-11 items-center justify-center rounded-full',
-          'bg-stone-200/80 text-stone-500',
-          'dark:bg-indigo-900/50 dark:text-stone-400',
-        )}
-        aria-hidden
-      >
-        <Bird className="h-5 w-5" strokeWidth={1.75} />
-      </div>
-      <p className="font-serif text-lg font-semibold leading-none text-stone-700 dark:text-stone-200">
+      <p className="font-serif text-2xl font-semibold leading-none text-stone-700 dark:text-stone-200">
         +{formatted}
       </p>
       <p className="text-[10px] uppercase tracking-[0.15em] text-stone-400 dark:text-stone-500">
