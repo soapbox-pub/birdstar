@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ObservationMap, MAP_ATTRIBUTION } from '@/components/ObservationMap';
+import { CommentsSection } from '@/components/comments/CommentsSection';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound, type BirdSound } from '@/hooks/useBirdSound';
 import { useInatTaxonId } from '@/hooks/useInatTaxonId';
@@ -327,6 +328,33 @@ export function BirdInfoDialog({
                 scientificName={scientificName}
                 pendingProgress={pendingProgress}
               />
+
+              {/* Per-species comment thread, keyed on the Wikidata
+                  entity URI (NIP-73 `i` / `I` tag as a `web` URL). We
+                  attach comments to the *species* rather than to a
+                  specific detection event so:
+                    • every user who opens this bird's dialog sees the
+                      same thread (a field-guide style discussion),
+                    • the thread survives even if the opening
+                      detection is deleted, and
+                    • unheard birds browsed from the birdex still
+                      have a place to discuss.
+                  Gated on a resolved `entityUri` — if Wikipedia's
+                  summary response doesn't expose `wikibase_item` for
+                  this species (rare, but possible for taxa with no
+                  Wikidata link) we simply hide the section rather
+                  than surface a dead thread tied to the wrong
+                  identifier. */}
+              {data?.entityUri ? (
+                <section className="space-y-3 border-t border-stone-200 pt-4 dark:border-stone-800">
+                  <h3 className="font-serif text-lg">Discussion</h3>
+                  <CommentsSection
+                    root={new URL(data.entityUri)}
+                    emptyStateMessage="No comments yet"
+                    emptyStateSubtitle={`Be the first to share your thoughts about the ${commonName ?? 'bird'}.`}
+                  />
+                </section>
+              ) : null}
             </div>
           </>
         ) : (

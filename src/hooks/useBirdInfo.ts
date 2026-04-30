@@ -9,6 +9,14 @@ export interface BirdInfo {
   extract: string;
   imageUrl: string | null;
   wikiUrl: string;
+  /**
+   * Canonical Wikidata entity URI (e.g. `https://www.wikidata.org/entity/Q12345`)
+   * derived from the Wikipedia summary response's `wikibase_item`. Null when
+   * the article has no linked Wikidata item — rare for taxa, but possible.
+   * Used as a stable per-species identifier for things like comment threads
+   * that should aggregate across every user who's heard (or browsed) this bird.
+   */
+  entityUri: string | null;
 }
 
 async function fetchSummary(title: string): Promise<BirdInfo | null> {
@@ -22,6 +30,13 @@ async function fetchSummary(title: string): Promise<BirdInfo | null> {
   const data = await res.json();
   if (data.type === 'disambiguation') return null;
   if (!data.extract) return null;
+  // `wikibase_item` is a Q-id like "Q12345". Normalize to the canonical
+  // entity URI shape required by NIP.md §"Kind 2473" so the same string
+  // can seed both detection events and per-species comment threads.
+  const qid = typeof data.wikibase_item === 'string' ? data.wikibase_item : null;
+  const entityUri = qid && /^Q\d+$/.test(qid)
+    ? `https://www.wikidata.org/entity/${qid}`
+    : null;
   return {
     title: data.title ?? title,
     extract: data.extract,
@@ -29,6 +44,7 @@ async function fetchSummary(title: string): Promise<BirdInfo | null> {
     wikiUrl:
       data.content_urls?.desktop?.page ??
       `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`,
+    entityUri,
   };
 }
 
