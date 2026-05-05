@@ -15,8 +15,11 @@
 //     PlayerBar or the manual-location controls.
 //
 // Clicking the pill opens a popover that explains why location is
-// needed and offers a "Try again" action that re-runs the browser's
-// geolocation prompt.
+// needed. From there a "How to enable" button opens
+// `LocationHelpDialog` with browser-specific instructions — a JS
+// retry can't override a persisted denial, so we send the user to
+// their browser settings rather than pretending a button press will
+// fix it.
 //
 // IMPLEMENTATION NOTE: this component deliberately does NOT import the
 // `useUserRegion` / `useGeolocation` hooks, even though it needs their
@@ -27,7 +30,7 @@
 // and a custom `birdstar:location-change` event that the hooks dispatch
 // after they commit a decision.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPinOff } from 'lucide-react';
 
@@ -37,6 +40,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
+import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { cn } from '@/lib/utils';
 import { useMode } from '@/hooks/useMode';
 
@@ -136,32 +140,6 @@ export function LocationDisabledIndicator({
 
   const disabled = mode === 'stars' ? starsDisabled : birdsDisabled;
 
-  const retry = useCallback(() => {
-    // Best-effort cross-hook retry: clear any persisted denial so the
-    // next hook-mount re-prompts, then dispatch the refresh event so
-    // the active page re-reads state. This avoids the indicator having
-    // to hold a reference to a hook's `request()` function.
-    try {
-      // For Birds: removing the stored decision puts the hook back into
-      // 'unknown', which re-triggers its auto-prompt on the next tick.
-      localStorage.removeItem(BIRDS_KEY);
-    } catch {
-      // Private mode / quota — not fatal.
-    }
-    window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT));
-    // Directly call the browser's geolocation API too, so the browser
-    // shows the permission prompt (or the saved denial) immediately
-    // regardless of which mode we're in. The mode-specific hook will
-    // also re-request on its own; this is just a nudge.
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        () => window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT)),
-        () => window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT)),
-        { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
-      );
-    }
-  }, []);
-
   if (!disabled) return null;
 
   return (
@@ -217,13 +195,17 @@ export function LocationDisabledIndicator({
             </p>
             <p className="text-muted-foreground text-xs leading-relaxed">
               For now, Birdstar is showing the default North America view.
-              You can re-enable location in your browser settings and try
-              again.
+              Re-enable location in your browser settings to see birds near
+              you.
             </p>
             <div className="flex items-center justify-between gap-2 pt-1">
-              <Button type="button" size="sm" variant="secondary" onClick={retry}>
-                Try again
-              </Button>
+              <LocationHelpDialog
+                trigger={
+                  <Button type="button" size="sm" variant="secondary">
+                    How to enable
+                  </Button>
+                }
+              />
               <Link
                 to="/privacy"
                 className="text-xs text-muted-foreground underline-offset-2 hover:underline"
