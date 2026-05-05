@@ -776,7 +776,12 @@ const IndexInner = () => {
     !regionHasDecided && regionStatus !== 'resolving' && !placeSet;
 
   return (
-    <div className="relative min-h-screen bg-linear-to-b from-sky-50 via-emerald-50/70 to-amber-50 text-stone-900 dark:bg-linear-to-b dark:from-[#0d1230] dark:via-[#1a1740] dark:to-[#3b2a3f] dark:text-stone-100">
+    // Light mode paints a fully opaque daytime gradient (sky → emerald
+    // → amber). Dark mode uses the same indigo / violet / dusty-purple
+    // palette but at reduced alpha so the shared `SkyBackdrop` (rendered
+    // behind everything by `Index.tsx`) shows through as a real
+    // starfield. See `src/pages/Index.tsx` for the orchestration.
+    <div className="relative min-h-screen bg-linear-to-b from-sky-50 via-emerald-50/70 to-amber-50 text-stone-900 dark:bg-linear-to-b dark:from-[#0d1230]/80 dark:via-[#1a1740]/60 dark:to-[#3b2a3f]/80 dark:text-stone-100">
       {/* Full-page-width top HUD: mode selector on the left, optional
           manual-location pill + LoginArea on the right. Absolutely
           positioned (rather than tucked inside the max-w-6xl main) so

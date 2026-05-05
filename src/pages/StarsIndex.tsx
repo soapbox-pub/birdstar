@@ -546,7 +546,11 @@ const Index = () => {
   }, [orientationStatus, geoStatus, requestGeo]);
 
   return (
-    <div className="fixed inset-0 w-screen h-screen bg-black text-white overflow-hidden select-none">
+    // Background is transparent so the shared `SkyBackdrop` (rendered
+    // behind everything by `Index.tsx`) is visible during the Birds
+    // → Stars cross-fade. Once the interactive `<SkyMap>` below has
+    // fully faded in, it covers the viewport anyway.
+    <div className="fixed inset-0 w-screen h-screen text-white overflow-hidden select-none">
       {/* Sky canvas */}
       <SkyMap
         latitude={coords.latitude}
