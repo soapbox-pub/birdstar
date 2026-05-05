@@ -9,7 +9,7 @@ import htmlEslint from "@html-eslint/eslint-plugin";
 import customRules from "./eslint-rules/index.js";
 
 export default defineConfig(
-  globalIgnores(["dist"]),
+  globalIgnores(["dist", ".agents"]),
   {
     name: "app/ts",
     files: ["**/*.{ts,tsx}"],
