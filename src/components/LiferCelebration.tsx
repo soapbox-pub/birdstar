@@ -284,13 +284,6 @@ function LiferOverlay({
             {item.scientificName}
           </div>
         </div>
-
-        {/* Tap-to-dismiss hint. Deliberately quiet — the auto-dismiss
-            does the work; this just tells the user they can move on
-            sooner if they want. */}
-        <div className="text-[11px] uppercase tracking-[0.2em] text-stone-400 dark:text-stone-500">
-          Tap to continue
-        </div>
       </button>
     </div>
   );
