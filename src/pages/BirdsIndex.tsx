@@ -10,6 +10,7 @@ import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { CopyrightDialog } from '@/components/CopyrightDialog';
+import { LocationDisabledIndicator } from '@/components/LocationDisabledIndicator';
 import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
@@ -334,7 +335,6 @@ const IndexInner = () => {
   const placeSet: UserPlaceSet | null =
     geoPlaceSet ?? manualPlaceSet ?? geoFallbackPlaceSet;
   const usingManual = !geoPlaceSet && !!manualPlaceSet;
-  const usingGeoFallback = !geoPlaceSet && !manualPlaceSet && !!geoFallbackPlaceSet;
 
   const commitManualLocation = useCallback(
     (next: StoredManualLocation | null) => {
@@ -807,16 +807,6 @@ const IndexInner = () => {
               <MapPin className="h-3.5 w-3.5" aria-hidden />
               {formatPlaceSet(placeSet)}
             </Button>
-          ) : usingGeoFallback ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowRehomeGate(true)}
-              className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
-            >
-              <MapPin className="h-3.5 w-3.5" aria-hidden />
-              North America
-            </Button>
           ) : null}
           <LoginArea className="max-w-60" />
         </div>
@@ -866,10 +856,16 @@ const IndexInner = () => {
               />
             )
           ) : (
-            <BirdexGrid
-              visible={birdex.visible}
-              onSelect={handleSelectBirdex}
-            />
+            <>
+              {/* Fallback notice when we're running against the NA
+                  default because the user denied or the browser is
+                  unavailable. Self-hides when location is granted. */}
+              <LocationDisabledIndicator variant="inline" className="mb-4" />
+              <BirdexGrid
+                visible={birdex.visible}
+                onSelect={handleSelectBirdex}
+              />
+            </>
           )}
         </section>
 
