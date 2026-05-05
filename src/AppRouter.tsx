@@ -4,6 +4,7 @@ import { ScrollToTop } from "@/components/ScrollToTop";
 import { ModeProvider } from "@/components/ModeProvider";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import Privacy from "./pages/Privacy";
 import NIP19Page from "./pages/NIP19Page";
 
 /**
@@ -36,6 +37,9 @@ export function AppRouter() {
           <Route path="/planet/:planetId" element={<Index />} />
           <Route path="/sun" element={<Index />} />
           <Route path="/moon" element={<Index />} />
+          {/* Privacy policy. Must be declared above `/:nip19Id`,
+              which would otherwise swallow the single-segment path. */}
+          <Route path="/privacy" element={<Privacy />} />
           {/* Root-level NIP-19 dispatch: npub/nprofile → profile sheet,
               naddr (kind 30621) → constellation overlay, other → 404. */}
           <Route path="/:nip19Id" element={<NIP19Page />} />

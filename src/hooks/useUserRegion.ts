@@ -141,6 +141,14 @@ function writeStored(state: StoredState): void {
   } catch {
     // Private mode / quota — not fatal; we'll just re-ask next visit.
   }
+  // Notify observers (e.g. the bottom-of-page LocationDisabledIndicator)
+  // that our decision changed. Local storage events don't fire in the
+  // same tab, so we piggyback on a custom event instead.
+  try {
+    window.dispatchEvent(new Event('birdstar:location-change'));
+  } catch {
+    // SSR / non-browser env — no-op.
+  }
 }
 
 function stateToPlaceSet(state: StoredState): UserPlaceSet | null {
@@ -153,8 +161,15 @@ export interface UseUserRegion {
    * `placeSet?.continent`. */
   region: RegionCode | null;
   /** Full resolved place set (continent + country + subdivision), or
-   * null if not yet known. */
+   * null if not yet known. Stays null when geolocation is denied /
+   * unavailable so callers that have their own manual-picker fallback
+   * can prefer it; callers without one should read `fallbackPlaceSet`
+   * when `usingFallback` is true. */
   placeSet: UserPlaceSet | null;
+  /** Continent-level North America place set, populated only when the
+   * user has denied geolocation or it is unavailable. Lets UI render
+   * a sensible default instead of gating on a missing region. */
+  fallbackPlaceSet: UserPlaceSet | null;
   /** Coarse (1°-rounded) lat/lon of the geolocation fix, when
    * available. Only populated when the user resolved their location
    * via the browser's geolocation API — manual-picker resolutions
@@ -164,6 +179,10 @@ export interface UseUserRegion {
   coarse: CoarseLatLon | null;
   status: RegionStatus;
   hasDecided: boolean;
+  /** True when geolocation has been declined / is unavailable and
+   * `fallbackPlaceSet` is populated. Surface a "location disabled"
+   * indicator to the user when this is true. */
+  usingFallback: boolean;
   /** Trigger the geolocation prompt. Safe to call multiple times. */
   request: () => void;
   /** Forget any stored decision so the opt-in affordance returns. */
@@ -252,6 +271,11 @@ export function useUserRegion(): UseUserRegion {
     } catch {
       // ignore
     }
+    try {
+      window.dispatchEvent(new Event('birdstar:location-change'));
+    } catch {
+      // SSR / non-browser env — no-op.
+    }
     if (mountedRef.current) {
       setState({ status: 'unknown' });
     }
@@ -282,14 +306,27 @@ export function useUserRegion(): UseUserRegion {
     state.status === 'denied' ||
     state.status === 'unavailable';
 
-  const placeSet = stateToPlaceSet(state);
+  // When the user has declined or we can't resolve a fix, `placeSet`
+  // stays null — callers that already have a manual-picker fallback
+  // (e.g. BirdsIndex) can prefer that over the continent default.
+  // Callers with no manual fallback should read `fallbackPlaceSet`
+  // when `usingFallback` is true so the UI keeps rendering against
+  // a sensible default (continent-level North America) instead of
+  // gating on a missing region.
+  const resolvedPlaceSet = stateToPlaceSet(state);
+  const usingFallback =
+    !resolvedPlaceSet &&
+    (state.status === 'denied' || state.status === 'unavailable');
+  const fallbackPlaceSet = usingFallback ? placeSetFor('NA') : null;
 
   return {
-    region: placeSet?.continent ?? null,
-    placeSet,
+    region: resolvedPlaceSet?.continent ?? null,
+    placeSet: resolvedPlaceSet,
+    fallbackPlaceSet,
     coarse: state.coarse ?? null,
     status: state.status,
     hasDecided,
+    usingFallback,
     request,
     reset,
   };

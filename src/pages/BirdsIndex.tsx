@@ -299,9 +299,14 @@ const IndexInner = () => {
     birdexEntries: birdexEvent.entries,
   });
 
-  // Location: geolocation wins; manual pick is the fallback.
+  // Location: geolocation wins; manual pick is the fallback; if the
+  // user declined geolocation outright we fall back to a continent-
+  // level North America default so the birdex still renders. The
+  // `LocationDisabledIndicator` mounted at the app root surfaces the
+  // denial to the user.
   const {
     placeSet: geoPlaceSet,
+    fallbackPlaceSet: geoFallbackPlaceSet,
     coarse,
     status: regionStatus,
     hasDecided: regionHasDecided,
@@ -321,8 +326,15 @@ const IndexInner = () => {
     );
   }, [manualLocation]);
 
-  const placeSet: UserPlaceSet | null = geoPlaceSet ?? manualPlaceSet;
+  // Resolution order: real geolocation → explicit manual pick →
+  // continent-level NA fallback. The fallback only applies when the
+  // user has actively declined or the browser is unavailable; while
+  // we're still prompting it stays null so we render the
+  // LocationGateSkeleton instead of a fake NA birdex.
+  const placeSet: UserPlaceSet | null =
+    geoPlaceSet ?? manualPlaceSet ?? geoFallbackPlaceSet;
   const usingManual = !geoPlaceSet && !!manualPlaceSet;
+  const usingGeoFallback = !geoPlaceSet && !manualPlaceSet && !!geoFallbackPlaceSet;
 
   const commitManualLocation = useCallback(
     (next: StoredManualLocation | null) => {
@@ -331,6 +343,12 @@ const IndexInner = () => {
     },
     [],
   );
+
+  // Controls the rehome overlay shown when a geo-fallback user wants
+  // to pick a specific region instead of the continent-level NA
+  // default. Mirrors the behavior of manual-pick users clicking
+  // their existing location pill.
+  const [showRehomeGate, setShowRehomeGate] = useState(false);
 
   const { data: speciesRegions } = useSpeciesRegions();
 
@@ -776,7 +794,10 @@ const IndexInner = () => {
               used to live inside BirdexHeader. Tucked next to the
               LoginArea as a compact pill so manual users can rehome
               themselves without clearing localStorage. Geo users never
-              see this — their location is re-resolved automatically. */}
+              see this — their location is re-resolved automatically.
+              Geo-fallback users (denied → NA default) also see a pill so
+              they can pick a specific region instead of the continent
+              default. */}
           {placeSet && usingManual ? (
             <Button
               variant="ghost"
@@ -786,6 +807,16 @@ const IndexInner = () => {
             >
               <MapPin className="h-3.5 w-3.5" aria-hidden />
               {formatPlaceSet(placeSet)}
+            </Button>
+          ) : usingGeoFallback ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowRehomeGate(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
+            >
+              <MapPin className="h-3.5 w-3.5" aria-hidden />
+              North America
             </Button>
           ) : null}
           <LoginArea className="max-w-60" />
@@ -800,13 +831,32 @@ const IndexInner = () => {
         <section className="mt-8 w-full">
           {!labels ? (
             <BirdexLoadingShimmer />
+          ) : showRehomeGate ? (
+            // Geo-fallback user asked to rehome: render the full
+            // picker inline. Committing a manual pick clears the
+            // rehome flag; the new placeSet then comes through
+            // `manualPlaceSet` and wins over the NA fallback.
+            <LocationGate
+              regionStatus={regionStatus}
+              onRequestLocation={() => {
+                setShowRehomeGate(false);
+                requestRegion();
+              }}
+              onCommitManual={(loc) => {
+                commitManualLocation(loc);
+                setShowRehomeGate(false);
+              }}
+            />
           ) : !placeSet ? (
             // No resolved region yet. While geolocation is still
             // resolving (or hasn't fired yet on first paint), show a
             // skeleton of the location card so the page has visible
             // scaffolding instead of empty space. Once the browser
-            // reports denied/unavailable, fall through to the full
-            // LocationGate with its manual-region picker.
+            // reports denied/unavailable we now fall back to a
+            // continent-level NA place set in `useUserRegion`, so
+            // this LocationGate branch is effectively only reached
+            // in edge cases (e.g. resolver returns null for a valid
+            // fix).
             regionStatus === 'unknown' || regionStatus === 'resolving' ? (
               <LocationGateSkeleton />
             ) : (
