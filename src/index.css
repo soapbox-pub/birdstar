@@ -64,6 +64,13 @@
   --animate-pulse-bar: pulse-bar 0.9s ease-in-out infinite;
   /* LoginArea's button pop-in when it mounts. */
   --animate-scale-in: scale-in 0.2s ease-out;
+  /* Lifer celebration — full-screen "NEW BIRD DISCOVERED" overlay. */
+  --animate-lifer-backdrop: lifer-backdrop 320ms ease-out both;
+  --animate-lifer-card: lifer-card 520ms cubic-bezier(0.18, 0.9, 0.26, 1.2) both;
+  --animate-lifer-shimmer: lifer-shimmer 1600ms linear infinite;
+  --animate-lifer-ring: lifer-ring 1400ms ease-out infinite;
+  --animate-lifer-banner: lifer-banner 520ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms both;
+  --animate-lifer-confetti: lifer-confetti 2200ms cubic-bezier(0.2, 0.6, 0.3, 1) both;
 
   @keyframes accordion-down {
     from {
@@ -111,6 +118,83 @@
     100% {
       opacity: 1;
       transform: scale(1);
+    }
+  }
+
+  /* Lifer celebration keyframes — see LiferCelebration.tsx. */
+  @keyframes lifer-backdrop {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes lifer-card {
+    0% {
+      opacity: 0;
+      transform: scale(0.4) rotate(-4deg);
+    }
+    60% {
+      opacity: 1;
+      transform: scale(1.06) rotate(1deg);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) rotate(0deg);
+    }
+  }
+
+  @keyframes lifer-shimmer {
+    0% {
+      transform: translateX(-120%) skewX(-20deg);
+    }
+    100% {
+      transform: translateX(220%) skewX(-20deg);
+    }
+  }
+
+  @keyframes lifer-ring {
+    0% {
+      opacity: 0.7;
+      transform: scale(0.7);
+    }
+    80% {
+      opacity: 0;
+      transform: scale(1.4);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.4);
+    }
+  }
+
+  @keyframes lifer-banner {
+    0% {
+      opacity: 0;
+      transform: translateY(12px);
+      letter-spacing: 0.6em;
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+      letter-spacing: 0.25em;
+    }
+  }
+
+  @keyframes lifer-confetti {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    10% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      transform: translate3d(var(--lifer-confetti-x, 0), var(--lifer-confetti-y, 0), 0)
+        rotate(var(--lifer-confetti-r, 360deg));
     }
   }
 }
