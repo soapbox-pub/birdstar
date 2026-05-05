@@ -17,7 +17,7 @@
 // showed ~75 ms/s of LoginArea-subtree work attributable to exactly this
 // pattern; memoizing the bar cuts it to near-zero on idle ticks.
 import { memo } from 'react';
-import { AlertCircle, Bird, HelpCircle, MapPin, Pause, Play, RotateCcw } from 'lucide-react';
+import { AlertCircle, Bird, HelpCircle, MapPin, Mic, MicOff, RotateCcw } from 'lucide-react';
 import type { Detection } from '@/components/BirdCard';
 import { AudioVisualizer } from '@/components/AudioVisualizer';
 import { MicrophoneHelpDialog } from '@/components/MicrophoneHelpDialog';
@@ -624,15 +624,6 @@ function CenterRegion({
             {statusLabel.top}
           </p>
         )}
-        {mode === 'listening' ? (
-          <span
-            aria-hidden
-            className="relative inline-flex h-2 w-2 shrink-0"
-          >
-            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/60 dark:bg-amber-400/60" />
-            <span className="relative inline-block h-2 w-2 rounded-full bg-emerald-500 dark:bg-amber-400" />
-          </span>
-        ) : null}
         {statusLabel.resumable ? (
           // When paused, render the secondary label as a button so the
           // user can resume by tapping the text as well as the round
@@ -754,12 +745,16 @@ function ErrorRegion({
 }
 
 /**
- * Right-hand primary button. Semantically one control with three visuals:
- *   - play when idle/paused/ready
- *   - pause when listening
- *   - retry icon when in error state (with error-styled ring)
- * Loading state shows a disabled play button so the bar's layout doesn't
- * jump when the model finishes downloading.
+ * Right-hand primary button. Semantically one control, but the icon
+ * reflects the CURRENT state rather than the action it triggers:
+ *   - listening → Mic (the mic is live)
+ *   - idle/paused/ready → MicOff (the mic is off)
+ *   - error → retry icon, with error-styled ring
+ * The aria-label and title still describe the action ("Pause
+ * listening" / "Start listening") so screen readers and hover
+ * tooltips announce what tapping will do. Loading state shows a
+ * disabled MicOff so the bar's layout doesn't jump when the model
+ * finishes downloading.
  */
 function PrimaryButton({
   mode,
@@ -819,12 +814,12 @@ function PrimaryButton({
       {isError ? (
         <RotateCcw className="h-5 w-5" />
       ) : isListening ? (
-        <Pause className="h-5 w-5 fill-current" />
+        // Mic-on glyph: the mic IS currently live. Tapping pauses it.
+        <Mic className="h-5 w-5" strokeWidth={2.25} />
       ) : (
-        // Nudge the play icon right by 1px — it's visually offset inside
-        // its square bounding box because the triangle's visual center
-        // sits a little left of the geometric center.
-        <Play className="h-5 w-5 translate-x-px fill-current" />
+        // Mic-off glyph: the mic is NOT listening right now. Tapping
+        // turns it on.
+        <MicOff className="h-5 w-5" strokeWidth={2.25} />
       )}
     </button>
   );

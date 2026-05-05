@@ -10,6 +10,7 @@ import {
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
+import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -46,6 +47,7 @@ import { useUserRegion } from '@/hooks/useUserRegion';
 import { useSpeciesRegions } from '@/hooks/useSpeciesRegions';
 import { useBirdex, type BirdexEntry } from '@/hooks/useBirdex';
 import { useEncounteredSpecies } from '@/hooks/useEncounteredSpecies';
+import { useLiferCelebration } from '@/hooks/useLiferCelebration';
 import { useLocalSpeciesBands } from '@/hooks/useLocalSpeciesBands';
 import { useNearestObservation } from '@/hooks/useNearestObservation';
 import { isSpeciesInRegion } from '@/lib/birdnet/speciesRegions';
@@ -367,6 +369,17 @@ const IndexInner = () => {
   // fire it from the accumulator's per-hit hook below.
   const { encountered, record: recordEncountered } = useEncounteredSpecies();
 
+  // "NEW BIRD DISCOVERED" overlay driver. The hook snapshots the
+  // user's known species set (device encountered + logged-in Nostr
+  // Birdex) the first time both are ready, then fanfares any
+  // confirmed species that wasn't in that baseline. See
+  // useLiferCelebration.ts for the full sync-safety argument.
+  const {
+    consider: considerCelebrate,
+    current: liferItem,
+    next: dismissLifer,
+  } = useLiferCelebration({ encountered });
+
   // Lazy per-species nearest-observation resolver. Calls `resolve`
   // warm the cache; the damper uses `peek` to read synchronously on
   // the hot path.
@@ -523,7 +536,10 @@ const IndexInner = () => {
 
   const { ingest, confirmedSightings, forgetConfirmed, pendingLeader, latestHit } =
     useDetectionAccumulator({
-      onConfirm: (detection) => considerPublish(detection),
+      onConfirm: (detection) => {
+        considerPublish(detection);
+        considerCelebrate(detection);
+      },
       locationAdjuster,
       onSpeciesHit: handleSpeciesHit,
       onEncounterQualified: handleEncounterQualified,
@@ -903,6 +919,8 @@ const IndexInner = () => {
         onDelete={handleDelete}
         isDeleting={selectedIsDeleting}
       />
+
+      <LiferCelebration item={liferItem} onDismiss={dismissLifer} />
     </div>
   );
 };
