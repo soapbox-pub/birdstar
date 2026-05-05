@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSeoMeta } from "@unhead/react";
-import { useLocation, useNavigate, Link } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { nip19 } from "nostr-tools";
 import {
   MapPin,
@@ -27,6 +27,7 @@ import { SkyStatusBanner, type SkyStatusBannerMessage } from "@/components/SkySt
 import { EnableSensorsDialog } from "@/components/EnableSensorsDialog";
 import { LoginArea } from "@/components/auth/LoginArea";
 import { ModeSelector } from "@/components/ModeSelector";
+import { CopyrightDialog } from "@/components/CopyrightDialog";
 import { useCustomConstellations } from "@/hooks/useCustomConstellations";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useFollowList } from "@/hooks/useFollowList";
@@ -1005,29 +1006,17 @@ function SettingsSheet({
             )}
           </section>
 
-          <div className="pt-4 border-t border-white/10 flex flex-col items-center gap-2">
-            <a
-              href="https://shakespeare.diy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
-            >
-              Vibed with Shakespeare
-            </a>
-            <a
-              href="https://gitlab.com/soapbox-pub/birdstar"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
-            >
-              Source code · AGPL-3.0
-            </a>
-            <Link
-              to="/privacy"
-              className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
-            >
-              Privacy policy
-            </Link>
+          <div className="pt-4 border-t border-white/10 flex justify-center">
+            <CopyrightDialog
+              trigger={
+                <button
+                  type="button"
+                  className="rounded-sm text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                >
+                  License &amp; Credits
+                </button>
+              }
+            />
           </div>
         </div>
       </SheetContent>

@@ -17,7 +17,7 @@
 // showed ~75 ms/s of LoginArea-subtree work attributable to exactly this
 // pattern; memoizing the bar cuts it to near-zero on idle ticks.
 import { memo } from 'react';
-import { AlertCircle, Bird, HelpCircle, MapPin, Mic, MicOff, RotateCcw } from 'lucide-react';
+import { AlertCircle, HelpCircle, MapPin, Mic, MicOff, RotateCcw } from 'lucide-react';
 import type { Detection } from '@/components/BirdCard';
 import { AudioVisualizer } from '@/components/AudioVisualizer';
 import { MicrophoneHelpDialog } from '@/components/MicrophoneHelpDialog';
@@ -185,7 +185,7 @@ function PlayerBarImpl({
       {showLocationOptIn && onRequestLocation ? (
         <LocationOptInBanner onRequest={onRequestLocation} />
       ) : null}
-      <div className="mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
+      <div className="mx-auto flex max-w-4xl items-center px-3 py-3 sm:px-4">
         <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
 
         <div className="min-w-0 flex-1">
@@ -203,13 +203,15 @@ function PlayerBarImpl({
           />
         </div>
 
-        <PrimaryButton
-          mode={mode}
-          onPause={onPause}
-          onResume={onResume}
-          onRetry={onRetry}
-          errorKind={errorKind}
-        />
+        <div className="ml-3 sm:ml-4">
+          <PrimaryButton
+            mode={mode}
+            onPause={onPause}
+            onResume={onResume}
+            onRetry={onRetry}
+            errorKind={errorKind}
+          />
+        </div>
       </div>
     </div>
   );
@@ -226,9 +228,13 @@ function PlayerBarImpl({
  * with a `?` reads as "just heard once, still unconfirmed". No
  * state where the image and overlay point at different birds.
  *
- * When no hit has been heard in the last CONFIRMATION_WINDOW_MS the
- * thumbnail falls back to a silhouette placeholder and is not
- * interactive.
+ * When no bird has been heard yet — or when the Wikipedia photo for
+ * the current hit hasn't loaded — the whole slot collapses to zero
+ * width and slides shut. We never render a fallback bird-icon
+ * placeholder; the bar simply doesn't have an album-art region
+ * until there's a real photo to put in it. The width/margin/opacity
+ * transition is what makes the slot feel like it's opening when a
+ * new bird lands.
  */
 function AlbumArt({
   latestHit,
@@ -241,96 +247,111 @@ function AlbumArt({
     latestHit?.scientificName ?? null,
     latestHit?.commonName ?? null,
   );
-  const imageUrl = data?.imageUrl;
+  const imageUrl = data?.imageUrl ?? null;
+
+  // We only reveal the slot once BOTH conditions are true: a bird has
+  // been heard AND we actually have its photo. Opening with a gradient
+  // placeholder (or worse, the Bird silhouette icon) reads as "we
+  // think there's a bird but we don't know what" which is exactly
+  // the impression we're trying to avoid per product direction.
+  const isOpen = latestHit !== null && imageUrl !== null;
 
   // The pie is only meaningful when the species is still accumulating.
   // Once confirmed, hide the overlay chrome entirely — the thumbnail
   // is just "this is the bird that was confirmed most recently".
   const isUnconfirmed = Boolean(latestHit && !latestHit.confirmed);
   const progress = latestHit?.progress ?? 0;
-
-  const thumbnail = (
-    <div
-      className={cn(
-        'relative h-14 w-14 shrink-0 overflow-hidden rounded-md shadow-sm sm:h-16 sm:w-16',
-        'bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100',
-        'dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60',
-      )}
-    >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={latestHit?.commonName ?? ''}
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-emerald-700/50 dark:text-amber-300/50">
-          <Bird className="h-7 w-7" aria-hidden strokeWidth={1.75} />
-        </div>
-      )}
-      {isUnconfirmed ? (
-        <>
-          <ConfidencePie progress={progress} />
-          {/* Yellow "?" badge. Sits on top of the pie dimmer so it
-              stays legible even at 0% progress when the pie covers
-              the whole thumbnail. Communicates "unconfirmed — tap
-              to learn more", matching the amber "Unconfirmed
-              sighting" row the dialog renders on open. Kept small
-              (h-4 / h-[18px] on sm) so it doesn't obscure the
-              bird photograph. */}
-          <span
-            className={cn(
-              'pointer-events-none absolute right-1 top-1 inline-flex items-center justify-center',
-              'h-4 w-4 rounded-full sm:h-[18px] sm:w-[18px]',
-              'bg-amber-400 text-amber-950 shadow ring-1 ring-white/40',
-              'dark:bg-amber-300 dark:text-amber-950 dark:ring-amber-950/40',
-            )}
-            aria-hidden
-          >
-            <HelpCircle
-              className="h-3 w-3 sm:h-3.5 sm:w-3.5"
-              strokeWidth={2.5}
-            />
-          </span>
-        </>
-      ) : null}
-    </div>
-  );
-
-  if (!latestHit) {
-    // Nothing heard yet — keep it non-interactive so a click doesn't
-    // open an empty dialog.
-    return thumbnail;
-  }
-
   const pct = Math.round(progress * 100);
-  const ariaLabel = latestHit.confirmed
-    ? `Show details for ${latestHit.commonName}`
-    : `Unconfirmed: ${latestHit.commonName} — ${pct}% to confirmation. Show details.`;
-  const ringColor = latestHit.confirmed
+
+  const ariaLabel = latestHit
+    ? latestHit.confirmed
+      ? `Show details for ${latestHit.commonName}`
+      : `Unconfirmed: ${latestHit.commonName} — ${pct}% to confirmation. Show details.`
+    : '';
+  const ringColor = latestHit?.confirmed
     ? 'focus-visible:ring-emerald-500/60 dark:focus-visible:ring-amber-400/60'
     : 'focus-visible:ring-amber-400/70 dark:focus-visible:ring-amber-300/60';
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={ariaLabel}
-      title={
-        latestHit.confirmed
-          ? latestHit.commonName
-          : `${latestHit.commonName} — ${pct}% to confirmation`
-      }
+    // Animated outer wrapper. Width, right-margin, and opacity all
+    // transition together so when the slot collapses it doesn't leave
+    // a visible gap between the center region and the left edge of
+    // the bar. `overflow-hidden` keeps the inner thumbnail from
+    // poking past the collapsing edge mid-animation.
+    // `motion-reduce:transition-none` respects prefers-reduced-motion
+    // per the project's motion guidelines.
+    <div
+      aria-hidden={!isOpen}
       className={cn(
-        'shrink-0 rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-none',
-        'focus-visible:ring-2 focus-visible:ring-offset-2',
-        'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
-        ringColor,
+        'shrink-0 overflow-hidden transition-[width,margin,opacity] duration-300 ease-out',
+        'motion-reduce:transition-none',
+        isOpen
+          ? 'mr-3 w-14 opacity-100 sm:mr-4 sm:w-16'
+          : 'mr-0 w-0 opacity-0',
       )}
     >
-      {thumbnail}
-    </button>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!isOpen}
+        tabIndex={isOpen ? 0 : -1}
+        aria-label={ariaLabel}
+        title={
+          latestHit
+            ? latestHit.confirmed
+              ? latestHit.commonName
+              : `${latestHit.commonName} — ${pct}% to confirmation`
+            : undefined
+        }
+        className={cn(
+          'block rounded-md transition-transform hover:scale-[1.03] focus-visible:outline-none',
+          'focus-visible:ring-2 focus-visible:ring-offset-2',
+          'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
+          ringColor,
+        )}
+      >
+        <div
+          className={cn(
+            'relative h-14 w-14 shrink-0 overflow-hidden rounded-md shadow-sm sm:h-16 sm:w-16',
+          )}
+        >
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={latestHit?.commonName ?? ''}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : null}
+          {isUnconfirmed ? (
+            <>
+              <ConfidencePie progress={progress} />
+              {/* Yellow "?" badge. Sits on top of the pie dimmer so it
+                  stays legible even at 0% progress when the pie covers
+                  the whole thumbnail. Communicates "unconfirmed — tap
+                  to learn more", matching the amber "Unconfirmed
+                  sighting" row the dialog renders on open. Kept small
+                  (h-4 / h-[18px] on sm) so it doesn't obscure the
+                  bird photograph. */}
+              <span
+                className={cn(
+                  'pointer-events-none absolute right-1 top-1 inline-flex items-center justify-center',
+                  'h-4 w-4 rounded-full sm:h-[18px] sm:w-[18px]',
+                  'bg-amber-400 text-amber-950 shadow ring-1 ring-white/40',
+                  'dark:bg-amber-300 dark:text-amber-950 dark:ring-amber-950/40',
+                )}
+                aria-hidden
+              >
+                <HelpCircle
+                  className="h-3 w-3 sm:h-3.5 sm:w-3.5"
+                  strokeWidth={2.5}
+                />
+              </span>
+            </>
+          ) : null}
+        </div>
+      </button>
+    </div>
   );
 }
 
