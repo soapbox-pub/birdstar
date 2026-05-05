@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
+import { Link } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
@@ -1286,7 +1287,13 @@ const Footer = memo(function Footer() {
         >
           Source code
         </a>{' '}
-        (AGPL-3.0)
+        (AGPL-3.0) ·{' '}
+        <Link
+          to="/privacy"
+          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
+        >
+          Privacy
+        </Link>
       </p>
       <p className="text-stone-400/70 dark:text-stone-600">
         BirdNET weights CC-BY-NC-SA 4.0 · non-commercial use · range data

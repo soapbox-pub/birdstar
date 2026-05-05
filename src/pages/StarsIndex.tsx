@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSeoMeta } from "@unhead/react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, Link } from "react-router-dom";
 import { nip19 } from "nostr-tools";
 import {
   MapPin,
@@ -1018,6 +1018,12 @@ function SettingsSheet({
             >
               Source code · AGPL-3.0
             </a>
+            <Link
+              to="/privacy"
+              className="text-[10px] uppercase tracking-widest text-white/40 hover:text-white/70 transition-colors"
+            >
+              Privacy policy
+            </Link>
           </div>
         </div>
       </SheetContent>
