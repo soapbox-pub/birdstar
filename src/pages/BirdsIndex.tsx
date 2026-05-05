@@ -66,9 +66,6 @@ import { cn } from '@/lib/utils';
 // parent-driven re-renders on every ambient tick.
 const LoginArea = memo(LoginAreaRaw);
 
-// LocalStorage flag so we only show the "first-time download" note once.
-const MODEL_CACHED_KEY = 'birdsong.modelCached';
-
 // Manual-picker localStorage key. Stores a UserPlaceSet minus its runtime
 // `places` Set (we reconstruct the Set on load via placeSetFor).
 const MANUAL_LOCATION_KEY = 'birdsong.manualLocation.v2';
@@ -704,13 +701,6 @@ const IndexInner = () => {
       setIsStarting(true);
       void recorder.start();
     }
-    if (status.state === 'ready') {
-      try {
-        localStorage.setItem(MODEL_CACHED_KEY, '1');
-      } catch {
-        // ignore
-      }
-    }
   }, [status.state, recorder, userPaused]);
 
   const handlePause = useCallback(() => {
@@ -740,14 +730,6 @@ const IndexInner = () => {
 
   const loadingPct =
     status.state === 'loading' ? Math.round(status.fraction * 100) : 0;
-
-  const isFirstLoad = (() => {
-    try {
-      return localStorage.getItem(MODEL_CACHED_KEY) !== '1';
-    } catch {
-      return true;
-    }
-  })();
 
   const latestDetection = useMemo<Detection | null>(() => {
     let latest: Detection | null = null;
@@ -895,7 +877,6 @@ const IndexInner = () => {
         loadingPct={loadingPct}
         errorMessage={playerErrorMessage}
         errorKind={playerErrorKind}
-        showFirstLoadNote={isFirstLoad}
         latestDetection={latestDetection}
         latestHit={latestHit}
         getAnalyser={recorder.getAnalyser}

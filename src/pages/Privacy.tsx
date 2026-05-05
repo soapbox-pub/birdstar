@@ -52,18 +52,7 @@ const Privacy = () => {
           </p>
           <p>
             This page describes, for each third party Birdstar talks to,
-            what data leaves your device and what stays on it. If you
-            find a discrepancy between this page and the code, the code
-            is authoritative — please{" "}
-            <a
-              href="https://gitlab.com/soapbox-pub/birdstar/-/issues"
-              className="underline underline-offset-2"
-              target="_blank"
-              rel="noreferrer"
-            >
-              open an issue
-            </a>
-            .
+            what data leaves your device and what stays on it.
           </p>
         </section>
 
