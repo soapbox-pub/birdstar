@@ -859,6 +859,7 @@ const IndexInner = () => {
         onSelectPending={handleSelectPending}
         showLocationOptIn={showLocationOptIn}
         onRequestLocation={requestRegion}
+        celebratingScientificName={liferItem?.scientificName ?? null}
       />
 
       <BirdInfoDialog
