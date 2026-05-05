@@ -42,7 +42,6 @@ interface PlayerBarProps {
   loadingPct: number;
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
-  showFirstLoadNote: boolean;
   /**
    * Most recently confirmed detection this session (or null if none yet).
    * Used only to resolve the click target when the album-art species is
@@ -100,7 +99,6 @@ function PlayerBarImpl({
   loadingPct,
   errorMessage,
   errorKind,
-  showFirstLoadNote,
   latestDetection,
   latestHit,
   getAnalyser,
@@ -196,7 +194,6 @@ function PlayerBarImpl({
             loadingPct={loadingPct}
             errorMessage={errorMessage}
             errorKind={errorKind}
-            showFirstLoadNote={showFirstLoadNote}
             latestHit={latestHit}
             getAnalyser={getAnalyser}
             visualizerActive={visualizerActive}
@@ -419,7 +416,6 @@ function CenterRegion({
   loadingPct,
   errorMessage,
   errorKind,
-  showFirstLoadNote,
   latestHit,
   getAnalyser,
   visualizerActive,
@@ -431,7 +427,6 @@ function CenterRegion({
   loadingPct: number;
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
-  showFirstLoadNote: boolean;
   /**
    * Most recent species to clear the raw-confidence floor. The status
    * label's top line names this species (with timestamp or
@@ -480,14 +475,9 @@ function CenterRegion({
         className="flex min-w-0 flex-col justify-center gap-1.5"
       >
         <p className="truncate text-sm text-stone-600 dark:text-stone-300">
-          Downloading BirdNET model… {loadingPct}%
+          Loading BirdNET model… {loadingPct}%
         </p>
         <Progress value={loadingPct} className="h-1.5" />
-        {showFirstLoadNote ? (
-          <p className="truncate text-xs text-stone-400 dark:text-stone-500">
-            One-time ~50 MB download.
-          </p>
-        ) : null}
       </div>
     );
   }
@@ -754,7 +744,7 @@ function ErrorRegion({
  * listening" / "Start listening") so screen readers and hover
  * tooltips announce what tapping will do. Loading state shows a
  * disabled MicOff so the bar's layout doesn't jump when the model
- * finishes downloading.
+ * finishes loading.
  */
 function PrimaryButton({
   mode,
