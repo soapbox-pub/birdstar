@@ -909,25 +909,8 @@ const IndexInner = () => {
 const Header = memo(function Header() {
   return (
     <header className="flex flex-col items-center gap-4 text-center">
-      <h1 className="font-serif text-4xl font-semibold leading-[1.02] tracking-tight sm:text-6xl">
-        <span className="text-stone-900 dark:text-stone-50">Bird</span>
-        <span className="relative inline-block italic text-emerald-700 dark:text-amber-300">
-          star
-          <svg
-            aria-hidden
-            viewBox="0 0 220 14"
-            className="absolute -bottom-2 left-0 h-3 w-full text-emerald-500/70 dark:text-amber-400/70"
-            preserveAspectRatio="none"
-          >
-            <path
-              d="M2 8 Q 55 2, 110 7 T 218 6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-        </span>
+      <h1 className="font-serif text-4xl font-semibold leading-[1.02] tracking-tight text-stone-900 sm:text-6xl dark:text-stone-50">
+        Birdstar
       </h1>
       <p className="max-w-xl text-balance text-sm text-stone-600 sm:text-base dark:text-stone-300/90">
         Go outside. Find the birds. Draw the stars.
