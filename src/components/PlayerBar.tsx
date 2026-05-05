@@ -93,17 +93,6 @@ interface PlayerBarProps {
   /** Fired when the opt-in chip is clicked. Should trigger the native
    * geolocation prompt in the parent. */
   onRequestLocation?: () => void;
-  /**
-   * Scientific name of the bird currently being celebrated in the
-   * full-screen lifer overlay, or null when no celebration is active.
-   * When this matches the album-art bird (`latestHit`), the thumbnail
-   * gets a "NEW!" ribbon + ripple/flash loop so the two pieces of UI
-   * visibly belong to the same moment. Driven by useLiferCelebration
-   * in the parent — the album art fanfare rides the same queue as
-   * the center card, so it stays visible for as long as the
-   * celebration does and disappears when it dismisses.
-   */
-  celebratingScientificName?: string | null;
 }
 
 function PlayerBarImpl({
@@ -122,7 +111,6 @@ function PlayerBarImpl({
   onSelectPending,
   showLocationOptIn = false,
   onRequestLocation,
-  celebratingScientificName = null,
 }: PlayerBarProps) {
   // Whether a bird reference song is currently playing somewhere
   // in the app (usually from an open BirdInfoDialog). While true,
@@ -200,11 +188,7 @@ function PlayerBarImpl({
         <LocationOptInBanner onRequest={onRequestLocation} />
       ) : null}
       <div className="mx-auto flex max-w-4xl items-center gap-3 px-3 py-3 sm:gap-4 sm:px-4">
-        <AlbumArt
-          latestHit={latestHit}
-          onClick={openLatestHitDialog}
-          celebratingScientificName={celebratingScientificName}
-        />
+        <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
 
         <div className="min-w-0 flex-1">
           <CenterRegion
@@ -251,11 +235,9 @@ function PlayerBarImpl({
 function AlbumArt({
   latestHit,
   onClick,
-  celebratingScientificName,
 }: {
   latestHit: LatestHit | null;
   onClick: () => void;
-  celebratingScientificName: string | null;
 }) {
   const { data } = useBirdInfo(
     latestHit?.scientificName ?? null,
@@ -269,138 +251,50 @@ function AlbumArt({
   const isUnconfirmed = Boolean(latestHit && !latestHit.confirmed);
   const progress = latestHit?.progress ?? 0;
 
-  // Is this thumbnail the very bird being celebrated in the big center
-  // overlay right now? Only fires while the center overlay is up; the
-  // parent clears `celebratingScientificName` on dismiss, so the album-
-  // art fanfare ends at the same moment. Case-insensitive compare so
-  // a minor casing mismatch between the accumulator's detection and
-  // the lifer hook's item doesn't silently skip the effect.
-  const isCelebrating = Boolean(
-    celebratingScientificName &&
-      latestHit &&
-      celebratingScientificName.toLowerCase() ===
-        latestHit.scientificName.toLowerCase(),
-  );
-
-  // The ribbon straddles the bottom border, so the outer wrapper must
-  // NOT clip. The inner rounded tile keeps `overflow-hidden` so the
-  // photo and pie still honor the rounded corners. Effects that should
-  // live OUTSIDE the photo frame (ribbon, ripple) sit on the outer
-  // wrapper; effects that should stay inside the frame (flash, pie,
-  // badge) sit on the inner tile.
   const thumbnail = (
-    <div className="relative h-14 w-14 shrink-0 sm:h-16 sm:w-16">
-      {/* Inner clipped tile — holds the image, pie, flash, and ? badge. */}
-      <div
-        className={cn(
-          'relative h-full w-full overflow-hidden rounded-md shadow-sm',
-          'bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100',
-          'dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60',
-        )}
-      >
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={latestHit?.commonName ?? ''}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-emerald-700/50 dark:text-amber-300/50">
-            <Bird className="h-7 w-7" aria-hidden strokeWidth={1.75} />
-          </div>
-        )}
-        {isUnconfirmed ? (
-          <>
-            <ConfidencePie progress={progress} />
-            {/* Yellow "?" badge. Sits on top of the pie dimmer so it
-                stays legible even at 0% progress when the pie covers
-                the whole thumbnail. Communicates "unconfirmed — tap
-                to learn more", matching the amber "Unconfirmed
-                sighting" row the dialog renders on open. Kept small
-                (h-4 / h-[18px] on sm) so it doesn't obscure the
-                bird photograph. */}
-            <span
-              className={cn(
-                'pointer-events-none absolute right-1 top-1 inline-flex items-center justify-center',
-                'h-4 w-4 rounded-full sm:h-[18px] sm:w-[18px]',
-                'bg-amber-400 text-amber-950 shadow ring-1 ring-white/40',
-                'dark:bg-amber-300 dark:text-amber-950 dark:ring-amber-950/40',
-              )}
-              aria-hidden
-            >
-              <HelpCircle
-                className="h-3 w-3 sm:h-3.5 sm:w-3.5"
-                strokeWidth={2.5}
-              />
-            </span>
-          </>
-        ) : null}
-        {/* Warm radial flash that pulses UNDER the ribbon/ripple
-            layers but OVER the photograph. Clipped to the tile so it
-            doesn't blow out the ribbon. */}
-        {isCelebrating ? (
-          <div
-            aria-hidden
-            className={cn(
-              'pointer-events-none absolute inset-0 rounded-md',
-              'bg-[radial-gradient(circle_at_center,rgba(251,191,36,0.75),rgba(251,191,36,0)_70%)]',
-              'mix-blend-screen motion-safe:animate-lifer-art-flash motion-reduce:opacity-40',
-            )}
-          />
-        ) : null}
-      </div>
-      {/* Celebration-only chrome that lives OUTSIDE the clipped tile
-          so it can visibly escape the album-art border. Pointer-events
-          off so it never steals taps from the underlying button. */}
-      {isCelebrating ? (
+    <div
+      className={cn(
+        'relative h-14 w-14 shrink-0 overflow-hidden rounded-md shadow-sm sm:h-16 sm:w-16',
+        'bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100',
+        'dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60',
+      )}
+    >
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={latestHit?.commonName ?? ''}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-emerald-700/50 dark:text-amber-300/50">
+          <Bird className="h-7 w-7" aria-hidden strokeWidth={1.75} />
+        </div>
+      )}
+      {isUnconfirmed ? (
         <>
-          {/* Two staggered ripples echoing outward. Hidden for reduced-
-              motion users (the static gold ring below still conveys
-              "something is going on"). */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 motion-reduce:hidden"
-          >
-            <div
-              className="absolute inset-0 rounded-md ring-2 ring-amber-400/80 motion-safe:animate-lifer-art-ripple"
-              style={{ animationDelay: '0ms' }}
-            />
-            <div
-              className="absolute inset-0 rounded-md ring-2 ring-amber-300/70 motion-safe:animate-lifer-art-ripple"
-              style={{ animationDelay: '600ms' }}
-            />
-            <div
-              className="absolute inset-0 rounded-md ring-2 ring-amber-400/60 motion-safe:animate-lifer-art-ripple"
-              style={{ animationDelay: '1200ms' }}
-            />
-          </div>
-          {/* Static gold glow ring so the thumbnail feels highlighted
-              even between ripple cycles (and for reduced-motion). */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -inset-0.5 rounded-md ring-2 ring-amber-300/60 shadow-[0_0_24px_rgba(251,191,36,0.55)]"
-          />
-          {/* NEW! ribbon straddling the bottom border. `translate(-50%, 50%)`
-              centers it horizontally and pushes it half-outside the
-              bottom edge. The keyframe animates from above to this
-              resting position so it "slams" into place. */}
-          <div
-            aria-hidden
+          <ConfidencePie progress={progress} />
+          {/* Yellow "?" badge. Sits on top of the pie dimmer so it
+              stays legible even at 0% progress when the pie covers
+              the whole thumbnail. Communicates "unconfirmed — tap
+              to learn more", matching the amber "Unconfirmed
+              sighting" row the dialog renders on open. Kept small
+              (h-4 / h-[18px] on sm) so it doesn't obscure the
+              bird photograph. */}
+          <span
             className={cn(
-              'pointer-events-none absolute left-1/2 bottom-0 z-10',
-              'rounded-full px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.2em] sm:text-[10px]',
-              'bg-amber-400 text-amber-950 shadow-md ring-1 ring-white/60',
+              'pointer-events-none absolute right-1 top-1 inline-flex items-center justify-center',
+              'h-4 w-4 rounded-full sm:h-[18px] sm:w-[18px]',
+              'bg-amber-400 text-amber-950 shadow ring-1 ring-white/40',
               'dark:bg-amber-300 dark:text-amber-950 dark:ring-amber-950/40',
-              'motion-safe:animate-lifer-art-ribbon',
-              // Final transform for the motion-reduce (no animation)
-              // branch. The animation's keyframes also end at this
-              // transform, so the two states land identically.
-              '-translate-x-1/2 translate-y-1/2',
             )}
+            aria-hidden
           >
-            New!
-          </div>
+            <HelpCircle
+              className="h-3 w-3 sm:h-3.5 sm:w-3.5"
+              strokeWidth={2.5}
+            />
+          </span>
         </>
       ) : null}
     </div>
