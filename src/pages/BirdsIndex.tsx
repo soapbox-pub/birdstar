@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Link } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
@@ -10,6 +9,7 @@ import {
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
+import { CopyrightDialog } from '@/components/CopyrightDialog';
 import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
@@ -1248,56 +1248,17 @@ function LocationGateSkeleton() {
 
 const Footer = memo(function Footer() {
   return (
-    <footer className="mt-20 flex flex-col items-center gap-1.5 text-center text-xs text-stone-400 dark:text-stone-500">
-      <p>
-        Powered by{' '}
-        <a
-          href="https://birdnet.cornell.edu"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
-        >
-          BirdNET
-        </a>{' '}
-        · bird info from{' '}
-        <a
-          href="https://en.wikipedia.org"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
-        >
-          Wikipedia
-        </a>{' '}
-        · vibed with{' '}
-        <a
-          href="https://shakespeare.diy"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
-        >
-          Shakespeare
-        </a>{' '}
-        ·{' '}
-        <a
-          href="https://gitlab.com/soapbox-pub/birdstar"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
-        >
-          Source code
-        </a>{' '}
-        (AGPL-3.0) ·{' '}
-        <Link
-          to="/privacy"
-          className="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-300"
-        >
-          Privacy
-        </Link>
-      </p>
-      <p className="text-stone-400/70 dark:text-stone-600">
-        BirdNET weights CC-BY-NC-SA 4.0 · non-commercial use · range data
-        derived from Wikipedia
-      </p>
+    <footer className="mt-20 flex justify-center text-center text-xs text-stone-400 dark:text-stone-500">
+      <CopyrightDialog
+        trigger={
+          <button
+            type="button"
+            className="rounded-sm text-xs text-stone-400 transition-colors hover:text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/40 dark:text-stone-500 dark:hover:text-stone-300"
+          >
+            License & Credits
+          </button>
+        }
+      />
     </footer>
   );
 });
