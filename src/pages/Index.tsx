@@ -13,9 +13,10 @@ import StarsIndex from "./StarsIndex";
  * reads on a black background, and the HUD styles assume white-on-dark.
  * Birds mode keeps AppConfig's theme (light/dark/system) intact.
  *
- * `LocationDisabledIndicator` is mounted on both modes as a sibling of
- * the mode page so it floats above everything and is always visible
- * when the app is running against a geolocation fallback.
+ * `LocationDisabledIndicator` (floating variant) is mounted alongside
+ * Stars because the sky map has no natural "above the content" slot.
+ * Birds mode mounts its own inline variant directly above the
+ * BirdexGrid, so we don't render it here.
  */
 const Index = () => {
   const { mode } = useMode();
@@ -29,12 +30,7 @@ const Index = () => {
       </>
     );
   }
-  return (
-    <>
-      <BirdsIndex />
-      <LocationDisabledIndicator />
-    </>
-  );
+  return <BirdsIndex />;
 };
 
 export default Index;

@@ -10,6 +10,7 @@ import {
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
+import { LocationDisabledIndicator } from '@/components/LocationDisabledIndicator';
 import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
@@ -873,10 +874,16 @@ const IndexInner = () => {
               />
             )
           ) : (
-            <BirdexGrid
-              visible={birdex.visible}
-              onSelect={handleSelectBirdex}
-            />
+            <>
+              {/* Fallback notice when we're running against the NA
+                  default because the user denied or the browser is
+                  unavailable. Self-hides when location is granted. */}
+              <LocationDisabledIndicator variant="inline" className="mb-4" />
+              <BirdexGrid
+                visible={birdex.visible}
+                onSelect={handleSelectBirdex}
+              />
+            </>
           )}
         </section>
 

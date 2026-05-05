@@ -1,19 +1,18 @@
-// Small bottom-of-viewport indicator shown whenever the app is running
-// against a location fallback — i.e. when the browser's geolocation API
-// has been denied, is unsupported, or the user actively declined the
-// prompt and we've fallen back to a continent-level North America
-// default.
+// Indicator shown whenever the app is running against a location
+// fallback — i.e. when the browser's geolocation API has been denied,
+// is unsupported, or the user actively declined the prompt and we've
+// fallen back to a continent-level North America default.
 //
-// The indicator is a compact, fixed-position pill in the bottom-left
-// corner of the viewport so it sits out of the way of content but is
-// always reachable. It mirrors the top-left ModeSelector aesthetically
-// and is rendered on every route (both Birds and Stars modes) from
-// `src/pages/Index.tsx`.
+// Two variants:
 //
-// In Birds mode the PlayerBar occupies the full-width bottom strip at
-// `z-40`; we lift the indicator above it with `bottom-24`/`bottom-28`.
-// In Stars mode there's no player bar, so the indicator sits closer to
-// the bottom edge.
+//   - `floating` (default): a compact, fixed-position pill in the
+//     bottom-left corner. Used by Stars mode which has no natural
+//     "above the content" slot.
+//
+//   - `inline`: flows with the parent, centered so it sits above
+//     whatever it precedes. Birds mode uses this above the
+//     BirdexGrid so the notice is visible without overlapping the
+//     PlayerBar or the manual-location controls.
 //
 // Clicking the pill opens a popover that explains why location is
 // needed and offers a "Try again" action that re-runs the browser's
@@ -94,7 +93,23 @@ function readSnapshot(): Snapshot {
 
 // -- Component ---------------------------------------------------------------
 
-export function LocationDisabledIndicator() {
+export interface LocationDisabledIndicatorProps {
+  /**
+   * `floating` (default) — fixed-position pill in the bottom-left,
+   * styled for whichever mode is mounted. This is what Stars mode
+   * uses since it has no natural "above the content" slot.
+   *
+   * `inline` — a centered, static pill that flows with the
+   * surrounding markup. Birds mode uses this above the BirdexGrid.
+   */
+  variant?: 'floating' | 'inline';
+  className?: string;
+}
+
+export function LocationDisabledIndicator({
+  variant = 'floating',
+  className,
+}: LocationDisabledIndicatorProps = {}) {
   const { mode } = useMode();
   const [snapshot, setSnapshot] = useState<Snapshot>(readSnapshot);
 
@@ -152,12 +167,19 @@ export function LocationDisabledIndicator() {
   return (
     <div
       className={cn(
-        // Always on top of PlayerBar (z-40) and top HUDs (z-20). Below
-        // modal overlays which use z-50 from Radix.
-        'fixed left-3 z-50 sm:left-4',
-        // In Birds mode clear the PlayerBar (~80px tall). In Stars mode
-        // sit close to the bottom edge.
-        mode === 'stars' ? 'bottom-3 sm:bottom-4' : 'bottom-24 sm:bottom-28',
+        variant === 'floating'
+          ? cn(
+              // Always on top of PlayerBar (z-40) and top HUDs (z-20). Below
+              // modal overlays which use z-50 from Radix.
+              'fixed left-3 z-50 sm:left-4',
+              // In Birds mode clear the PlayerBar (~80px tall). In Stars mode
+              // sit close to the bottom edge.
+              mode === 'stars' ? 'bottom-3 sm:bottom-4' : 'bottom-24 sm:bottom-28',
+            )
+          : // Inline variant: flows with the parent, centered so it sits
+            // above whatever content it precedes (e.g. the BirdexGrid).
+            'flex w-full justify-center',
+        className,
       )}
     >
       <Popover>
@@ -183,7 +205,11 @@ export function LocationDisabledIndicator() {
             <span className="leading-tight">Location disabled</span>
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" className="w-72 text-sm">
+        <PopoverContent
+          side="top"
+          align={variant === 'floating' ? 'start' : 'center'}
+          className="w-72 text-sm"
+        >
           <div className="space-y-3">
             <p className="font-medium">Location disabled</p>
             <p className="text-muted-foreground text-xs leading-relaxed">
