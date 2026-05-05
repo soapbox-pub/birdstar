@@ -601,15 +601,6 @@ function CenterRegion({
             {statusLabel.top}
           </p>
         )}
-        {mode === 'listening' ? (
-          <span
-            aria-hidden
-            className="relative inline-flex h-2 w-2 shrink-0"
-          >
-            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/60 dark:bg-amber-400/60" />
-            <span className="relative inline-block h-2 w-2 rounded-full bg-emerald-500 dark:bg-amber-400" />
-          </span>
-        ) : null}
         <p className="ml-auto hidden shrink-0 truncate text-xs text-stone-500 sm:inline dark:text-stone-400">
           {statusLabel.bottom}
         </p>
