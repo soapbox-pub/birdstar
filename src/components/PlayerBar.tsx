@@ -202,6 +202,7 @@ function PlayerBarImpl({
             visualizerActive={visualizerActive}
             isMutedForSong={isMutedForSong}
             onOpenLatestHit={openLatestHitDialog}
+            onResume={onResume}
           />
         </div>
 
@@ -424,6 +425,7 @@ function CenterRegion({
   visualizerActive,
   isMutedForSong,
   onOpenLatestHit,
+  onResume,
 }: {
   mode: PlayerMode;
   loadingPct: number;
@@ -453,6 +455,13 @@ function CenterRegion({
    * map needed to hydrate a confirmed click.
    */
   onOpenLatestHit: () => void;
+  /**
+   * Called when the user taps the "tap to resume" secondary label in
+   * the paused state. Mirrors the primary play button so the whole
+   * center region is a valid resume affordance, not just the round
+   * play icon.
+   */
+  onResume: () => void;
 }) {
   if (mode === 'error') {
     return (
@@ -499,6 +508,13 @@ function CenterRegion({
      * whether the top line renders as a button or a plain <p>.
      */
     clickable: boolean;
+    /**
+     * True when the bottom line is a "tap to resume" affordance and
+     * should render as a button that calls `onResume`. Lets the user
+     * resume listening by tapping the label text as well as the
+     * primary play button.
+     */
+    resumable: boolean;
   } = (() => {
     switch (mode) {
       case 'listening':
@@ -513,6 +529,7 @@ function CenterRegion({
             top: 'Mic paused',
             bottom: 'Listening resumes when the song ends',
             clickable: false,
+            resumable: false,
           };
         }
         if (latestHit) {
@@ -522,37 +539,43 @@ function CenterRegion({
               ? `Last heard ${formatClock(latestHit.timestamp)}`
               : `Listening… ${hitPct}% to confirmation`,
             clickable: true,
+            resumable: false,
           };
         }
         return {
           top: 'Listening…',
           bottom: 'Point the mic toward the trees',
           clickable: false,
+          resumable: false,
         };
       case 'paused':
         if (latestHit) {
           return {
             top: latestHit.commonName,
-            bottom: 'Paused — tap play to resume',
+            bottom: 'Paused — tap to resume',
             clickable: true,
+            resumable: true,
           };
         }
         return {
           top: 'Paused',
-          bottom: 'Tap play to resume',
+          bottom: 'Tap to resume',
           clickable: false,
+          resumable: true,
         };
       case 'ready-idle':
         return {
           top: 'Ready',
           bottom: 'Waiting for microphone access…',
           clickable: false,
+          resumable: false,
         };
       default:
         return {
           top: 'Getting ready',
           bottom: 'Starting up…',
           clickable: false,
+          resumable: false,
         };
     }
   })();
@@ -610,9 +633,28 @@ function CenterRegion({
             <span className="relative inline-block h-2 w-2 rounded-full bg-emerald-500 dark:bg-amber-400" />
           </span>
         ) : null}
-        <p className="ml-auto hidden shrink-0 truncate text-xs text-stone-500 sm:inline dark:text-stone-400">
-          {statusLabel.bottom}
-        </p>
+        {statusLabel.resumable ? (
+          // When paused, render the secondary label as a button so the
+          // user can resume by tapping the text as well as the round
+          // play button. Styling matches the <p> branch so the bar
+          // doesn't visually jump between paused and listening.
+          <button
+            type="button"
+            onClick={onResume}
+            aria-label="Resume listening"
+            className={cn(
+              'ml-auto hidden shrink-0 truncate text-xs text-stone-500 sm:inline dark:text-stone-400',
+              'underline-offset-2 hover:underline focus-visible:underline',
+              'focus:outline-none focus-visible:outline-none',
+            )}
+          >
+            {statusLabel.bottom}
+          </button>
+        ) : (
+          <p className="ml-auto hidden shrink-0 truncate text-xs text-stone-500 sm:inline dark:text-stone-400">
+            {statusLabel.bottom}
+          </p>
+        )}
       </div>
 
       <div className="h-8 w-full sm:h-10">
