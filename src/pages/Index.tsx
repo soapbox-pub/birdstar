@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMode } from "@/hooks/useMode";
 import { useIsDark } from "@/hooks/useIsDark";
 import { ForceDarkTheme } from "@/components/ForceDarkTheme";
@@ -126,8 +126,12 @@ const Index = () => {
   // The mode at the very first render. Used to tell `ModeLayer`
   // whether to skip its fade-in on mount — the initial-mode layer
   // should appear instantly on page load; any layer that mounts later
-  // (from a toggle click) should fade in from 0.
-  const initialModeRef = useRef<Mode>(mode);
+  // (from a toggle click) should fade in from 0. Stored in state
+  // (with a lazy initializer) rather than a ref so it can be read
+  // during render without tripping the "refs during render" rule;
+  // the setter is never called, so the value is effectively a
+  // render-safe constant.
+  const [initialMode] = useState<Mode>(() => mode);
 
   // Which modes' React trees are currently mounted. Normally a single
   // mode; during a cross-fade both are here for TRANSITION_MS.
@@ -138,39 +142,34 @@ const Index = () => {
   // Used to drive opacity.
   const [targetMode, setTargetMode] = useState<Mode>(mode);
 
-  const cleanupTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (mode === targetMode) return;
-
-    // A mode change has arrived. Add the new mode to the mounted set
-    // and flip the target — this kicks off the cross-fade. The
-    // incoming `ModeLayer` will handle its own 0 → 1 fade-in via rAF.
+  // When the parent-owned `mode` prop changes, adjust our local state
+  // during render rather than in an effect. This is the pattern
+  // recommended by the React docs ("Adjusting some state when a prop
+  // changes") and avoids the cascading re-render that an effect-based
+  // setState would cause.
+  if (mode !== targetMode) {
     setMountedModes((prev) => {
+      if (prev.has(mode)) return prev;
       const next = new Set(prev);
       next.add(mode);
       return next;
     });
     setTargetMode(mode);
+  }
 
-    // After the fade completes, drop the outgoing mode so we aren't
-    // running both trees' effects indefinitely.
-    if (cleanupTimerRef.current != null) {
-      window.clearTimeout(cleanupTimerRef.current);
-    }
-    cleanupTimerRef.current = window.setTimeout(() => {
-      setMountedModes(new Set([mode]));
-      cleanupTimerRef.current = null;
-    }, TRANSITION_MS);
-  }, [mode, targetMode]);
-
+  // After the fade completes, drop the outgoing mode so we aren't
+  // running both trees' effects indefinitely. Keyed on `targetMode`
+  // so a new timer fires each time a transition starts; the cleanup
+  // cancels any still-pending timer from a previous, not-yet-settled
+  // swap (e.g. user toggles twice in quick succession).
   useEffect(() => {
+    const id = window.setTimeout(() => {
+      setMountedModes(new Set([targetMode]));
+    }, TRANSITION_MS);
     return () => {
-      if (cleanupTimerRef.current != null) {
-        window.clearTimeout(cleanupTimerRef.current);
-      }
+      window.clearTimeout(id);
     };
-  }, []);
+  }, [targetMode]);
 
   // The backdrop is *the* visible sky only in dark Birds. In Stars the
   // interactive `<SkyMap>` paints its own opaque sky on top. We also
@@ -196,29 +195,28 @@ const Index = () => {
   // black rectangle. Trails `backdropVisible` by TRANSITION_MS on its
   // way down; follows immediately on the way up.
   const [backdropMounted, setBackdropMounted] = useState(backdropVisible);
-  const unmountTimerRef = useRef<number | null>(null);
+
+  // Rising edge: adjust during render (React-recommended pattern) so
+  // the canvas is already mounted on the same commit that flips the
+  // wrapper to opacity 1.
+  if (backdropVisible && !backdropMounted) {
+    setBackdropMounted(true);
+  }
+
+  // Falling edge: delay the unmount by TRANSITION_MS so the opacity
+  // transition has something to animate. If `backdropVisible` flips
+  // back to true before the timer fires, the effect's cleanup cancels
+  // the pending unmount — so we don't rip the canvas out from under
+  // a not-yet-complete fade-in.
   useEffect(() => {
-    if (backdropVisible) {
-      if (unmountTimerRef.current != null) {
-        window.clearTimeout(unmountTimerRef.current);
-        unmountTimerRef.current = null;
-      }
-      setBackdropMounted(true);
-      return;
-    }
-    if (unmountTimerRef.current != null) return;
-    unmountTimerRef.current = window.setTimeout(() => {
+    if (backdropVisible) return;
+    const id = window.setTimeout(() => {
       setBackdropMounted(false);
-      unmountTimerRef.current = null;
     }, TRANSITION_MS);
-  }, [backdropVisible]);
-  useEffect(() => {
     return () => {
-      if (unmountTimerRef.current != null) {
-        window.clearTimeout(unmountTimerRef.current);
-      }
+      window.clearTimeout(id);
     };
-  }, []);
+  }, [backdropVisible]);
 
   // Stars mode wants the `dark` class pinned on <html> throughout its
   // visible lifetime — including the fade-in.
@@ -246,7 +244,7 @@ const Index = () => {
         <ModeLayer
           key="birds"
           visible={birdsVisible}
-          initiallyVisible={initialModeRef.current === "birds"}
+          initiallyVisible={initialMode === "birds"}
         >
           <BirdsIndex />
         </ModeLayer>
@@ -256,7 +254,7 @@ const Index = () => {
         <ModeLayer
           key="stars"
           visible={starsVisible}
-          initiallyVisible={initialModeRef.current === "stars"}
+          initiallyVisible={initialMode === "stars"}
         >
           <StarsIndex />
           <LocationDisabledIndicator />
