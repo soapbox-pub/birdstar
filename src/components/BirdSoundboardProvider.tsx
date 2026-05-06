@@ -45,25 +45,6 @@ import { fetchWikipediaSound } from '@/hooks/useWikipediaSound';
 import { useContext } from 'react';
 
 /**
- * Maximum number of species playing simultaneously when "Play all"
- * is triggered. Browsers happily decode more than this but audio
- * mixing quality degrades quickly past ~15 concurrent elements,
- * and mobile Safari sometimes starts auto-pausing excess tracks.
- * 12 matches the design spec (dawn-chorus vibe without
- * overwhelming the output).
- */
-const PLAY_ALL_CONCURRENCY = 12;
-
-/**
- * Range (ms) for randomised start offsets inside a Play-all
- * sweep. The chorus sounds more natural when tracks don't start
- * in lockstep — spreading them over a few hundred ms removes the
- * "everyone hit play at the exact same frame" artifact without
- * making the user wait noticeably for the last track.
- */
-const PLAY_ALL_STAGGER_MS = 400;
-
-/**
  * Re-implements `useBirdSound`'s resolver without the hook
  * infrastructure, so the provider can pre-warm the TanStack
  * Query cache imperatively during Play-all. Keeping the two
@@ -363,37 +344,14 @@ export function BirdSoundboardProvider({ children }: BirdSoundboardProviderProps
               r !== null && r.sound !== null,
           );
 
-        // Cap the concurrency AFTER resolution so we never fetch
-        // more than we need — but since resolutions are cheap
-        // (cached for most species), the cap is really about the
-        // <audio> elements, not the network.
-        const capped = playable.slice(0, PLAY_ALL_CONCURRENCY);
-
-        // Randomised stagger: each track waits a small, unique
-        // offset before starting. The offsets are uniformly
-        // spread across PLAY_ALL_STAGGER_MS so the chorus has
-        // an organic ramp-in rather than 12 simultaneous
-        // attack transients.
+        // Fire them all off concurrently. The browser handles the
+        // mixing; we don't cap or stagger.
         await Promise.allSettled(
-          capped.map(({ target, sound }, i) => {
-            // Deterministic + slight jitter — spreads the load
-            // predictably in tests while still feeling organic
-            // in production.
-            const delay =
-              (i * PLAY_ALL_STAGGER_MS) / Math.max(1, capped.length - 1) +
-              Math.random() * 40;
-            return new Promise<void>((resolve) => {
-              setTimeout(() => {
-                // User may have hit Stop all during the stagger
-                // window. Check before starting so we don't
-                // zombie-start tracks after a stop.
-                if (!playAllRunningRef.current) {
-                  resolve();
-                  return;
-                }
-                void playSpecies(target, sound.audioUrl).finally(resolve);
-              }, delay);
-            });
+          playable.map(({ target, sound }) => {
+            // User may have hit Stop all before we got here. Bail
+            // rather than zombie-starting tracks after a stop.
+            if (!playAllRunningRef.current) return Promise.resolve();
+            return playSpecies(target, sound.audioUrl);
           }),
         );
       } finally {
@@ -409,9 +367,8 @@ export function BirdSoundboardProvider({ children }: BirdSoundboardProviderProps
   );
 
   // Keep the playAllRunningRef honest when the user hits Stop all
-  // mid-sweep — the allSettled above is still pending, and we
-  // need to short-circuit it. The ref is checked inside the
-  // setTimeout callbacks.
+  // mid-sweep — the allSettled above may still be pending while
+  // sound URLs resolve, and we need to short-circuit it.
   useEffect(() => {
     if (!playAllActive) {
       playAllRunningRef.current = false;
