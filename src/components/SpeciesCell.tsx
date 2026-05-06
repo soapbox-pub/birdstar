@@ -123,30 +123,34 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
     : null;
 
   // Colored glow driven by live BirdNET confidence. Intensity is a
-  // [0, 1] decayed score — we shape it into a soft outer shadow on
-  // a dedicated overlay element that lives OUTSIDE the cell's
-  // `content-visibility: auto` subtree, so its halo isn't clipped
-  // by the cell's paint containment. The overlay spans beyond the
-  // cell's edges via negative insets, and its box-shadow extends
-  // further still; the rounded corners match the inner clip so
-  // the halo reads as coming from the cell itself.
+  // [0, 1] decayed score — we encode it TWO ways at once: glow
+  // size/opacity for "how loud is it", and hue for "how sure is
+  // the model". The color ramp runs cool → warm:
   //
-  // Palette matches the cell's variant — emerald for confirmed in-
-  // region, amber for rare, sky for starter/unconfirmed — so the
-  // glow feels like an extension of the cell's resting colour
-  // rather than a separate signal.
+  //   0.20  soft sky-blue        "heard something"
+  //   0.50  emerald / green      "confident"
+  //   0.85+ warm amber / gold    "loud and clear"
+  //
+  // Matches common heat-map intuition (cool = quiet/uncertain,
+  // warm = loud/certain) so the grid reads at a glance during a
+  // chorus — you can tell a confidently-detected cardinal from a
+  // marginal hit by colour alone, even before you register which
+  // species the cell is.
+  //
+  // The variant palette (emerald for confirmed in-region, amber
+  // for rare, sky for unheard) is intentionally NOT used while
+  // glowing — mixing two colour signals on the same element makes
+  // both harder to read. Variant identity is still visible from
+  // the cell's border, badge, and play button; the glow is purely
+  // a live-activity channel.
   const glowStyle: React.CSSProperties | undefined =
     glow > 0
       ? (() => {
-          const rgb =
-            variant === 'rare'
-              ? '251, 191, 36'   // amber-400
-              : variant === 'confirmed'
-                ? '52, 211, 153' // emerald-400
-                : '125, 211, 252'; // sky-300 (starter / unconfirmed)
           // Ease with a mild curve so low-confidence hits register
           // visibly without making peak hits look identical.
           const shaped = Math.pow(glow, 0.75);
+          const [r, g, b] = confidenceRampRgb(glow);
+          const rgb = `${r}, ${g}, ${b}`;
           const innerAlpha = (0.45 + 0.45 * shaped).toFixed(3);
           const outerAlpha = (0.25 + 0.4 * shaped).toFixed(3);
           const innerRadius = 10 + 14 * shaped;
@@ -545,6 +549,51 @@ function BirdGlyph({ faded }: { faded?: boolean }) {
       )}
     />
   );
+}
+
+/**
+ * Map a confidence score in [0, 1] to an RGB triplet on a
+ * cool → warm ramp:
+ *
+ *   - 0.0  sky-300   (125, 211, 252)  — heard something, unsure
+ *   - 0.5  emerald   ( 52, 211, 153)  — confident
+ *   - 1.0  amber-400 (251, 191,  36)  — loud and clear
+ *
+ * The three anchors share similar luminance (~0.75 linear) so the
+ * ramp shifts in hue without pulsing in brightness as a bird's
+ * score swings between chunks. Interpolation is linear in sRGB —
+ * good enough for a decorative glow; no need for a proper
+ * perceptual colour space here.
+ *
+ * Returned as a `[r, g, b]` tuple of integers in [0, 255] so the
+ * caller can drop them straight into an `rgba()` string.
+ */
+function confidenceRampRgb(score: number): [number, number, number] {
+  // Clamp defensively — the glow store only publishes [0, 1] but
+  // we'd rather produce a legal colour than a NaN-bearing rgba()
+  // string if something drifts.
+  const s = Math.max(0, Math.min(1, score));
+
+  // Two linear segments so each anchor is reached exactly:
+  //   [0, 0.5] lerps sky → emerald (t renormalised to [0, 1])
+  //   (0.5, 1] lerps emerald → amber
+  const sky: [number, number, number] = [125, 211, 252];
+  const emerald: [number, number, number] = [52, 211, 153];
+  const amber: [number, number, number] = [251, 191, 36];
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const mix = (
+    a: [number, number, number],
+    b: [number, number, number],
+    t: number,
+  ): [number, number, number] => [
+    Math.round(lerp(a[0], b[0], t)),
+    Math.round(lerp(a[1], b[1], t)),
+    Math.round(lerp(a[2], b[2], t)),
+  ];
+
+  if (s <= 0.5) return mix(sky, emerald, s / 0.5);
+  return mix(emerald, amber, (s - 0.5) / 0.5);
 }
 
 // Memo aggressively — the parent grid re-renders whenever any detection
