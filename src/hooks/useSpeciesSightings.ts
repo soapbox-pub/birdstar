@@ -55,10 +55,16 @@ import { useFollowList } from '@/hooks/useFollowList';
 /** Canonical Wikidata entity URI shape per NIP.md §"Kind 2473". */
 const WIKIDATA_ENTITY_URI_RE = /^https:\/\/www\.wikidata\.org\/entity\/Q\d+$/;
 
-/** Upper bound on sightings rendered inside the dialog. Matches the
- *  page size of `useFollowsBirdFeed` for consistency — plenty for a
- *  species-scoped list without making the dialog scroll forever. */
-const PAGE_SIZE = 20;
+/** Upper bound on detection events we fetch for one species. The
+ *  consumer (`SpeciesSightingsSection`) renders the *deduped* set of
+ *  friends who have heard this bird, not the raw event stream, so a
+ *  single friend who posts the same species many times shouldn't
+ *  push others past the cap. 100 comfortably covers realistic follow
+ *  lists — a user with hundreds of follows, each having heard the
+ *  bird once, would still be fully represented — while keeping the
+ *  request bounded. Relays can't dedupe by author for us, so we
+ *  over-fetch a little and dedupe in JS below. */
+const PAGE_SIZE = 100;
 
 export interface SpeciesSightingItem {
   /** Stable key for React. */
