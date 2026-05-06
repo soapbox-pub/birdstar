@@ -7,10 +7,16 @@
 // `useFollowsBirdFeed`:
 //
 //   BirdFeed                — top-level section, handles gate states
-//   ├── EmptyState          — dashed card for "no sightings yet"
 //   ├── FeedRowSkeleton     — placeholder row while the first page loads
 //   └── FeedRow             — one detection (friend pfp + bird thumb + copy)
 //       └── BirdInfoDialog  — opens on tap (shared with the birdex)
+//
+// There is no empty state by design — when the current user plus
+// their follows haven't published any kind 2473 events yet, the
+// whole section is omitted (see the "no items" early return in
+// BirdFeed below). The birdex grid above already owns the "nothing
+// heard yet" story, so a stacked "no sightings" card would be
+// redundant noise.
 //
 // The row layout intentionally mirrors `FollowDetectionToaster`'s
 // toast body — two overlapping portraits (friend on the left, bird
@@ -27,7 +33,7 @@ import { useInView } from 'react-intersection-observer';
 import { Bird, Loader2 } from 'lucide-react';
 import type { NostrMetadata } from '@nostrify/nostrify';
 
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   BirdInfoDialog,
@@ -91,13 +97,35 @@ export function BirdFeed() {
 
   const showSkeletons = !followsReady || isLoading;
 
+  // Hide the section entirely when there are no sightings to show.
+  // Covers two cases: (a) the user has no follows and no detection
+  // history of their own, and (b) the follow list loaded but none
+  // of those pubkeys have ever published a kind 2473 event. In
+  // both cases a "Recent sightings" heading followed by an empty
+  // card is just noise — the birdex above already owns the "you
+  // haven't heard anything yet" story.
+  //
+  // We only collapse once the initial fetch has settled; during
+  // the skeleton phase we still render placeholders so the page
+  // doesn't jump when the first page lands. The BirdInfoDialog is
+  // still mounted in the collapsed path so a dialog that was open
+  // when the last row is retracted mid-session (e.g. via NIP-09)
+  // can still close cleanly.
+  if (!showSkeletons && items.length === 0) {
+    return (
+      <BirdInfoDialog
+        subject={subject}
+        open={subject !== null}
+        onOpenChange={closeDialog}
+      />
+    );
+  }
+
   return (
     <>
       <SectionHeader />
       {showSkeletons ? (
         <FeedRowSkeletonList />
-      ) : items.length === 0 ? (
-        <EmptyState />
       ) : (
         <ul className="flex flex-col gap-3">
           {items.map((item) => (
@@ -142,22 +170,6 @@ function SectionHeader() {
         From you and the people you follow
       </p>
     </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <Card className="border-dashed bg-transparent">
-      <CardContent className="flex flex-col items-center px-8 py-12 text-center">
-        <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-          <Bird className="size-6" aria-hidden />
-        </div>
-        <p className="max-w-sm text-sm text-stone-600 dark:text-stone-400">
-          No sightings yet. Once you hear a bird — or the people you follow
-          do — their detections will appear here.
-        </p>
-      </CardContent>
-    </Card>
   );
 }
 
