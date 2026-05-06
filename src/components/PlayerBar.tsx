@@ -234,9 +234,17 @@ function PlayerBarImpl({
           // background, and a soft ambient shadow. `overflow-hidden`
           // clips the optional opt-in banner so its background
           // doesn't bleed past the rounded corners.
-          'overflow-hidden rounded-2xl border border-stone-200/80 bg-white/85 backdrop-blur-md',
-          'dark:border-indigo-900/60 dark:bg-[#0d1230]/85',
-          'shadow-[0_8px_32px_-12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6)]',
+          //
+          // Soundboard mode renders the Play all / Stop all buttons
+          // as free-floating controls -- no surrounding pill -- so
+          // the chrome is suppressed there. The buttons carry their
+          // own shadows and rounded edges.
+          !songPlaying &&
+            cn(
+              'overflow-hidden rounded-2xl border border-stone-200/80 bg-white/85 backdrop-blur-md',
+              'dark:border-indigo-900/60 dark:bg-[#0d1230]/85',
+              'shadow-[0_8px_32px_-12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6)]',
+            ),
         )}
       >
         {showLocationOptIn && onRequestLocation ? (
