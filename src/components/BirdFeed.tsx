@@ -7,16 +7,18 @@
 // `useFollowsBirdFeed`:
 //
 //   BirdFeed                — top-level section, handles gate states
-//   ├── FeedRowSkeleton     — placeholder row while the first page loads
 //   └── FeedRow             — one detection (friend pfp + bird thumb + copy)
 //       └── BirdInfoDialog  — opens on tap (shared with the birdex)
 //
-// There is no empty state by design — when the current user plus
-// their follows haven't published any kind 2473 events yet, the
-// whole section is omitted (see the "no items" early return in
-// BirdFeed below). The birdex grid above already owns the "nothing
-// heard yet" story, so a stacked "no sightings" card would be
-// redundant noise.
+// There is no empty state and no loading skeleton by design —
+// whenever the feed has zero items for any reason (logged out, no
+// follows, follows haven't published anything, or the initial fetch
+// is still in flight) the whole section is omitted. Mounting a
+// skeleton or empty card above the player bar would compete with
+// the birdex for the same "you haven't heard anything yet" story
+// the birdex already owns. The section pops in silently as soon as
+// the first real detection lands, which is fine for non-critical
+// exploratory content.
 //
 // The row layout intentionally mirrors `FollowDetectionToaster`'s
 // toast body — two overlapping portraits (friend on the left, bird
@@ -34,7 +36,6 @@ import { Bird, Loader2 } from 'lucide-react';
 import type { NostrMetadata } from '@nostrify/nostrify';
 
 import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   BirdInfoDialog,
   type BirdSubject,
@@ -58,11 +59,9 @@ export function BirdFeed() {
   const { user } = useCurrentUser();
   const {
     items,
-    isLoading,
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-    followsReady,
   } = useFollowsBirdFeed();
 
   // Shared dialog subject — lifted up here so opening one row's
@@ -95,23 +94,15 @@ export function BirdFeed() {
   // be moved without reintroducing a logged-out empty state.
   if (!user) return null;
 
-  const showSkeletons = !followsReady || isLoading;
-
-  // Hide the section entirely when there are no sightings to show.
-  // Covers two cases: (a) the user has no follows and no detection
-  // history of their own, and (b) the follow list loaded but none
-  // of those pubkeys have ever published a kind 2473 event. In
-  // both cases a "Recent sightings" heading followed by an empty
-  // card is just noise — the birdex above already owns the "you
-  // haven't heard anything yet" story.
-  //
-  // We only collapse once the initial fetch has settled; during
-  // the skeleton phase we still render placeholders so the page
-  // doesn't jump when the first page lands. The BirdInfoDialog is
-  // still mounted in the collapsed path so a dialog that was open
-  // when the last row is retracted mid-session (e.g. via NIP-09)
-  // can still close cleanly.
-  if (!showSkeletons && items.length === 0) {
+  // Hide the section entirely whenever there are no items — whether
+  // that's because the initial fetch is still in flight, the user
+  // has no follows, or nobody on their list has ever published a
+  // kind 2473 event. The birdex above already handles the "you
+  // haven't heard anything yet" story; stacking a skeleton or empty
+  // card underneath it would be redundant noise. We still mount
+  // BirdInfoDialog here so a dialog that was open when the last row
+  // is retracted mid-session (e.g. via NIP-09) can close cleanly.
+  if (items.length === 0) {
     return (
       <BirdInfoDialog
         subject={subject}
@@ -124,33 +115,29 @@ export function BirdFeed() {
   return (
     <>
       <SectionHeader />
-      {showSkeletons ? (
-        <FeedRowSkeletonList />
-      ) : (
-        <ul className="flex flex-col gap-3">
-          {items.map((item) => (
-            <li key={item.id}>
-              <FeedRow item={item} onOpen={openDialog} />
-            </li>
-          ))}
-          {hasNextPage ? (
-            <li
-              ref={sentinelRef}
-              className="flex items-center justify-center py-6"
-              aria-hidden={!isFetchingNextPage}
-            >
-              {isFetchingNextPage ? (
-                <Loader2 className="size-5 animate-spin text-stone-400 dark:text-stone-500" />
-              ) : (
-                // Reserve space so the sentinel is always in-flow
-                // and the IntersectionObserver has something to
-                // measure against; invisible when not loading.
-                <span className="h-5" aria-hidden />
-              )}
-            </li>
-          ) : null}
-        </ul>
-      )}
+      <ul className="flex flex-col gap-3">
+        {items.map((item) => (
+          <li key={item.id}>
+            <FeedRow item={item} onOpen={openDialog} />
+          </li>
+        ))}
+        {hasNextPage ? (
+          <li
+            ref={sentinelRef}
+            className="flex items-center justify-center py-6"
+            aria-hidden={!isFetchingNextPage}
+          >
+            {isFetchingNextPage ? (
+              <Loader2 className="size-5 animate-spin text-stone-400 dark:text-stone-500" />
+            ) : (
+              // Reserve space so the sentinel is always in-flow
+              // and the IntersectionObserver has something to
+              // measure against; invisible when not loading.
+              <span className="h-5" aria-hidden />
+            )}
+          </li>
+        ) : null}
+      </ul>
       <BirdInfoDialog
         subject={subject}
         open={subject !== null}
@@ -273,38 +260,6 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
           </p>
         </div>
       </button>
-    </Card>
-  );
-}
-
-function FeedRowSkeletonList() {
-  // 4 rows is enough to fill a typical mobile viewport without
-  // overwhelming desktop. Keyed by index since they're identical.
-  return (
-    <ul className="flex flex-col gap-3">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <li key={i}>
-          <FeedRowSkeleton />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function FeedRowSkeleton() {
-  return (
-    <Card className="overflow-hidden border-stone-200/70 bg-white/60 dark:border-indigo-900/40 dark:bg-indigo-950/30">
-      <div className="flex items-center gap-3 p-3">
-        <div className="relative flex shrink-0 items-center">
-          <Skeleton className="size-12 rounded-full ring-2 ring-background" />
-          <Skeleton className="-ml-3 size-12 rounded-full ring-2 ring-background" />
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-3.5 w-3/4" />
-          <Skeleton className="h-3 w-1/3" />
-        </div>
-      </div>
     </Card>
   );
 }
