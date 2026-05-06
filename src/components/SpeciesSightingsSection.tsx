@@ -22,6 +22,8 @@
 // expectation that a list follows, so a tiny empty card keeps the
 // layout honest. No sightings is useful information in the dialog
 // context ("none of my friends have heard this one yet").
+import { useState } from 'react';
+
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -32,6 +34,14 @@ import { genUserName } from '@/lib/genUserName';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { NostrMetadata } from '@nostrify/nostrify';
+
+/** Number of sightings visible before the user taps "Show more". The
+ *  hook itself fetches up to 20 (its internal PAGE_SIZE), so the
+ *  expanded view caps there. Three is short enough to keep the dialog
+ *  compact on a phone while still giving a hint of social activity
+ *  without interaction — the common species will have 1–2 sightings
+ *  from close friends and the collapsed view fits them all. */
+const COLLAPSED_COUNT = 3;
 
 interface SpeciesSightingsSectionProps {
   /** Wikidata entity URI for the species. When null the parent
@@ -51,6 +61,18 @@ export function SpeciesSightingsSection({
   const { user } = useCurrentUser();
   const { items, isLoading, followsReady } = useSpeciesSightings(entityUri);
 
+  // Reset the expanded state when the dialog switches species. Done
+  // as an in-render state adjustment keyed on `entityUri` rather
+  // than an effect — React explicitly allows this, skips an extra
+  // render cycle, and avoids the react-hooks/set-state-in-effect
+  // lint. Same pattern as `CollapsibleProse` in BirdInfoDialog.tsx.
+  const [expanded, setExpanded] = useState(false);
+  const [prevEntity, setPrevEntity] = useState(entityUri);
+  if (prevEntity !== entityUri) {
+    setPrevEntity(entityUri);
+    setExpanded(false);
+  }
+
   // Logged out: no social graph to query, and the feature doesn't
   // meaningfully exist in that state. Hide the section entirely
   // rather than showing an empty card that would confuse the story.
@@ -61,6 +83,9 @@ export function SpeciesSightingsSection({
   // section on the same data boundary.
   if (!entityUri) return null;
 
+  const visibleItems = expanded ? items : items.slice(0, COLLAPSED_COUNT);
+  const hiddenCount = Math.max(0, items.length - COLLAPSED_COUNT);
+
   return (
     <section className="space-y-3 border-t border-stone-200 pt-4 dark:border-stone-800">
       <h3 className="font-serif text-lg">Recent sightings</h3>
@@ -68,18 +93,43 @@ export function SpeciesSightingsSection({
           - Loading (follow list still resolving OR query in flight):
             skeletons. Followed list loading is the common case on
             first dialog open and is essentially instant after that.
-          - Resolved with items: the list.
+          - Resolved with items: the list (clipped to COLLAPSED_COUNT
+            until "Show more" is tapped).
           - Resolved with no items: a compact empty card. */}
       {!followsReady || isLoading ? (
         <SightingsSkeleton />
       ) : items.length > 0 ? (
-        <ul className="flex flex-col gap-2">
-          {items.map((item) => (
-            <li key={item.id}>
-              <SightingRow item={item} isSelf={user.pubkey === item.pubkey} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col gap-2">
+            {visibleItems.map((item) => (
+              <li key={item.id}>
+                <SightingRow
+                  item={item}
+                  isSelf={user.pubkey === item.pubkey}
+                />
+              </li>
+            ))}
+          </ul>
+          {/* Toggle visibility only when there's actually more to
+              show. Collapsed state exposes the hidden count so the
+              user knows the cost of expanding. Expanded state just
+              offers the symmetric "Show less" to collapse back. */}
+          {hiddenCount > 0 || expanded ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className={cn(
+                'text-sm font-semibold underline-offset-2 hover:underline',
+                'transition-colors focus:outline-none focus-visible:underline',
+                'text-emerald-700 hover:text-emerald-800',
+                'dark:text-amber-300 dark:hover:text-amber-200',
+              )}
+            >
+              {expanded ? 'Show less' : `Show more (${hiddenCount})`}
+            </button>
+          ) : null}
+        </>
       ) : (
         <p className="text-sm italic text-stone-400 dark:text-stone-500">
           No one you follow has heard this bird yet.
