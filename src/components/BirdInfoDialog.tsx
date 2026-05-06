@@ -52,6 +52,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { ObservationMap, MAP_ATTRIBUTION } from '@/components/ObservationMap';
 import { CommentsSection } from '@/components/comments/CommentsSection';
+import { SpeciesSightingsSection } from '@/components/SpeciesSightingsSection';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound, type BirdSound } from '@/hooks/useBirdSound';
 import { useInatTaxonId } from '@/hooks/useInatTaxonId';
@@ -337,6 +338,20 @@ export function BirdInfoDialog({
                 scientificName={scientificName}
                 pendingProgress={pendingProgress}
               />
+
+              {/* Per-species recent sightings from the user's
+                  social graph (self + NIP-02 follows). Sits just
+                  above the discussion thread because it carries
+                  the same social-context weight — "here's what
+                  people I trust have heard of this bird" — and
+                  both sections share the same `entityUri` trust
+                  boundary. The component itself handles
+                  logged-out / missing-entity / empty cases, so we
+                  render it unconditionally when we have a
+                  resolved entity URI. */}
+              {data?.entityUri ? (
+                <SpeciesSightingsSection entityUri={data.entityUri} />
+              ) : null}
 
               {/* Per-species comment thread, keyed on the Wikidata
                   entity URI (NIP-73 `i` / `I` tag as a `web` URL). We

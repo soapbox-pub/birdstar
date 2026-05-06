@@ -149,13 +149,10 @@ export function BirdFeed() {
 
 function SectionHeader() {
   return (
-    <div className="mb-4 flex items-baseline gap-3">
+    <div className="mb-4">
       <h2 className="font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
         Recent sightings
       </h2>
-      <p className="text-sm text-stone-500 dark:text-stone-400">
-        From you and the people you follow
-      </p>
     </div>
   );
 }
