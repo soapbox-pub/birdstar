@@ -214,51 +214,70 @@ function PlayerBarImpl({
   return (
     <div
       className={cn(
-        'fixed inset-x-0 bottom-0 z-40 border-t border-stone-200/80 bg-white/85 backdrop-blur-md',
-        'dark:border-indigo-900/60 dark:bg-[#0d1230]/85',
-        'shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.15)] dark:shadow-[0_-8px_24px_-12px_rgba(0,0,0,0.6)]',
+        // Floating pill: fixed to the bottom but inset from the
+        // viewport edges. `inset-x-0` + `mx-auto` + `max-w-4xl`
+        // matches the inner content's max-width so the bar stops
+        // at the same edge as the content above. Horizontal
+        // padding on the outer element keeps a consistent gap
+        // from the screen edge on narrow viewports; the bottom
+        // offset mirrors that gap and adds the iOS safe-area inset
+        // so it floats above the home-indicator.
+        'fixed inset-x-0 z-40 mx-auto max-w-4xl px-3 sm:px-4',
+        'bottom-[calc(0.75rem+env(safe-area-inset-bottom))] sm:bottom-[calc(1rem+env(safe-area-inset-bottom))]',
       )}
       role="region"
       aria-label="Listening controls"
     >
-      {showLocationOptIn && onRequestLocation ? (
-        <LocationOptInBanner onRequest={onRequestLocation} />
-      ) : null}
-      {songPlaying ? (
-        // Soundboard mode. Same container chrome as listening
-        // mode (same vertical padding, same max-width, same
-        // height) so the bar doesn't jump when mode flips.
-        <SoundboardRegion heardTargets={heardTargets} />
-      ) : (
-        <div className="mx-auto flex max-w-4xl items-center px-3 py-3 sm:px-4">
-          <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
+      <div
+        className={cn(
+          // Pill chrome: rounded, bordered all around, frosted
+          // background, and a soft ambient shadow. `overflow-hidden`
+          // clips the optional opt-in banner so its background
+          // doesn't bleed past the rounded corners.
+          'overflow-hidden rounded-2xl border border-stone-200/80 bg-white/85 backdrop-blur-md',
+          'dark:border-indigo-900/60 dark:bg-[#0d1230]/85',
+          'shadow-[0_8px_32px_-12px_rgba(0,0,0,0.25)] dark:shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6)]',
+        )}
+      >
+        {showLocationOptIn && onRequestLocation ? (
+          <LocationOptInBanner onRequest={onRequestLocation} />
+        ) : null}
+        {songPlaying ? (
+          // Soundboard mode. Same container chrome as listening
+          // mode (same vertical padding, same max-width, same
+          // height) so the bar doesn't jump when mode flips.
+          <SoundboardRegion heardTargets={heardTargets} />
+        ) : (
+          <div className="mx-auto flex max-w-4xl items-center px-3 py-3 sm:px-4">
+            <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
 
-          <div className="min-w-0 flex-1">
-            <CenterRegion
-              mode={mode}
-              loadingPct={loadingPct}
-              errorMessage={errorMessage}
-              errorKind={errorKind}
-              latestHit={latestHit}
-              getAnalyser={getAnalyser}
-              visualizerActive={visualizerActive}
-              isMutedForSong={isMutedForSong}
-              onOpenLatestHit={openLatestHitDialog}
-              onResume={onResume}
-            />
-          </div>
+            <div className="min-w-0 flex-1">
+              <CenterRegion
+                mode={mode}
+                loadingPct={loadingPct}
+                errorMessage={errorMessage}
+                errorKind={errorKind}
+                latestHit={latestHit}
+                getAnalyser={getAnalyser}
+                visualizerActive={visualizerActive}
+                isMutedForSong={isMutedForSong}
+                onOpenLatestHit={openLatestHitDialog}
+                onResume={onResume}
+              />
+            </div>
 
-          <div className="ml-3 sm:ml-4">
-            <PrimaryButton
-              mode={mode}
-              onPause={onPause}
-              onResume={onResume}
-              onRetry={onRetry}
-              errorKind={errorKind}
-            />
+            <div className="ml-3 sm:ml-4">
+              <PrimaryButton
+                mode={mode}
+                onPause={onPause}
+                onResume={onResume}
+                onRetry={onRetry}
+                errorKind={errorKind}
+              />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
