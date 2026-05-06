@@ -124,11 +124,12 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
 
   // Colored glow driven by live BirdNET confidence. Intensity is a
   // [0, 1] decayed score — we shape it into a soft outer shadow on
-  // the inner clip so it composes cleanly with the parent's
-  // `drop-shadow-*` utility (different CSS property, no conflict).
-  // Two-stop shadow (tight + wide) reads as a soft halo rather
-  // than a hard ring; opacity and spread both scale with intensity
-  // so weak detections whisper and strong ones sing.
+  // a dedicated overlay element that lives OUTSIDE the cell's
+  // `content-visibility: auto` subtree, so its halo isn't clipped
+  // by the cell's paint containment. The overlay spans beyond the
+  // cell's edges via negative insets, and its box-shadow extends
+  // further still; the rounded corners match the inner clip so
+  // the halo reads as coming from the cell itself.
   //
   // Palette matches the cell's variant — emerald for confirmed in-
   // region, amber for rare, sky for starter/unconfirmed — so the
@@ -146,10 +147,10 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
           // Ease with a mild curve so low-confidence hits register
           // visibly without making peak hits look identical.
           const shaped = Math.pow(glow, 0.75);
-          const innerAlpha = (0.35 + 0.45 * shaped).toFixed(3);
-          const outerAlpha = (0.15 + 0.35 * shaped).toFixed(3);
-          const innerRadius = 6 + 10 * shaped;
-          const outerRadius = 14 + 28 * shaped;
+          const innerAlpha = (0.45 + 0.45 * shaped).toFixed(3);
+          const outerAlpha = (0.25 + 0.4 * shaped).toFixed(3);
+          const innerRadius = 10 + 14 * shaped;
+          const outerRadius = 22 + 36 * shaped;
           return {
             boxShadow:
               `0 0 ${innerRadius.toFixed(1)}px rgba(${rgb}, ${innerAlpha}), ` +
@@ -162,8 +163,18 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
     <div
       ref={rootRef}
       className={cn(
-        // OUTER wrapper: owns the hover lift, the shadow, and nothing
-        // else visual. Deliberately NOT clipped and NOT rounded.
+        // OUTER wrapper: owns the hover lift, the cell's ambient
+        // drop-shadow, and the live BirdNET confidence glow layer.
+        // Deliberately NOT clipped, NOT rounded, and — importantly —
+        // NO `content-visibility: auto`. The `content-visibility`
+        // containment lives on a CHILD now (see the inner
+        // "containment" wrapper below); keeping it off the outer
+        // means the outer doesn't have paint containment, so a
+        // descendant's box-shadow (the glow overlay) can paint
+        // beyond the cell's own bounds into the grid gutter. If
+        // `content-visibility: auto` were here, the browser's
+        // implicit `contain: paint` would clip the halo at the cell
+        // edge — which is exactly what happened before the fix.
         //
         // Why the split? A rounded + overflow-hidden element that
         // ALSO transforms (hover:-translate-y-0.5) is unreliable as a
@@ -175,10 +186,6 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
         // clip to a non-transforming child element means the clip is
         // always stable while hover animations play around it.
         //
-        // content-visibility + contain-intrinsic-size live on the
-        // outer so the browser can skip the entire subtree when
-        // offscreen.
-        //
         // `group` on the outer so the inner clip's border + ring
         // classes can respond to hover/focus of the underlying
         // open-dialog button (keyed off `group-hover` / `group-focus-visible`).
@@ -188,7 +195,6 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
         // control for confirmed species is a sibling <button> and
         // nesting interactive elements is invalid HTML + breaks a11y.
         'group relative block aspect-square',
-        '[content-visibility:auto] [contain-intrinsic-size:200px_200px]',
         'transition-[transform,filter] duration-300',
         'hover:-translate-y-0.5',
         heard
@@ -196,133 +202,160 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
           : 'drop-shadow-sm hover:drop-shadow-md',
       )}
     >
-      {/* Full-bleed "open details dialog" trigger. Rendered FIRST
-          in DOM so the visually-overlapping clip (pointer-events-
-          none) paints on top of it, and so the confirmed play
-          button later in DOM stays above it in paint order too.
-          The `peer` utility lets the clip key its focus ring on
-          this specific button's focus-visible state — we want the
-          big cell ring when the open-dialog trigger is
-          keyboard-focused, but NOT when the small play button
-          is focused (the play button has its own smaller ring).
-          Nested <button>s would be invalid HTML; siblings with
-          peer/group variants keep the semantics correct. */}
-      <button
-        type="button"
-        onClick={() => onSelect(entry)}
-        aria-label={
-          heard
-            ? `Heard ${label.commonName}. Show details.`
-            : `${label.commonName}. Not yet heard. Show details.`
-        }
-        className="peer absolute inset-0 rounded-2xl text-left focus:outline-none"
-      />
+      {/* Confidence glow overlay. Rendered as a sibling of the
+          content-visibility container (not a descendant) so its
+          box-shadow paints freely into the grid gutter instead of
+          being clipped by the container's implicit paint
+          containment. Rounded to match the inner clip so the halo
+          appears to emanate from the cell's rounded rectangle
+          rather than a hidden square behind it.
 
-      {/* INNER clip: owns the rounded corners, the overflow clip, the
-          border, the background, and the focus ring. Does NOT
-          transform — its rectangle (and therefore its rounded clip)
-          stays stable while the parent lifts on hover. All absolutely
-          positioned layers (image, gradient, badges, label) stack
-          inside this element.
+          `pointer-events-none` so the glow never intercepts clicks
+          on the underlying open-dialog button or the play button.
+          `aria-hidden` because the glow is a purely decorative
+          signal that duplicates information already conveyed by
+          the cell's confirmed/rare/unheard state.
 
-          The inline `boxShadow` (set via `glowStyle`) renders the
-          live BirdNET confidence glow. We apply it here rather than
-          on the outer because the outer uses Tailwind's
-          `drop-shadow-*` utility (which compiles to `filter: drop-
-          shadow(...)`); box-shadow is a different CSS property and
-          composes cleanly alongside it. The glow sits OUTSIDE the
-          rounded clip's overflow hide because box-shadow always
-          paints outside the element's box regardless of overflow. */}
-      <div
-        style={glowStyle}
-        className={cn(
-          'pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border',
-          'transition-[border-color,filter] duration-300',
-          'peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
-          'peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-[#0d1230]',
-          heard
-            ? isRare
-              ? 'border-amber-300/80 bg-amber-50/80 peer-focus-visible:ring-amber-500/60 dark:border-amber-700/50 dark:bg-amber-950/30 dark:peer-focus-visible:ring-amber-400/60'
-              : 'border-emerald-300/80 bg-white/90 peer-focus-visible:ring-emerald-500/60 dark:border-emerald-700/50 dark:bg-indigo-950/60 dark:peer-focus-visible:ring-amber-400/60'
-            : cn(
-                'border-stone-200/70 bg-white/40 group-hover:border-stone-300',
-                'peer-focus-visible:ring-stone-400/60',
-                'dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:group-hover:border-indigo-800/70',
-                'dark:peer-focus-visible:ring-amber-400/40',
-                // Grayed-out treatment for unheard birds: fade the
-                // whole clip subtree (image + gradient + label). Kept
-                // on the clip wrapper rather than the individual
-                // layers so the effect is uniform and survives the
-                // image-loading handoff from gradient to photo.
-                // Unconfirmed cells share this exact treatment — the
-                // grid reads as a simple heard/not-heard checklist,
-                // with no visual distinction for "possibly heard".
-                'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
-              ),
-        )}
-      >
-        {/* Fallback gradient — shows through until the image loads,
-            and stays as the background for the no-image glyph state. */}
+          Only rendered when `glow > 0` to skip the DOM node and
+          style recalc entirely for resting cells. */}
+      {glowStyle ? (
         <div
-          className="absolute inset-0 bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60"
           aria-hidden
-        />
-
-        {data?.imageUrl ? (
-          <img
-            src={data.imageUrl}
-            alt=""
-            aria-hidden
-            loading="lazy"
-            decoding="async"
-            className={cn(
-              'absolute inset-0 h-full w-full object-cover object-[50%_25%]',
-              'transition-transform duration-500 group-hover:scale-[1.04]',
-              !heard && 'saturate-50',
-            )}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <BirdGlyph faded={!heard} />
-          </div>
-        )}
-
-        {/* Bottom gradient for name legibility */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/60 to-transparent" />
-
-        {/* Name label — overlaid on the image so the cell is image-dominant */}
-        <div className="absolute inset-x-0 bottom-0 px-2.5 pb-2 pt-4">
-          <div
-            className={cn(
-              'truncate font-serif text-sm font-semibold leading-tight',
-              heard ? 'text-white' : 'text-white/85',
-            )}
-          >
-            {label.commonName}
-          </div>
-          <div
-            className={cn(
-              'truncate text-[10px] italic',
-              heard ? 'text-white/75' : 'text-white/55',
-            )}
-          >
-            {label.scientificName}
-          </div>
-        </div>
-      </div>
-
-      {/* Top-right badge region. Every heard bird gets an inline
-          play button; its colour encodes rarity (emerald = in-
-          region confirmed, orange = rare out-of-region). Plain
-          unheard / starter / unconfirmed cells get no badge. */}
-      {variant ? (
-        <SpeciesCellPlayButton
-          commonName={label.commonName}
-          scientificName={hasBeenVisible ? label.scientificName : null}
-          enabled={hasBeenVisible}
-          variant={variant}
+          className="pointer-events-none absolute inset-0 rounded-2xl"
+          style={glowStyle}
         />
       ) : null}
+
+      {/* Containment wrapper. Carries the `content-visibility: auto`
+          + `contain-intrinsic-size` pair that lets the browser
+          skip rendering + image-loading for offscreen cells. This
+          used to live on the outer; moving it here lets the glow
+          overlay escape paint containment while preserving the
+          perf win for the 6,500-cell grid. */}
+      <div
+        className={cn(
+          'absolute inset-0',
+          '[content-visibility:auto] [contain-intrinsic-size:200px_200px]',
+        )}
+      >
+        {/* Full-bleed "open details dialog" trigger. Rendered FIRST
+            in DOM so the visually-overlapping clip (pointer-events-
+            none) paints on top of it, and so the confirmed play
+            button later in DOM stays above it in paint order too.
+            The `peer` utility lets the clip key its focus ring on
+            this specific button's focus-visible state — we want the
+            big cell ring when the open-dialog trigger is
+            keyboard-focused, but NOT when the small play button
+            is focused (the play button has its own smaller ring).
+            Nested <button>s would be invalid HTML; siblings with
+            peer/group variants keep the semantics correct. */}
+        <button
+          type="button"
+          onClick={() => onSelect(entry)}
+          aria-label={
+            heard
+              ? `Heard ${label.commonName}. Show details.`
+              : `${label.commonName}. Not yet heard. Show details.`
+          }
+          className="peer absolute inset-0 rounded-2xl text-left focus:outline-none"
+        />
+
+        {/* INNER clip: owns the rounded corners, the overflow clip, the
+            border, the background, and the focus ring. Does NOT
+            transform — its rectangle (and therefore its rounded clip)
+            stays stable while the parent lifts on hover. All absolutely
+            positioned layers (image, gradient, badges, label) stack
+            inside this element. */}
+        <div
+          className={cn(
+            'pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border',
+            'transition-[border-color,filter] duration-300',
+            'peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2',
+            'peer-focus-visible:ring-offset-white dark:peer-focus-visible:ring-offset-[#0d1230]',
+            heard
+              ? isRare
+                ? 'border-amber-300/80 bg-amber-50/80 peer-focus-visible:ring-amber-500/60 dark:border-amber-700/50 dark:bg-amber-950/30 dark:peer-focus-visible:ring-amber-400/60'
+                : 'border-emerald-300/80 bg-white/90 peer-focus-visible:ring-emerald-500/60 dark:border-emerald-700/50 dark:bg-indigo-950/60 dark:peer-focus-visible:ring-amber-400/60'
+              : cn(
+                  'border-stone-200/70 bg-white/40 group-hover:border-stone-300',
+                  'peer-focus-visible:ring-stone-400/60',
+                  'dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:group-hover:border-indigo-800/70',
+                  'dark:peer-focus-visible:ring-amber-400/40',
+                  // Grayed-out treatment for unheard birds: fade the
+                  // whole clip subtree (image + gradient + label). Kept
+                  // on the clip wrapper rather than the individual
+                  // layers so the effect is uniform and survives the
+                  // image-loading handoff from gradient to photo.
+                  // Unconfirmed cells share this exact treatment — the
+                  // grid reads as a simple heard/not-heard checklist,
+                  // with no visual distinction for "possibly heard".
+                  'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
+                ),
+          )}
+        >
+          {/* Fallback gradient — shows through until the image loads,
+              and stays as the background for the no-image glyph state. */}
+          <div
+            className="absolute inset-0 bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60"
+            aria-hidden
+          />
+
+          {data?.imageUrl ? (
+            <img
+              src={data.imageUrl}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              decoding="async"
+              className={cn(
+                'absolute inset-0 h-full w-full object-cover object-[50%_25%]',
+                'transition-transform duration-500 group-hover:scale-[1.04]',
+                !heard && 'saturate-50',
+              )}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <BirdGlyph faded={!heard} />
+            </div>
+          )}
+
+          {/* Bottom gradient for name legibility */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t from-black/60 to-transparent" />
+
+          {/* Name label — overlaid on the image so the cell is image-dominant */}
+          <div className="absolute inset-x-0 bottom-0 px-2.5 pb-2 pt-4">
+            <div
+              className={cn(
+                'truncate font-serif text-sm font-semibold leading-tight',
+                heard ? 'text-white' : 'text-white/85',
+              )}
+            >
+              {label.commonName}
+            </div>
+            <div
+              className={cn(
+                'truncate text-[10px] italic',
+                heard ? 'text-white/75' : 'text-white/55',
+              )}
+            >
+              {label.scientificName}
+            </div>
+          </div>
+        </div>
+
+        {/* Top-right badge region. Every heard bird gets an inline
+            play button; its colour encodes rarity (emerald = in-
+            region confirmed, orange = rare out-of-region). Plain
+            unheard / starter / unconfirmed cells get no badge. */}
+        {variant ? (
+          <SpeciesCellPlayButton
+            commonName={label.commonName}
+            scientificName={hasBeenVisible ? label.scientificName : null}
+            enabled={hasBeenVisible}
+            variant={variant}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
