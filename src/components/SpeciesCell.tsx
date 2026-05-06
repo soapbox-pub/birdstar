@@ -15,20 +15,39 @@
 // observed to enter the viewport at least once. After that, the query is
 // enabled permanently so scrolling back up doesn't re-fetch.
 //
-// Two top-right badge treatments, mutually exclusive:
-//   - Rare heard:   amber "Rare" chip (non-interactive).
-//   - Confirmed:    emerald play button that triggers reference-song
-//                   playback inline, without opening the dialog.
+// Top-right badge treatment: every heard bird gets an inline play
+// button that triggers reference-song playback without opening the
+// dialog. The button's colour encodes rarity:
+//
+//   - Confirmed (in-region):  emerald — matches the cell's green
+//                             confirmation styling.
+//   - Rare (out-of-region):   orange — visually distinct from the
+//                             ordinary confirmed palette so rare
+//                             finds still stand out in the grid,
+//                             but actionable (tap to hear it) rather
+//                             than a static "Rare" chip.
+//
 // Plain unheard / starter-set / unconfirmed cells get no badge —
 // unconfirmed birds render identically to unheard ones (grayed out,
 // no icon) so the grid reads as a simple heard/not-heard checklist.
+//
+// Playback itself is delegated to BirdSoundboardContext. Each
+// mounted play button reads `useIsSpeciesPlaying(scientificName)`
+// for its on/off state and calls `playSpecies` / `stopSpecies` on
+// tap. This keeps every play surface (cell buttons, dialog button,
+// Play-all/Stop-all in the player bar) in sync — one <audio>
+// element per species lives in the provider, and every UI consults
+// the same reactive set.
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { Bird, Play, Sparkles } from 'lucide-react';
+import { Bird, Play } from 'lucide-react';
 import type { BirdexEntry } from '@/hooks/useBirdex';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound } from '@/hooks/useBirdSound';
-import { useRegisterSongPlayback } from '@/hooks/useSongPlayback';
+import {
+  useBirdSoundboard,
+  useIsSpeciesPlaying,
+} from '@/hooks/useBirdSoundboard';
 import { cn } from '@/lib/utils';
 
 interface SpeciesCellProps {
@@ -74,10 +93,16 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
     hasBeenVisible ? label.commonName : null,
   );
 
-  // Confirmed (heard && !rare) cells expose the inline play control;
-  // everyone else gets the normal click-to-open-dialog behavior
-  // without a soundboard.
-  const confirmed = heard && !isRare;
+  // Heard cells expose the inline play control; everyone else gets
+  // the normal click-to-open-dialog behavior without a soundboard.
+  // Rare birds (out-of-region heard) still get a play button — just
+  // rendered in orange instead of emerald so they visually stand
+  // out as notable. Replaces the old static "Rare" chip.
+  const variant: 'confirmed' | 'rare' | null = heard
+    ? isRare
+      ? 'rare'
+      : 'confirmed'
+    : null;
 
   return (
     <div
@@ -222,24 +247,17 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
         </div>
       </div>
 
-      {/* Top-right badge region. Mutually exclusive treatments:
-          - Rare heard:   amber "Rare" chip (non-interactive).
-          - Confirmed:    emerald play button (inline soundboard).
-          - Starter/unheard/unconfirmed: no badge — unconfirmed
-            cells render identically to unheard ones. */}
-      {heard ? (
-        isRare ? (
-          <span className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white shadow ring-1 ring-white/20 backdrop-blur-sm">
-            <Sparkles className="h-2.5 w-2.5" aria-hidden />
-            Rare
-          </span>
-        ) : (
-          <SpeciesCellPlayButton
-            commonName={label.commonName}
-            scientificName={hasBeenVisible ? label.scientificName : null}
-            enabled={confirmed && hasBeenVisible}
-          />
-        )
+      {/* Top-right badge region. Every heard bird gets an inline
+          play button; its colour encodes rarity (emerald = in-
+          region confirmed, orange = rare out-of-region). Plain
+          unheard / starter / unconfirmed cells get no badge. */}
+      {variant ? (
+        <SpeciesCellPlayButton
+          commonName={label.commonName}
+          scientificName={hasBeenVisible ? label.scientificName : null}
+          enabled={hasBeenVisible}
+          variant={variant}
+        />
       ) : null}
     </div>
   );
@@ -247,163 +265,150 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
 
 /**
  * Inline reference-song play button rendered in the top-right of a
- * confirmed SpeciesCell. Visually matches the old green checkmark
- * badge (same `bg-emerald-500/95` palette, same ring + shadow, same
- * size) so the cell's "you heard this one" cue stays recognizable —
- * we just replaced the check glyph with a play triangle and made
- * the badge clickable.
+ * heard SpeciesCell. Comes in two colour variants:
  *
- * Playback logic mirrors the BirdInfoDialog's `useSongPlayer`:
+ *   - confirmed: emerald, used for ordinary in-region heard birds.
+ *     Matches the cell's green confirmation styling.
+ *   - rare: orange, used for out-of-region heard birds. Visually
+ *     distinct so rare finds still pop in the grid, while remaining
+ *     actionable (tap to hear it) rather than a static "Rare" chip.
+ *
+ * Playback is delegated to BirdSoundboardContext:
  *
  *   - Reference sound looked up via `useBirdSound` (Wikipedia/
- *     Commons first, iNaturalist fallback).
- *   - Hidden looping <audio> element mounted locally so each cell
- *     owns its own playback independent of the dialog and any
- *     other cell. Looping matches the dialog — bird reference
- *     recordings are short phrases and comparing them to a field
- *     observation benefits from hearing the phrase multiple times.
- *   - `useRegisterSongPlayback` tells the mic recorder to mute
- *     itself while this cell is playing, same feedback-avoidance
- *     path the dialog uses.
- *   - Play icon swaps to an animated equaliser glyph while
- *     playing (same visual language as the dialog's button).
+ *     Commons first, iNaturalist fallback). The lookup populates
+ *     the shared TanStack Query cache used by both this button and
+ *     the player bar's "Play all" button — so tapping Play all
+ *     after browsing the grid is instant for any species whose
+ *     cell has already scrolled into view.
+ *   - Play/stop calls go through the soundboard provider, which
+ *     owns one <audio> element per scientific name for the
+ *     lifetime of the page. That means this button's playing
+ *     state, the dialog's play button state, and the Play-all /
+ *     Stop-all orchestration all observe the same reactive Set
+ *     of playing species.
+ *   - `useIsSpeciesPlaying` is the reactive subscription that
+ *     drives the button's icon (play triangle ↔ equaliser bars).
  *
  * When the species has no usable recording from either provider,
  * the button is rendered disabled rather than removed so the
- * confirmed indicator stays in the same position and users don't
- * have to guess whether a species is confirmed.
+ * heard indicator stays in the same position and users don't have
+ * to guess whether a species is heard.
  */
 function SpeciesCellPlayButton({
   commonName,
   scientificName,
   enabled,
+  variant,
 }: {
   commonName: string;
   /** Null until the cell has entered the viewport once (same
    *  gating strategy as `useBirdInfo` in the parent). Keeps us
-   *  from firing a Wikipedia+iNat sound lookup for every confirmed
+   *  from firing a Wikipedia+iNat sound lookup for every heard
    *  species in the entire birdex at mount. */
   scientificName: string | null;
-  /** Gate for the query. True once the cell has been visible and
-   *  the species is confirmed. */
+  /** Gate for the query. True once the cell has been visible. */
   enabled: boolean;
+  /** Colour treatment: emerald for in-region confirmed, orange for
+   *  rare out-of-region. Controls the button's palette only — the
+   *  playback semantics are identical. */
+  variant: 'confirmed' | 'rare';
 }) {
   const { data: sound } = useBirdSound(
     enabled ? scientificName : null,
     enabled ? commonName : null,
   );
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // Mute the mic recorder while this cell is playing, so the
-  // speaker's output doesn't feed back into the next BirdNET
-  // window. Exactly the hook the dialog uses.
-  useRegisterSongPlayback(isPlaying);
-
-  // Reset to paused whenever the source URL changes. With 6,500
-  // cells the same SpeciesCellPlayButton instance should never see
-  // two different species, but if the sound lookup resolves late
-  // (e.g. Wikipedia → iNat fallback), the audio element's src will
-  // swap out from under us and any stale `isPlaying=true` would be
-  // pointing at a released resource. In-render adjustment instead
-  // of an effect so there's no extra render cycle and no
-  // react-hooks/set-state-in-effect warning.
-  const [prevAudioUrl, setPrevAudioUrl] = useState<string | undefined>(
-    sound?.audioUrl,
-  );
-  if (prevAudioUrl !== sound?.audioUrl) {
-    setPrevAudioUrl(sound?.audioUrl);
-    setIsPlaying(false);
-  }
+  const { playSpecies, stopSpecies } = useBirdSoundboard();
+  const isPlaying = useIsSpeciesPlaying(scientificName);
 
   const disabled = !sound;
 
   const toggle = () => {
-    const el = audioRef.current;
-    if (!el) return;
+    if (!scientificName || !sound) return;
     if (isPlaying) {
-      el.pause();
-      setIsPlaying(false);
+      stopSpecies(scientificName);
     } else {
-      // play() may reject if autoplay is blocked or the source
-      // fails to load. Swallow the rejection — the button
-      // returns to the play state and the user can retry.
-      el.play().then(
-        () => setIsPlaying(true),
-        () => setIsPlaying(false),
-      );
+      void playSpecies({ scientificName, commonName }, sound.audioUrl);
     }
   };
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={disabled}
-        aria-label={
-          disabled
-            ? `${commonName} confirmed. No reference recording available.`
-            : isPlaying
-              ? `Pause ${commonName} reference song.`
-              : `Play ${commonName} reference song.`
+  // Colour tokens split out so the button className below doesn't
+  // balloon. Each variant has:
+  //   - base:       resting background + text + ring
+  //   - hover:      hover background
+  //   - focusRing:  focus-visible ring colour
+  //   - darkHover:  dark-mode hover background
+  const palette =
+    variant === 'rare'
+      ? {
+          base:
+            'bg-orange-500/95 text-white ring-white/20 ' +
+            'dark:bg-orange-400/95 dark:text-orange-950',
+          hover:
+            'hover:bg-orange-600/95 hover:shadow-lg ' +
+            'dark:hover:bg-orange-300/95',
+          focusRing: 'focus-visible:ring-orange-500/70',
+          disabledHover:
+            'disabled:hover:bg-orange-500/95 disabled:dark:hover:bg-orange-400/95',
         }
-        aria-pressed={isPlaying}
-        className={cn(
-          // Sized up from the original 24px checkmark badge to 36px
-          // (h-9 w-9) so the play affordance reads as a primary
-          // action on the cell — users should see it as a
-          // tappable soundboard, not a status badge. Still a
-          // touch smaller than the dialog's 40px button because
-          // the cell itself is much smaller than the dialog
-          // header, but large enough to meet reasonable touch-
-          // target guidance on mobile.
-          'absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full',
-          'bg-emerald-500/95 text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm',
-          'dark:bg-emerald-400/95 dark:text-emerald-950',
-          'transition-[transform,background-color,box-shadow] duration-200',
-          'hover:bg-emerald-600/95 hover:shadow-lg active:scale-95',
-          'dark:hover:bg-emerald-300/95',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70 focus-visible:ring-offset-1',
-          'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
-          // Disabled state keeps the same shape/color but drops
-          // interactivity so the confirmed indicator stays
-          // consistent even when a species has no usable
-          // recording.
-          'disabled:cursor-default disabled:hover:bg-emerald-500/95 disabled:hover:shadow-md disabled:active:scale-100',
-          'disabled:dark:hover:bg-emerald-400/95',
-        )}
-      >
-        {isPlaying ? (
-          <EqualiserBars />
-        ) : (
-          // Nudge the triangle right by 1px so it looks optically
-          // centered inside the circle (the glyph's centroid
-          // sits left of its bounding box).
-          <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
-        )}
-      </button>
+      : {
+          base:
+            'bg-emerald-500/95 text-white ring-white/20 ' +
+            'dark:bg-emerald-400/95 dark:text-emerald-950',
+          hover:
+            'hover:bg-emerald-600/95 hover:shadow-lg ' +
+            'dark:hover:bg-emerald-300/95',
+          focusRing: 'focus-visible:ring-emerald-500/70',
+          disabledHover:
+            'disabled:hover:bg-emerald-500/95 disabled:dark:hover:bg-emerald-400/95',
+        };
 
-      {/* Hidden audio element. Only mounted when we have a usable
-          source URL so we don't ship an empty <audio src="">.
-          Looped for the same reason the dialog loops: bird
-          reference recordings are short phrases and users want to
-          hear them repeatedly while comparing to the field. */}
-      {sound ? (
-        <audio
-          ref={audioRef}
-          src={sound.audioUrl}
-          preload="none"
-          loop
-          onPause={() => setIsPlaying(false)}
-          onPlay={() => setIsPlaying(true)}
-          className="hidden"
-        >
-          Your browser does not support embedded audio.
-        </audio>
-      ) : null}
-    </>
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      disabled={disabled}
+      aria-label={
+        disabled
+          ? `${commonName} heard. No reference recording available.`
+          : isPlaying
+            ? `Stop ${commonName} reference song.`
+            : `Play ${commonName} reference song.`
+      }
+      aria-pressed={isPlaying}
+      className={cn(
+        // 36px (h-9 w-9) reads as a primary action on the cell —
+        // users should see it as a tappable soundboard, not a
+        // status badge. Still a touch smaller than the dialog's
+        // 40px button because the cell is much smaller than the
+        // dialog header, but large enough to meet reasonable
+        // touch-target guidance on mobile.
+        'absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center rounded-full',
+        'shadow-md ring-1 backdrop-blur-sm',
+        'transition-[transform,background-color,box-shadow] duration-200',
+        'active:scale-95',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+        'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
+        palette.base,
+        palette.hover,
+        palette.focusRing,
+        // Disabled state keeps the same shape/color but drops
+        // interactivity so the heard indicator stays consistent
+        // even when a species has no usable recording.
+        'disabled:cursor-default disabled:hover:shadow-md disabled:active:scale-100',
+        palette.disabledHover,
+      )}
+    >
+      {isPlaying ? (
+        <EqualiserBars />
+      ) : (
+        // Nudge the triangle right by 1px so it looks optically
+        // centered inside the circle (the glyph's centroid sits
+        // left of its bounding box).
+        <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
+      )}
+    </button>
   );
 }
 

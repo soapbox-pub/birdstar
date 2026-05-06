@@ -28,7 +28,7 @@
 // action appears at the bottom of the dialog so the user can retract
 // their published sighting.
 import { HelpCircle, Loader2, Play, Sparkles, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import type { Detection } from '@/components/BirdCard';
 import type { BirdLabel } from '@/lib/birdnet/labels';
 import {
@@ -55,7 +55,10 @@ import { CommentsSection } from '@/components/comments/CommentsSection';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useBirdSound, type BirdSound } from '@/hooks/useBirdSound';
 import { useInatTaxonId } from '@/hooks/useInatTaxonId';
-import { useRegisterSongPlayback } from '@/hooks/useSongPlayback';
+import {
+  useBirdSoundboard,
+  useIsSpeciesPlaying,
+} from '@/hooks/useBirdSoundboard';
 import { cn } from '@/lib/utils';
 
 /**
@@ -147,7 +150,13 @@ export function BirdInfoDialog({
 
   const canDelete = Boolean(onDelete && detection?.eventId);
 
-  const song = useSongPlayer(sound, isSoundLoading, confirmed);
+  const song = useSongPlayer(
+    sound,
+    isSoundLoading,
+    confirmed,
+    scientificName,
+    commonName,
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -901,49 +910,31 @@ function useSongPlayer(
   sound: BirdSound | null | undefined,
   isLoading: boolean,
   confirmed: boolean,
+  scientificName: string | null,
+  commonName: string | null,
 ): {
   button: React.ReactNode;
+  /**
+   * Deliberately always null now. The <audio> element used to live
+   * in the dialog tree; it's now owned by BirdSoundboardProvider
+   * so the dialog's play button, the per-cell play buttons, and
+   * the player bar's Play-all / Stop-all buttons all share one
+   * audio element per species. Returning a slot lets the dialog's
+   * call site stay structurally unchanged — passing `{song.audio}`
+   * into the body just renders nothing.
+   */
   audio: React.ReactNode;
   sound: BirdSound | null;
 } {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  // Tell the rest of the app ("the microphone recorder, really")
-  // that audio playback is live so it can mute itself and avoid a
-  // feedback loop. Register/unregister is driven purely by the
-  // existing isPlaying state -- no manual bookkeeping, no risk of
-  // leaking a registration if playback ends in an unusual way
-  // (source error, component unmount mid-song, etc). The hook's
-  // useEffect cleanup handles all those paths.
-  useRegisterSongPlayback(isPlaying);
-
-  // Reset to paused state whenever the source changes (e.g. opening
-  // the dialog on a different species). Without this, switching
-  // birds while one is playing would leave `isPlaying=true` pointing
-  // at a stale audio element. In-render adjustment (see
-  // CollapsibleProse above) rather than an effect so there's no
-  // extra render cycle and no lint warning about setState-in-effect.
-  const [prevAudioUrl, setPrevAudioUrl] = useState<string | undefined>(sound?.audioUrl);
-  if (prevAudioUrl !== sound?.audioUrl) {
-    setPrevAudioUrl(sound?.audioUrl);
-    setIsPlaying(false);
-  }
+  const { playSpecies, stopSpecies } = useBirdSoundboard();
+  const isPlaying = useIsSpeciesPlaying(scientificName);
 
   const toggle = () => {
-    const el = audioRef.current;
-    if (!el) return;
+    if (!scientificName || !commonName || !sound) return;
     if (isPlaying) {
-      el.pause();
-      setIsPlaying(false);
+      stopSpecies(scientificName);
     } else {
-      // play() returns a Promise that rejects if autoplay is
-      // blocked or the source fails to load. Swallow the rejection
-      // — the button returns to play state and the user can retry.
-      el.play().then(
-        () => setIsPlaying(true),
-        () => setIsPlaying(false),
-      );
+      void playSpecies({ scientificName, commonName }, sound.audioUrl);
     }
   };
 
@@ -963,7 +954,7 @@ function useSongPlayer(
     <button
       type="button"
       onClick={toggle}
-      aria-label={isPlaying ? 'Pause reference song' : 'Play reference song'}
+      aria-label={isPlaying ? 'Stop reference song' : 'Play reference song'}
       aria-pressed={isPlaying}
       className={cn(
         'group/song inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
@@ -1009,31 +1000,12 @@ function useSongPlayer(
     </button>
   );
 
-  const audio = (
-    <audio
-      ref={audioRef}
-      src={sound.audioUrl}
-      preload="none"
-      // Loop the reference recording. Bird songs from Commons and
-      // iNaturalist are typically a few seconds of a single song
-      // phrase, and the dialog's job here is "let the user hear
-      // this call repeatedly while they compare it to what they
-      // just heard outside" -- a one-shot playback is too short to
-      // be useful
-      // for that. The user explicitly pauses (same button,
-      // equaliser → play glyph) when they're done. Because the
-      // element never fires `ended` while looping, no onEnded
-      // handler is needed; `onPause` still flips the state back.
-      loop
-      onPause={() => setIsPlaying(false)}
-      onPlay={() => setIsPlaying(true)}
-      className="hidden"
-    >
-      Your browser does not support embedded audio.
-    </audio>
-  );
-
-  return { button, audio, sound };
+  // Audio element is owned by BirdSoundboardProvider now; nothing
+  // to render in the dialog tree. The caller's `{song.audio}` slot
+  // is kept in the JSX for historical reasons and to leave room
+  // for re-introducing dialog-local audio controls later if
+  // needed.
+  return { button, audio: null, sound };
 }
 
 /**

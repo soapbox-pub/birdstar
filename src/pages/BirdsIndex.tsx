@@ -34,6 +34,7 @@ import { useBirdNet } from '@/hooks/useBirdNet';
 import { useBirdLabels } from '@/hooks/useBirdLabels';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { SongPlaybackProvider } from '@/components/SongPlaybackProvider';
+import { BirdSoundboardProvider } from '@/components/BirdSoundboardProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
@@ -605,6 +606,25 @@ const IndexInner = () => {
     localSpeciesMap,
   });
 
+  // Minimal (scientificName, commonName) projection of every heard
+  // cell in the birdex, for the player bar's Play-all button. Rare
+  // (out-of-region) birds are included — per the design, they join
+  // the chorus like any other heard bird, differing only in the
+  // colour of their per-cell play button. Memoized on birdex.visible
+  // so the PlayerBar memo keeps its reference-equality-based skip
+  // on idle re-renders (the visible list is itself memoized inside
+  // useBirdex).
+  const heardTargets = useMemo(
+    () =>
+      birdex.visible
+        .filter((entry) => entry.heard)
+        .map((entry) => ({
+          scientificName: entry.label.scientificName,
+          commonName: entry.label.commonName,
+        })),
+    [birdex.visible],
+  );
+
   // Selecting a cell opens the info dialog. Unheard cells surface as
   // either plain starter entries or "unconfirmed" (encountered but
   // never promoted). The entry carries its own rare/unconfirmed
@@ -892,6 +912,7 @@ const IndexInner = () => {
         onSelectPending={handleSelectPending}
         showLocationOptIn={showLocationOptIn}
         onRequestLocation={requestRegion}
+        heardTargets={heardTargets}
       />
 
       <BirdInfoDialog
@@ -1247,18 +1268,24 @@ const Footer = memo(function Footer() {
   );
 });
 
-// Wrapper that provides the SongPlaybackContext to the whole
-// page tree. Split out from the main component body because
-// useAudioRecorder (called inside IndexInner) needs to read the
-// context -- and a hook can't consume a provider its own
-// component mounted. Keeping the provider one level up is the
-// standard fix.
+// Wrapper that provides the SongPlaybackContext (mic-feedback
+// counter) and BirdSoundboardContext (per-species playback
+// registry used by the cell play buttons, dialog play button, and
+// bar-level Play all / Stop all) to the whole page tree.
 //
-// See src/contexts/SongPlaybackContext.ts for the motivation
-// (mic/speaker feedback loop when playing a reference song).
+// Split out from the main component body because
+// useAudioRecorder (called inside IndexInner) needs to read the
+// SongPlayback counter, and the SoundboardProvider registers
+// with that counter -- so both have to be ancestors of
+// IndexInner, in that order.
+//
+// See src/contexts/SongPlaybackContext.ts and
+// src/contexts/BirdSoundboardContext.ts for the motivations.
 const Index = () => (
   <SongPlaybackProvider>
-    <IndexInner />
+    <BirdSoundboardProvider>
+      <IndexInner />
+    </BirdSoundboardProvider>
   </SongPlaybackProvider>
 );
 

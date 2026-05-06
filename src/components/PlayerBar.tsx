@@ -1,11 +1,27 @@
 // SoundCloud-style fixed player bar anchored to the bottom of the viewport.
-// Houses three regions:
-//   - Left: "album art" = thumbnail of the last-detected bird, clickable to
-//     open a details dialog owned by the parent.
-//   - Center: species + timestamp on top, live frequency-bar visualization
-//     below. Replaced by an error/loading card when appropriate.
-//   - Right: primary play/pause button (also acts as "try again" in the
-//     error case).
+// Has two visual modes sharing the same outer container (fixed, full-
+// bleed, border-top, backdrop-blur, ~72px tall):
+//
+//   1. Listening mode (default). Houses three regions:
+//      - Left: "album art" = thumbnail of the last-detected bird,
+//        clickable to open a details dialog owned by the parent.
+//      - Center: species + timestamp on top, live frequency-bar
+//        visualization below. Replaced by an error/loading card
+//        when appropriate.
+//      - Right: primary play/pause button (also acts as "try again"
+//        in the error case).
+//
+//   2. Soundboard mode. Active whenever any reference song is
+//      playing (per useSongPlaybackActive). The whole center/right
+//      area collapses to a centered pair of "Play all" / "Stop all"
+//      buttons with a capped max-width. The mic is already
+//      hardware-muted by useAudioRecorder during playback, so the
+//      mic button genuinely has no job while the soundboard is
+//      live — rather than show it disabled, we swap in the
+//      soundboard controls so the bar speaks to the user's current
+//      intent ("I'm running the jukebox") instead of mixing two
+//      unrelated surfaces. When nothing's playing, the bar snaps
+//      back to listening mode exactly as before.
 //
 // Consolidates what used to be StatusLine / ListeningIndicator / a chunk
 // of the EmptyState copy into one control surface.
@@ -17,7 +33,16 @@
 // showed ~75 ms/s of LoginArea-subtree work attributable to exactly this
 // pattern; memoizing the bar cuts it to near-zero on idle ticks.
 import { memo } from 'react';
-import { AlertCircle, HelpCircle, MapPin, Mic, MicOff, RotateCcw } from 'lucide-react';
+import {
+  AlertCircle,
+  HelpCircle,
+  MapPin,
+  Mic,
+  MicOff,
+  Play,
+  RotateCcw,
+  Square,
+} from 'lucide-react';
 import type { Detection } from '@/components/BirdCard';
 import { AudioVisualizer } from '@/components/AudioVisualizer';
 import { MicrophoneHelpDialog } from '@/components/MicrophoneHelpDialog';
@@ -26,7 +51,9 @@ import { Progress } from '@/components/ui/progress';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import type { RecorderErrorKind } from '@/hooks/useAudioRecorder';
 import type { LatestHit } from '@/hooks/useDetectionAccumulator';
+import { useBirdSoundboard } from '@/hooks/useBirdSoundboard';
 import { useSongPlaybackActive } from '@/hooks/useSongPlayback';
+import type { SoundboardTarget } from '@/contexts/BirdSoundboardContext';
 import { cn } from '@/lib/utils';
 
 export type PlayerMode =
@@ -92,6 +119,17 @@ interface PlayerBarProps {
   /** Fired when the opt-in chip is clicked. Should trigger the native
    * geolocation prompt in the parent. */
   onRequestLocation?: () => void;
+  /**
+   * Every heard species in the current birdex view, minimally
+   * shaped for the soundboard's "Play all" button. Passed in from
+   * the parent (rather than derived in-bar) because the bar is
+   * rendered outside the birdex-data scope in the page tree — and
+   * the parent already computes this list once per birdex rebuild.
+   * Includes rare (out-of-region) birds: the design lets rare
+   * species join the chorus like any other heard bird, differing
+   * only in the colour of their per-cell play button.
+   */
+  heardTargets: readonly SoundboardTarget[];
 }
 
 function PlayerBarImpl({
@@ -109,6 +147,7 @@ function PlayerBarImpl({
   onSelectPending,
   showLocationOptIn = false,
   onRequestLocation,
+  heardTargets,
 }: PlayerBarProps) {
   // Whether a bird reference song is currently playing somewhere
   // in the app (usually from an open BirdInfoDialog). While true,
@@ -185,35 +224,180 @@ function PlayerBarImpl({
       {showLocationOptIn && onRequestLocation ? (
         <LocationOptInBanner onRequest={onRequestLocation} />
       ) : null}
-      <div className="mx-auto flex max-w-4xl items-center px-3 py-3 sm:px-4">
-        <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
+      {songPlaying ? (
+        // Soundboard mode. Same container chrome as listening
+        // mode (same vertical padding, same max-width, same
+        // height) so the bar doesn't jump when mode flips.
+        <SoundboardRegion heardTargets={heardTargets} />
+      ) : (
+        <div className="mx-auto flex max-w-4xl items-center px-3 py-3 sm:px-4">
+          <AlbumArt latestHit={latestHit} onClick={openLatestHitDialog} />
 
-        <div className="min-w-0 flex-1">
-          <CenterRegion
-            mode={mode}
-            loadingPct={loadingPct}
-            errorMessage={errorMessage}
-            errorKind={errorKind}
-            latestHit={latestHit}
-            getAnalyser={getAnalyser}
-            visualizerActive={visualizerActive}
-            isMutedForSong={isMutedForSong}
-            onOpenLatestHit={openLatestHitDialog}
-            onResume={onResume}
-          />
-        </div>
+          <div className="min-w-0 flex-1">
+            <CenterRegion
+              mode={mode}
+              loadingPct={loadingPct}
+              errorMessage={errorMessage}
+              errorKind={errorKind}
+              latestHit={latestHit}
+              getAnalyser={getAnalyser}
+              visualizerActive={visualizerActive}
+              isMutedForSong={isMutedForSong}
+              onOpenLatestHit={openLatestHitDialog}
+              onResume={onResume}
+            />
+          </div>
 
-        <div className="ml-3 sm:ml-4">
-          <PrimaryButton
-            mode={mode}
-            onPause={onPause}
-            onResume={onResume}
-            onRetry={onRetry}
-            errorKind={errorKind}
-          />
+          <div className="ml-3 sm:ml-4">
+            <PrimaryButton
+              mode={mode}
+              onPause={onPause}
+              onResume={onResume}
+              onRetry={onRetry}
+              errorKind={errorKind}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Soundboard-mode inner layout. Replaces the album-art / status /
+ * mic-button trio when any reference song is playing (including
+ * during a "Play all" sweep). Deliberately minimal:
+ *
+ *   - Same outer padding as listening mode (`py-3`) so the bar
+ *     height doesn't change and the layout doesn't jitter on mode
+ *     transitions.
+ *   - A capped `max-w-sm` button row, centered, so the controls
+ *     stay at a tappable-pair size on wide screens rather than
+ *     stretching into giant buttons. On narrow screens the row
+ *     naturally spans the content box.
+ *   - Large, equal-weight Play all / Stop all buttons with icon +
+ *     label so their purpose is legible at a glance. The active
+ *     state is marked by a bright emerald on Play all when a
+ *     bulk sweep is live; Stop all uses rose to read as a stop.
+ *
+ * Disabled states:
+ *   - Play all is disabled when there are no heard targets OR a
+ *     sweep is already active (the icon/label stay but the button
+ *     no-ops — avoids the "I tapped it again, why is nothing
+ *     happening differently" confusion).
+ *   - Stop all is disabled only when nothing is currently playing
+ *     (rarely true while this region is mounted, but possible
+ *     during a teardown frame).
+ */
+function SoundboardRegion({
+  heardTargets,
+}: {
+  heardTargets: readonly SoundboardTarget[];
+}) {
+  const { playAll, stopAll, playAllActive, playingSet } = useBirdSoundboard();
+
+  const canPlayAll = heardTargets.length > 0 && !playAllActive;
+  const canStopAll = playingSet.size > 0;
+
+  return (
+    <div
+      role="group"
+      aria-label="Bird soundboard controls"
+      // Match listening mode's vertical padding exactly. `min-h`
+      // is belt-and-suspenders: if either button's intrinsic
+      // height ever shrinks below the listening-mode content, the
+      // bar's height would change mid-toggle; the floor keeps it
+      // pinned.
+      className="mx-auto flex min-h-[4.5rem] max-w-sm items-center justify-center gap-3 px-3 py-3 sm:px-4"
+    >
+      <SoundboardButton
+        onClick={() => void playAll(heardTargets)}
+        disabled={!canPlayAll}
+        variant="play"
+        label="Play all"
+        ariaLabel={
+          playAllActive
+            ? 'Play all in progress'
+            : `Play all ${heardTargets.length} heard birds`
+        }
+      />
+      <SoundboardButton
+        onClick={stopAll}
+        disabled={!canStopAll}
+        variant="stop"
+        label="Stop all"
+        ariaLabel="Stop all playing bird sounds"
+      />
+    </div>
+  );
+}
+
+/**
+ * Equal-weight soundboard button. Rendered as a pill with an icon
+ * followed by a label so the affordance reads at a glance even for
+ * users who haven't learned the icon vocabulary. Palette matches
+ * the semantic role (emerald = go, rose = stop) rather than
+ * following the listening-mode mic-button's neutral palette —
+ * users need to know instantly which one is which.
+ */
+function SoundboardButton({
+  onClick,
+  disabled,
+  variant,
+  label,
+  ariaLabel,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  variant: 'play' | 'stop';
+  label: string;
+  ariaLabel: string;
+}) {
+  const isPlay = variant === 'play';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      className={cn(
+        // Matches the listening-mode mic button's height so the
+        // bar keeps the same visual rhythm, but wider because we
+        // need to accommodate a label. Split the available width
+        // evenly between the two buttons via flex-1.
+        'inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold',
+        'shadow-md ring-1 ring-white/20 transition-all sm:h-12',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0d1230]',
+        'active:scale-[0.98]',
+        isPlay
+          ? cn(
+              'bg-emerald-600 text-white hover:bg-emerald-700',
+              'focus-visible:ring-emerald-500/60',
+              'dark:bg-emerald-500 dark:hover:bg-emerald-400',
+            )
+          : cn(
+              'bg-rose-600 text-white hover:bg-rose-700',
+              'focus-visible:ring-rose-500/60',
+              'dark:bg-rose-500 dark:hover:bg-rose-400',
+            ),
+        'disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-md',
+        isPlay
+          ? 'disabled:hover:bg-emerald-600 dark:disabled:hover:bg-emerald-500'
+          : 'disabled:hover:bg-rose-600 dark:disabled:hover:bg-rose-500',
+      )}
+    >
+      {isPlay ? (
+        <Play className="h-4 w-4 translate-x-px fill-current" aria-hidden />
+      ) : (
+        // Filled square reads as "full stop" — a paused-style
+        // double bar would suggest "resumable", which isn't what
+        // this button does.
+        <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+      )}
+      <span>{label}</span>
+    </button>
   );
 }
 
