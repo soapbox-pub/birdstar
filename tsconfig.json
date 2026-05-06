@@ -17,6 +17,10 @@
     /* Linting */
     "strict": true,
 
+    /* Incremental compilation for faster re-runs of `tsc --noEmit` */
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo",
+
     "paths": {
       "@/*": ["./src/*"]
     }
