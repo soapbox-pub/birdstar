@@ -947,8 +947,6 @@ const IndexInner = () => {
             </>
           )}
         </section>
-
-        {placeSet ? <Footer /> : null}
       </main>
 
       <PlayerBar
@@ -1275,23 +1273,6 @@ function BirdexLoadingShimmer() {
     </div>
   );
 }
-
-const Footer = memo(function Footer() {
-  return (
-    <footer className="mt-20 flex justify-center text-center text-xs text-stone-400 dark:text-stone-500">
-      <CopyrightDialog
-        trigger={
-          <button
-            type="button"
-            className="rounded-sm text-xs text-stone-400 transition-colors hover:text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-400/40 dark:text-stone-500 dark:hover:text-stone-300"
-          >
-            License & Credits
-          </button>
-        }
-      />
-    </footer>
-  );
-});
 
 /**
  * Top-right Birds-mode settings sheet. Mirrors the Stars-mode
