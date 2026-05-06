@@ -973,6 +973,14 @@ function PrimaryButton({
   if (isError && errorKind === 'permission-denied') {
     return <div className="h-11 w-11 shrink-0 sm:h-12 sm:w-12" aria-hidden />;
   }
+  // While the BirdNET model is still downloading, there's nothing useful
+  // the user can do with the mic button — hide it (render a same-sized
+  // spacer so the player bar layout doesn't shift when the button appears).
+  // The CenterRegion already shows the "Loading BirdNET model… X%"
+  // progress affordance, which is the signal the user actually needs.
+  if (isLoading) {
+    return <div className="h-11 w-11 shrink-0 sm:h-12 sm:w-12" aria-hidden />;
+  }
 
   const handleClick = () => {
     if (isError) return onRetry();
@@ -990,7 +998,6 @@ function PrimaryButton({
     <button
       type="button"
       onClick={handleClick}
-      disabled={isLoading}
       aria-label={label}
       aria-pressed={isListening}
       title={label}
@@ -1003,7 +1010,6 @@ function PrimaryButton({
           : isListening
             ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/20 hover:bg-emerald-700 focus-visible:ring-emerald-500/60 dark:bg-amber-400 dark:text-stone-900 dark:shadow-amber-500/20 dark:hover:bg-amber-300 dark:focus-visible:ring-amber-400/60'
             : 'bg-stone-900 text-white hover:bg-stone-800 focus-visible:ring-stone-500/60 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white',
-        isLoading && 'cursor-not-allowed opacity-50',
       )}
     >
       {isError ? (

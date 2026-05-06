@@ -313,11 +313,22 @@ export function useUserRegion(): UseUserRegion {
   // when `usingFallback` is true so the UI keeps rendering against
   // a sensible default (continent-level North America) instead of
   // gating on a missing region.
+  //
+  // `fallbackPlaceSet` is ALSO populated while the decision is still
+  // pending ('unknown' / 'resolving'). First-time visitors land on a
+  // birdex populated with North American species immediately instead
+  // of a skeleton; when their real geolocation resolves a moment
+  // later the `placeSet` upgrade transparently swaps in their true
+  // region's birds. If it resolves to denied/unavailable the NA
+  // fallback just stays put. `usingFallback` remains tied to the
+  // "actually declined" states so the LocationDisabledIndicator
+  // doesn't flash on a normal grant path.
   const resolvedPlaceSet = stateToPlaceSet(state);
   const usingFallback =
     !resolvedPlaceSet &&
     (state.status === 'denied' || state.status === 'unavailable');
-  const fallbackPlaceSet = usingFallback ? placeSetFor('NA') : null;
+  const fallbackPlaceSet =
+    resolvedPlaceSet ? null : placeSetFor('NA');
 
   return {
     region: resolvedPlaceSet?.continent ?? null,

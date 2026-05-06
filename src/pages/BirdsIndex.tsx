@@ -15,7 +15,6 @@ import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -331,10 +330,11 @@ const IndexInner = () => {
   }, [manualLocation]);
 
   // Resolution order: real geolocation → explicit manual pick →
-  // continent-level NA fallback. The fallback only applies when the
-  // user has actively declined or the browser is unavailable; while
-  // we're still prompting it stays null so we render the
-  // LocationGateSkeleton instead of a fake NA birdex.
+  // continent-level NA fallback. The fallback is populated from the
+  // moment the page mounts (even while geolocation is still
+  // prompting), so the birdex renders immediately against a North
+  // American default and transparently swaps to the user's actual
+  // region once the browser resolves the prompt.
   const placeSet: UserPlaceSet | null =
     geoPlaceSet ?? manualPlaceSet ?? geoFallbackPlaceSet;
   const usingManual = !geoPlaceSet && !!manualPlaceSet;
@@ -887,24 +887,20 @@ const IndexInner = () => {
               }}
             />
           ) : !placeSet ? (
-            // No resolved region yet. While geolocation is still
-            // resolving (or hasn't fired yet on first paint), show a
-            // skeleton of the location card so the page has visible
-            // scaffolding instead of empty space. Once the browser
-            // reports denied/unavailable we now fall back to a
-            // continent-level NA place set in `useUserRegion`, so
-            // this LocationGate branch is effectively only reached
-            // in edge cases (e.g. resolver returns null for a valid
-            // fix).
-            regionStatus === 'unknown' || regionStatus === 'resolving' ? (
-              <LocationGateSkeleton />
-            ) : (
-              <LocationGate
-                regionStatus={regionStatus}
-                onRequestLocation={requestRegion}
-                onCommitManual={commitManualLocation}
-              />
-            )
+            // Extremely rare: `useUserRegion` now populates a
+            // continent-level NA fallback from mount, so `placeSet` is
+            // non-null in every normal code path (pending, granted,
+            // denied, unavailable, manual pick). This branch only
+            // fires if someone constructs a code path that produces
+            // neither a geo fix nor a manual pick nor the NA fallback
+            // (e.g. the resolver explicitly returns null for a valid
+            // coordinate). Render the full `LocationGate` so the user
+            // has a way to recover rather than a blank page.
+            <LocationGate
+              regionStatus={regionStatus}
+              onRequestLocation={requestRegion}
+              onCommitManual={commitManualLocation}
+            />
           ) : (
             <>
               {/* Fallback notice when we're running against the NA
@@ -1244,35 +1240,6 @@ function BirdexLoadingShimmer() {
         />
       ))}
     </div>
-  );
-}
-
-/**
- * Skeleton mirror of {@link LocationGate}. Rendered while we're waiting
- * for the browser to resolve the geolocation prompt so the page has
- * structure instead of a blank gap. Shapes (pin circle, heading,
- * two-line body, button) match the real card so the transition is a
- * cross-fade rather than a layout jump.
- */
-function LocationGateSkeleton() {
-  return (
-    <Card
-      aria-hidden
-      className="mx-auto mt-8 max-w-xl overflow-hidden border-dashed border-stone-300/70 bg-white/60 shadow-sm backdrop-blur dark:border-indigo-900/60 dark:bg-indigo-950/40"
-    >
-      <CardContent className="space-y-5 p-8 text-center">
-        <Skeleton className="mx-auto h-14 w-14 rounded-full" />
-        <div className="space-y-3">
-          <Skeleton className="mx-auto h-6 w-56" />
-          <div className="space-y-2">
-            <Skeleton className="mx-auto h-3.5 w-11/12 max-w-md" />
-            <Skeleton className="mx-auto h-3.5 w-9/12 max-w-sm" />
-          </div>
-        </div>
-        <Skeleton className="mx-auto h-10 w-full max-w-sm rounded-md" />
-        <Skeleton className="mx-auto h-3 w-64" />
-      </CardContent>
-    </Card>
   );
 }
 
