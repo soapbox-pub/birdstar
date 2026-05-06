@@ -47,6 +47,8 @@ import { SongPlaybackProvider } from '@/components/SongPlaybackProvider';
 import { BirdSoundboardProvider } from '@/components/BirdSoundboardProvider';
 import { BirdGlowProvider } from '@/components/BirdGlowProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { BirdFeed } from '@/components/BirdFeed';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
 import { useDeleteBirdDetection } from '@/hooks/useDeleteBirdDetection';
@@ -312,6 +314,11 @@ const IndexInner = () => {
 
   const history = useBirdHistory();
   const birdexEvent = useBirdexEvent();
+  // The "Recent sightings" feed under the birdex shows detections
+  // from self + follows and is only meaningful for logged-in users;
+  // we gate the whole section on `user` here so anonymous visitors
+  // don't see an empty promise.
+  const { user } = useCurrentUser();
 
   // Settings: "Publish location" toggle (off by default). When on,
   // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
@@ -947,6 +954,19 @@ const IndexInner = () => {
             </>
           )}
         </section>
+
+        {/* Recent sightings feed — kind 2473 detections from self +
+            NIP-02 follows, paginated newest-first. Rendered below the
+            birdex so the birdex remains the primary above-the-fold
+            surface; the feed is secondary/exploratory content. Hidden
+            for logged-out users (no follow list ⇒ nothing useful to
+            show) and while the birdex is still shimmering, so the
+            loading state is a single coherent block. */}
+        {user && labels && !showRehomeGate && placeSet ? (
+          <section className="mt-12 w-full">
+            <BirdFeed />
+          </section>
+        ) : null}
       </main>
 
       <PlayerBar
