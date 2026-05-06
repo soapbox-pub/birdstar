@@ -32,9 +32,11 @@ import {
 } from '@/lib/geo/continent';
 import { useBirdNet } from '@/hooks/useBirdNet';
 import { useBirdLabels } from '@/hooks/useBirdLabels';
+import { useBirdGlowPublisher } from '@/hooks/useBirdGlow';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { SongPlaybackProvider } from '@/components/SongPlaybackProvider';
 import { BirdSoundboardProvider } from '@/components/BirdSoundboardProvider';
+import { BirdGlowProvider } from '@/components/BirdGlowProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
@@ -666,12 +668,35 @@ const IndexInner = () => {
     selectedDetection?.eventId && deletingIds.has(selectedDetection.eventId),
   );
 
+  const publishGlow = useBirdGlowPublisher();
+
   const handleChunk = useCallback(
     async (samples: Float32Array) => {
       if (!labels) return;
       const preds = await predict(samples, 5);
       if (preds.length === 0) return;
       const now = Date.now();
+
+      // Broadcast raw scores to the dex-glow store BEFORE the
+      // accumulator filter. We want every bird the user hears
+      // (even rare / out-of-region ones) to light up its cell —
+      // the cell is already the source of truth for whether it
+      // IS in the user's dex, so unmatched species just have no
+      // subscriber. Use the same MIN_RAW_CONFIDENCE floor the
+      // accumulator uses so the glow only reflects readings the
+      // detection system considers plausible.
+      const glowBatch: { scientificName: string; score: number }[] = [];
+      for (const pred of preds) {
+        const label = labels[pred.index];
+        if (!label || !label.isBird) continue;
+        if (pred.score < MIN_RAW_CONFIDENCE) continue;
+        glowBatch.push({
+          scientificName: label.scientificName,
+          score: pred.score,
+        });
+      }
+      if (glowBatch.length > 0) publishGlow(glowBatch);
+
       for (const pred of preds) {
         const label = labels[pred.index];
         if (!label || !label.isBird) continue;
@@ -679,7 +704,7 @@ const IndexInner = () => {
         ingest(pred, label, now);
       }
     },
-    [labels, predict, ingest],
+    [labels, predict, ingest, publishGlow],
   );
 
   const recorder = useAudioRecorder({ onChunk: handleChunk, predictEveryMs: 2000 });
@@ -1269,22 +1294,29 @@ const Footer = memo(function Footer() {
 });
 
 // Wrapper that provides the SongPlaybackContext (mic-feedback
-// counter) and BirdSoundboardContext (per-species playback
-// registry used by the cell play buttons, dialog play button, and
-// bar-level Play all / Stop all) to the whole page tree.
+// counter), BirdSoundboardContext (per-species playback registry
+// used by the cell play buttons, dialog play button, and bar-level
+// Play all / Stop all) and BirdGlowContext (live per-species
+// BirdNET confidence feed that drives the dex glow) to the whole
+// page tree.
 //
 // Split out from the main component body because
 // useAudioRecorder (called inside IndexInner) needs to read the
 // SongPlayback counter, and the SoundboardProvider registers
 // with that counter -- so both have to be ancestors of
-// IndexInner, in that order.
+// IndexInner, in that order. BirdGlowProvider is independent of
+// both but lives alongside them so SpeciesCell (rendered deep
+// inside IndexInner) can subscribe.
 //
-// See src/contexts/SongPlaybackContext.ts and
-// src/contexts/BirdSoundboardContext.ts for the motivations.
+// See src/contexts/SongPlaybackContext.ts,
+// src/contexts/BirdSoundboardContext.ts, and
+// src/contexts/BirdGlowContext.ts for the motivations.
 const Index = () => (
   <SongPlaybackProvider>
     <BirdSoundboardProvider>
-      <IndexInner />
+      <BirdGlowProvider>
+        <IndexInner />
+      </BirdGlowProvider>
     </BirdSoundboardProvider>
   </SongPlaybackProvider>
 );

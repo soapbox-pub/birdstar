@@ -48,6 +48,7 @@ import {
   useBirdSoundboard,
   useIsSpeciesPlaying,
 } from '@/hooks/useBirdSoundboard';
+import { useBirdGlowIntensity } from '@/hooks/useBirdGlow';
 import { cn } from '@/lib/utils';
 
 interface SpeciesCellProps {
@@ -93,6 +94,23 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
     hasBeenVisible ? label.commonName : null,
   );
 
+  // Live BirdNET confidence glow. Subscribes to the shared glow
+  // store; value is a decayed [0, 1] intensity bucketed to 1%
+  // precision, so this hook fires re-renders only on perceptible
+  // changes. Subscribing INSIDE the memoized component is
+  // intentional — the outer React.memo compares only the cell's
+  // static props, and the glow layer refreshes independently. See
+  // `src/contexts/BirdGlowContext.ts` for the rationale.
+  //
+  // Gated on `hasBeenVisible` so the 6,500-cell grid only mounts
+  // active subscriptions for cells the user has actually
+  // scrolled past once — an offscreen cell has no visible glow
+  // anyway (content-visibility: auto skips paint), so subscribing
+  // it would cost a Map.get per rAF tick for zero visual benefit.
+  const glow = useBirdGlowIntensity(
+    hasBeenVisible ? label.scientificName : null,
+  );
+
   // Heard cells expose the inline play control; everyone else gets
   // the normal click-to-open-dialog behavior without a soundboard.
   // Rare birds (out-of-region heard) still get a play button — just
@@ -103,6 +121,42 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
       ? 'rare'
       : 'confirmed'
     : null;
+
+  // Colored glow driven by live BirdNET confidence. Intensity is a
+  // [0, 1] decayed score — we shape it into a soft outer shadow on
+  // the inner clip so it composes cleanly with the parent's
+  // `drop-shadow-*` utility (different CSS property, no conflict).
+  // Two-stop shadow (tight + wide) reads as a soft halo rather
+  // than a hard ring; opacity and spread both scale with intensity
+  // so weak detections whisper and strong ones sing.
+  //
+  // Palette matches the cell's variant — emerald for confirmed in-
+  // region, amber for rare, sky for starter/unconfirmed — so the
+  // glow feels like an extension of the cell's resting colour
+  // rather than a separate signal.
+  const glowStyle: React.CSSProperties | undefined =
+    glow > 0
+      ? (() => {
+          const rgb =
+            variant === 'rare'
+              ? '251, 191, 36'   // amber-400
+              : variant === 'confirmed'
+                ? '52, 211, 153' // emerald-400
+                : '125, 211, 252'; // sky-300 (starter / unconfirmed)
+          // Ease with a mild curve so low-confidence hits register
+          // visibly without making peak hits look identical.
+          const shaped = Math.pow(glow, 0.75);
+          const innerAlpha = (0.35 + 0.45 * shaped).toFixed(3);
+          const outerAlpha = (0.15 + 0.35 * shaped).toFixed(3);
+          const innerRadius = 6 + 10 * shaped;
+          const outerRadius = 14 + 28 * shaped;
+          return {
+            boxShadow:
+              `0 0 ${innerRadius.toFixed(1)}px rgba(${rgb}, ${innerAlpha}), ` +
+              `0 0 ${outerRadius.toFixed(1)}px rgba(${rgb}, ${outerAlpha})`,
+          };
+        })()
+      : undefined;
 
   return (
     <div
@@ -169,8 +223,18 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
           transform — its rectangle (and therefore its rounded clip)
           stays stable while the parent lifts on hover. All absolutely
           positioned layers (image, gradient, badges, label) stack
-          inside this element. */}
+          inside this element.
+
+          The inline `boxShadow` (set via `glowStyle`) renders the
+          live BirdNET confidence glow. We apply it here rather than
+          on the outer because the outer uses Tailwind's
+          `drop-shadow-*` utility (which compiles to `filter: drop-
+          shadow(...)`); box-shadow is a different CSS property and
+          composes cleanly alongside it. The glow sits OUTSIDE the
+          rounded clip's overflow hide because box-shadow always
+          paints outside the element's box regardless of overflow. */}
       <div
+        style={glowStyle}
         className={cn(
           'pointer-events-none absolute inset-0 overflow-hidden rounded-2xl border',
           'transition-[border-color,filter] duration-300',
