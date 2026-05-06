@@ -71,7 +71,15 @@ export function useFollowsBirdDetections({
   // identity changes on every query refetch even when contents are
   // identical — joining the sorted values gives a stable key that
   // only flips when membership actually changes.
-  const authors = follows ? [...follows].sort() : null;
+  //
+  // Strip the logged-in user's own pubkey: some clients self-follow
+  // (and nothing in NIP-02 forbids it), but surfacing a toast that
+  // says "your friend heard a Robin" when the friend is *you* is
+  // nonsense — the local BirdNET pipeline already celebrated that
+  // detection in-app when it happened.
+  const authors = follows
+    ? [...follows].filter((pk) => pk !== user?.pubkey).sort()
+    : null;
   const authorsKey = authors?.join(',') ?? '';
 
   useEffect(() => {
