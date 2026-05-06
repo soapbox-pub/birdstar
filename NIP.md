@@ -106,7 +106,27 @@ Structured data MUST be placed in tags, not in `content`.
 
 #### Optional
 
-_(None currently defined.)_
+- `g` (NIP-52) — coarse **geohash** of where the detection was made. Opt-in
+  only: Birdstar publishes this tag exclusively when the user has explicitly
+  enabled "Publish location" in Settings. Off by default.
+
+  ```jsonc
+  ["g", "dp3"]
+  ```
+
+  Birdstar emits a length-3 geohash (~156 km × 156 km cells), which is
+  the coarsest precision still useful for region-scale aggregation
+  without revealing the observer's neighborhood. Clients receiving a
+  detection MAY display it on a map, use it to filter "detections near
+  me", or ignore it entirely; the rest of the event is self-contained
+  without it.
+
+  The `g` tag value MUST match `/^[0-9bcdefghjkmnpqrstuvwxyz]+$/` —
+  the standard geohash base-32 alphabet (digits 0-9 plus the
+  consonants b-z with a, i, l, o removed). Publishers SHOULD NOT emit
+  geohashes finer than length 8 (~20 m) on a detection event — the
+  act of stamping a GPS-precise coordinate onto a signed, public,
+  permanent record is almost never what the observer intends.
 
 Publishers SHOULD NOT attach a per-event numeric confidence to a detection.
 Publishing a kind 2473 event IS the publisher's confidence signal: the act
@@ -123,6 +143,22 @@ reliable enough to commit to the record.
     ["alt", "Bird detection: American Robin (Turdus migratorius)"],
     ["i", "https://www.wikidata.org/entity/Q26825"],
     ["n", "Turdus migratorius"]
+  ]
+}
+```
+
+With the optional `g` tag, when the user has enabled location publishing
+in Settings:
+
+```jsonc
+{
+  "kind": 2473,
+  "content": "",
+  "tags": [
+    ["alt", "Bird detection: American Robin (Turdus migratorius)"],
+    ["i", "https://www.wikidata.org/entity/Q26825"],
+    ["n", "Turdus migratorius"],
+    ["g", "dp3"]
   ]
 }
 ```
@@ -172,6 +208,13 @@ published for a given `i` tag, no new event for that same URL should be
 published by the same author for at least 10 minutes.
 
 Detections from logged-out users are never published.
+
+Birdstar does not publish any location information on detections by
+default. The optional `g` tag is only attached when the user has
+explicitly enabled "Publish location" in the Birds-mode Settings
+sheet, and is computed from the same coarse (1°-rounded) lat/lon that
+drives the birdex's region filter — no additional precision is
+introduced at publish time.
 
 ### Deletion
 

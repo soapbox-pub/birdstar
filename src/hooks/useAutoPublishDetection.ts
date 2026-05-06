@@ -14,6 +14,18 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { BIRDEX_KIND } from '@/hooks/useBirdexEvent';
 import type { Detection } from '@/components/BirdCard';
+import type { CoarseLatLon } from '@/hooks/useUserRegion';
+import { encodeGeohash } from '@/lib/geo/geohash';
+
+/**
+ * Length of the geohash attached to the optional `g` tag when the user
+ * has enabled "Publish location" in Settings. Three characters maps to
+ * roughly 156 km × 156 km cells — the coarsest precision still useful
+ * for region-scale aggregation and the natural cap given that the
+ * upstream lat/lon is stored 1°-rounded (~111 km). Any finer would
+ * imply more accuracy than the source coordinate actually carries.
+ */
+const DETECTION_GEOHASH_PRECISION = 3;
 
 /**
  * Resolve the Wikidata entity URI for a species. Returns the normalized
@@ -215,6 +227,26 @@ export interface UseAutoPublishDetectionOptions {
    * to re-emit the `i`/`n` pairs verbatim when appending.
    */
   birdexEntries: BirdexSpeciesEntry[];
+  /**
+   * When true, attach an optional NIP-52 `g` tag (length-3 geohash)
+   * derived from `coarse` to each published kind 2473 event. Opt-in
+   * only — driven by the "Publish location" toggle in the Birds-mode
+   * Settings sheet. Off by default; flipping the toggle only affects
+   * detections published after the change. The Birdex (kind 12473)
+   * NEVER receives a `g` tag regardless of this setting — it's an
+   * aggregate index, not an observation event.
+   */
+  publishLocation?: boolean;
+  /**
+   * The user's coarse (1°-rounded) lat/lon, if resolved. Read only
+   * when `publishLocation` is true; ignored otherwise. When the
+   * toggle is on but `coarse` is null (geolocation denied /
+   * unavailable / still resolving), detections are published without
+   * a `g` tag rather than blocking the publish — the user explicitly
+   * asked to include location "when available", not to suppress the
+   * detection when location is missing.
+   */
+  coarse?: CoarseLatLon | null;
 }
 
 export interface AutoPublishApi {
@@ -229,6 +261,8 @@ export interface AutoPublishApi {
 export function useAutoPublishDetection({
   lastPublishedAt,
   birdexEntries,
+  publishLocation = false,
+  coarse = null,
 }: UseAutoPublishDetectionOptions): AutoPublishApi {
   const { user } = useCurrentUser();
   const { mutateAsync: publish } = useNostrPublish();
@@ -241,6 +275,19 @@ export function useAutoPublishDetection({
   useEffect(() => {
     historyRef.current = lastPublishedAt;
   }, [lastPublishedAt]);
+
+  // Mirror publish-location state + coarse coord behind refs for the
+  // same stability reasons. Toggling "Publish location" or having the
+  // user's geolocation resolve mid-session should take effect on the
+  // NEXT detection without rebuilding `consider`.
+  const publishLocationRef = useRef(publishLocation);
+  useEffect(() => {
+    publishLocationRef.current = publishLocation;
+  }, [publishLocation]);
+  const coarseRef = useRef<CoarseLatLon | null>(coarse);
+  useEffect(() => {
+    coarseRef.current = coarse;
+  }, [coarse]);
 
   // Mirror the Birdex entries + membership set behind refs for the
   // same reason. `birdexEntriesRef` preserves chronological order AND
@@ -315,17 +362,45 @@ export function useAutoPublishDetection({
           sessionPublishedAt.current.set(entityUri, detection.timestamp);
 
           try {
+            // Base tag set required by NIP.md §"Kind 2473":
+            //   alt (NIP-31 summary), i (Wikidata URI), n (scientific name).
+            const detectionTags: string[][] = [
+              [
+                'alt',
+                `Bird detection: ${detection.commonName} (${detection.scientificName})`,
+              ],
+              ['i', entityUri],
+              ['n', detection.scientificName],
+            ];
+
+            // Optional NIP-52 `g` tag — only when the user opted in via
+            // Settings → "Publish location" AND we actually have a
+            // coarse coordinate to geohash. If the toggle is on but
+            // the coord is missing (geolocation denied / still
+            // resolving) we publish without it rather than stalling
+            // the detection; the user asked to include location when
+            // available, not to suppress publishing when it isn't.
+            if (publishLocationRef.current && coarseRef.current) {
+              try {
+                const geohash = encodeGeohash(
+                  coarseRef.current.lat,
+                  coarseRef.current.lon,
+                  DETECTION_GEOHASH_PRECISION,
+                );
+                detectionTags.push(['g', geohash]);
+              } catch (err) {
+                // Defensive: encoder throws on out-of-range input,
+                // which would mean our upstream coord is corrupt.
+                // Swallow and publish without a geohash rather than
+                // dropping the detection entirely.
+                console.warn('Failed to encode detection geohash', err);
+              }
+            }
+
             await publish({
               kind: 2473,
               content: '',
-              tags: [
-                [
-                  'alt',
-                  `Bird detection: ${detection.commonName} (${detection.scientificName})`,
-                ],
-                ['i', entityUri],
-                ['n', detection.scientificName],
-              ],
+              tags: detectionTags,
               created_at: Math.floor(detection.timestamp / 1000),
             });
 

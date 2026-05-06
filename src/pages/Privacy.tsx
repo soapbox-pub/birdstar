@@ -150,11 +150,24 @@ const Privacy = () => {
             tag with the app's hostname.
           </p>
           <p className="text-base leading-relaxed">
-            <strong>What Birdstar does not put in those events:</strong> your
-            location. Kinds 2473, 12473, and 30621 each carry only the
+            <strong>What Birdstar does not put in those events by default:</strong>{" "}
+            your location. Kinds 2473, 12473, and 30621 each carry only the
             species or star identifiers they describe, plus a human-readable
-            label. They contain no latitude, longitude, geohash, country, or
-            IP address.             The full schema is documented in{" "}
+            label. They contain no latitude, longitude, country, or IP address.
+          </p>
+          <p className="text-base leading-relaxed">
+            <strong>Optional: publishing location on bird detections.</strong>{" "}
+            Birds mode → Settings (top-right gear) has a{" "}
+            <em>Publish location</em> toggle that is <strong>off by default</strong>.
+            When you turn it on, each bird detection (kind 2473) you publish
+            carries a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-sm">g</code>{" "}
+            tag holding a length-3 geohash (~150 km cells) derived from the
+            1°-rounded coarse lat/lon Birdstar already uses to pick your
+            regional bird list. Finer coordinates are never attached. The
+            toggle only affects events published <em>after</em> you change
+            it; detections already on relays are unchanged. The full schema
+            is documented in{" "}
             <a
               href="https://gitlab.com/soapbox-pub/birdstar/-/blob/main/NIP.md"
               className="underline underline-offset-2"

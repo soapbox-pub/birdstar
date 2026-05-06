@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { MapPin } from 'lucide-react';
+import { MapPin, Settings2 } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
   BirdInfoDialog,
@@ -15,6 +15,7 @@ import { LiferCelebration } from '@/components/LiferCelebration';
 import { ModeSelector } from '@/components/ModeSelector';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -22,6 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { Switch } from '@/components/ui/switch';
 import { PlayerBar, type PlayerMode } from '@/components/PlayerBar';
 import type { BirdLabel } from '@/lib/birdnet/labels';
 import {
@@ -52,6 +62,7 @@ import { useBirdex, type BirdexEntry } from '@/hooks/useBirdex';
 import { useEncounteredSpecies } from '@/hooks/useEncounteredSpecies';
 import { useLiferCelebration } from '@/hooks/useLiferCelebration';
 import { useLocalSpeciesBands } from '@/hooks/useLocalSpeciesBands';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useNearestObservation } from '@/hooks/useNearestObservation';
 import { isSpeciesInRegion } from '@/lib/birdnet/speciesRegions';
 import {
@@ -71,6 +82,11 @@ const LoginArea = memo(LoginAreaRaw);
 // Manual-picker localStorage key. Stores a UserPlaceSet minus its runtime
 // `places` Set (we reconstruct the Set on load via placeSetFor).
 const MANUAL_LOCATION_KEY = 'birdsong.manualLocation.v2';
+
+// Settings: opt-in toggle that controls whether auto-published kind 2473
+// bird detections carry a NIP-52 `g` tag (coarse geohash). Off by
+// default — see Privacy.tsx and NIP.md §"Kind 2473 → Optional → g".
+const PUBLISH_LOCATION_KEY = 'birdsong.settings.publishLocation';
 
 // The eight coarse continents the user can choose from as a last-resort
 // fallback. MARINE excluded because a user's "location" is never the
@@ -297,10 +313,15 @@ const IndexInner = () => {
   const history = useBirdHistory();
   const birdexEvent = useBirdexEvent();
 
-  const { consider: considerPublish } = useAutoPublishDetection({
-    lastPublishedAt: history.lastPublishedAt,
-    birdexEntries: birdexEvent.entries,
-  });
+  // Settings: "Publish location" toggle (off by default). When on,
+  // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
+  // user's choice survives reloads; the `useAutoPublishDetection` hook
+  // picks up changes via refs, so flipping this mid-session only
+  // affects subsequent detections.
+  const [publishLocation, setPublishLocation] = useLocalStorage<boolean>(
+    PUBLISH_LOCATION_KEY,
+    false,
+  );
 
   // Location: geolocation wins; manual pick is the fallback; if the
   // user declined geolocation outright we fall back to a continent-
@@ -315,6 +336,13 @@ const IndexInner = () => {
     hasDecided: regionHasDecided,
     request: requestRegion,
   } = useUserRegion();
+
+  const { consider: considerPublish } = useAutoPublishDetection({
+    lastPublishedAt: history.lastPublishedAt,
+    birdexEntries: birdexEvent.entries,
+    publishLocation,
+    coarse,
+  });
 
   const [manualLocation, setManualLocation] = useState<StoredManualLocation | null>(
     () => readManualLocation(),
@@ -859,6 +887,11 @@ const IndexInner = () => {
             </Button>
           ) : null}
           <LoginArea className="max-w-60" />
+          <SettingsSheet
+            publishLocation={publishLocation}
+            setPublishLocation={setPublishLocation}
+            hasCoarse={!!coarse}
+          />
         </div>
       </div>
 
@@ -1259,6 +1292,101 @@ const Footer = memo(function Footer() {
     </footer>
   );
 });
+
+/**
+ * Top-right Birds-mode settings sheet. Mirrors the Stars-mode
+ * `SettingsSheet` pattern (see StarsIndex.tsx) but uses the default
+ * shadcn theming so it respects light/dark/system instead of pinning
+ * dark — Birds mode honors AppConfig.theme.
+ *
+ * Currently exposes a single toggle — "Publish location" — which
+ * controls whether auto-published kind 2473 bird detections carry an
+ * optional NIP-52 `g` tag (length-3 geohash, ~150 km). Off by default.
+ * See NIP.md §"Kind 2473 → Optional → g" and Privacy.tsx for the
+ * contract we promise users.
+ */
+function SettingsSheet({
+  publishLocation,
+  setPublishLocation,
+  hasCoarse,
+}: {
+  publishLocation: boolean;
+  setPublishLocation: (v: boolean) => void;
+  /** True when a coarse lat/lon is available. Surfaced as a hint
+   * beneath the toggle so users who enabled publishing but haven't
+   * granted geolocation understand why the `g` tag may be absent
+   * on their detections. */
+  hasCoarse: boolean;
+}) {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Settings"
+          className="rounded-full text-stone-500 hover:text-stone-700 dark:text-stone-400 dark:hover:text-stone-200"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Settings</SheetTitle>
+          <SheetDescription>
+            Customize what Birdstar publishes on your behalf.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="space-y-6 mt-6 px-4 pb-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+              Privacy
+            </h3>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <Label
+                  htmlFor="publish-location-toggle"
+                  className="text-sm cursor-pointer"
+                >
+                  Publish location
+                </Label>
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Attach a coarse geohash (~150 km) to each published bird
+                  detection so others can see the region it came from.
+                  Off by default.
+                </p>
+                {publishLocation && !hasCoarse ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 leading-snug">
+                    Your location isn't available yet — detections will
+                    publish without a geohash until geolocation resolves.
+                  </p>
+                ) : null}
+              </div>
+              <Switch
+                id="publish-location-toggle"
+                checked={publishLocation}
+                onCheckedChange={setPublishLocation}
+              />
+            </div>
+          </section>
+
+          <div className="pt-4 border-t flex justify-center">
+            <CopyrightDialog
+              trigger={
+                <button
+                  type="button"
+                  className="rounded-sm text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  License &amp; Credits
+                </button>
+              }
+            />
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 // Wrapper that provides the SongPlaybackContext (mic-feedback
 // counter), BirdSoundboardContext (per-species playback registry
