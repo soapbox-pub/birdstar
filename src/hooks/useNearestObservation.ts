@@ -35,6 +35,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import type { CoarseLatLon } from '@/hooks/useUserRegion';
+import { coarsen } from '@/lib/geo/coarsen';
 import { fetchNearestObservationDistance } from '@/lib/inat/localSpecies';
 import {
   readNearest,
@@ -101,18 +102,30 @@ export function useNearestObservation(
       if (existing) return existing;
 
       const task = (async () => {
-        // IndexedDB cache hit.
+        // IndexedDB cache hit. Keyed on the coarse coord so small GPS
+        // jitter within a 1° cell (~100 km) shares the same cache
+        // entry; a user walking around their city gets the same
+        // nearest-observation answer across reloads.
         const cached = await readNearest(coarse.lat, coarse.lon, inatTaxonId);
         if (cached) {
           memoryCache.current.set(inatTaxonId, cached.distanceKm);
           return cached.distanceKm;
         }
 
-        // Network.
+        // Privacy boundary: re-coarsen defensively before handing the
+        // coord to iNat. `coarse` is already 1°-rounded coming from
+        // `useUserRegion`, but `coarsen()` is idempotent and the
+        // explicit call makes this file greppable for "places
+        // Birdstar transmits location off-device".
+        const rounded = coarsen(coarse.lat, coarse.lon);
+        if (!rounded) {
+          memoryCache.current.set(inatTaxonId, null);
+          return null;
+        }
         const distance = await fetchNearestObservationDistance(
           inatTaxonId,
-          coarse.lat,
-          coarse.lon,
+          rounded.lat,
+          rounded.lon,
         );
         memoryCache.current.set(inatTaxonId, distance);
         // Persist even null results so we don't retry an empty

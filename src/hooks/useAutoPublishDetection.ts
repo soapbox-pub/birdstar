@@ -15,6 +15,7 @@ import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { BIRDEX_KIND } from '@/hooks/useBirdexEvent';
 import type { Detection } from '@/components/BirdCard';
 import type { CoarseLatLon } from '@/hooks/useUserRegion';
+import { coarsen } from '@/lib/geo/coarsen';
 import { encodeGeohash } from '@/lib/geo/geohash';
 
 /**
@@ -381,19 +382,32 @@ export function useAutoPublishDetection({
             // the detection; the user asked to include location when
             // available, not to suppress publishing when it isn't.
             if (publishLocationRef.current && coarseRef.current) {
-              try {
-                const geohash = encodeGeohash(
-                  coarseRef.current.lat,
-                  coarseRef.current.lon,
-                  DETECTION_GEOHASH_PRECISION,
-                );
-                detectionTags.push(['g', geohash]);
-              } catch (err) {
-                // Defensive: encoder throws on out-of-range input,
-                // which would mean our upstream coord is corrupt.
-                // Swallow and publish without a geohash rather than
-                // dropping the detection entirely.
-                console.warn('Failed to encode detection geohash', err);
+              // Re-coarsen defensively at the privacy boundary. The
+              // value from `useUserRegion().coarse` is already 1°-
+              // rounded, but running it through `coarsen()` here
+              // makes the boundary explicit to anyone grepping the
+              // codebase for "calls that transmit location" — this
+              // file, `src/lib/inat/localSpecies.ts`, and
+              // `useNearestObservation` are the three places.
+              const rounded = coarsen(
+                coarseRef.current.lat,
+                coarseRef.current.lon,
+              );
+              if (rounded) {
+                try {
+                  const geohash = encodeGeohash(
+                    rounded.lat,
+                    rounded.lon,
+                    DETECTION_GEOHASH_PRECISION,
+                  );
+                  detectionTags.push(['g', geohash]);
+                } catch (err) {
+                  // Defensive: encoder throws on out-of-range input,
+                  // which would mean our upstream coord is corrupt.
+                  // Swallow and publish without a geohash rather than
+                  // dropping the detection entirely.
+                  console.warn('Failed to encode detection geohash', err);
+                }
               }
             }
 

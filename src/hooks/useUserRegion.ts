@@ -9,33 +9,48 @@
 //      so sitting on an empty page waiting for the user to click a
 //      button wastes a round trip — we just ask.
 //   3. On a successful fix we resolve the lat/lon to a `UserPlaceSet`
-//      (continent + country + subdivision where available) and cache it.
-//      On denial we record that so we don't re-prompt on every subsequent
-//      visit — the manual-picker fallback takes over instead.
+//      (continent + country + subdivision where available), persist the
+//      resolved places here and the precise lat/lon to
+//      `useSharedLocation`. On denial we record that so we don't
+//      re-prompt on every subsequent visit — the manual-picker fallback
+//      takes over instead.
 //   4. `request()` is still exported so a "try again" affordance after
 //      a denial can re-trigger the prompt.
+//
+// Storage responsibilities:
+//
+//   - This module's own key (`birdsong.userLocation.v3`) stores only
+//     the resolved *place set* plus the user's grant decision — no
+//     coordinates. v3 entries written by earlier versions carry a
+//     `coarse` field; we still tolerate those on read (for forward
+//     compat with un-migrated entries) but we no longer write one.
+//   - The precise lat/lon lives in `useSharedLocation`
+//     (`birdstar:location.v1`). `coarse` is exposed here as a derived
+//     value: we call `coarsen()` on the shared lat/lon each render,
+//     so the privacy boundary is enforced in one place even as
+//     storage evolves.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   resolveUserPlaces,
   placeSetFor,
   type RegionCode,
   type UserPlaceSet,
 } from '@/lib/geo/continent';
+import {
+  coarsen,
+  type CoarseLatLon,
+} from '@/lib/geo/coarsen';
+import {
+  useSharedLocation,
+  LOCATION_CHANGE_EVENT,
+} from '@/hooks/useSharedLocation';
 
-// v3 key — v2 stored only the resolved place set (continent + country +
-// subdivision). v3 additionally persists a *coarse* lat/lon (rounded to
-// ~1°, ~100km on a side) so features like the observation-density map
-// in BirdInfoDialog can center themselves on the user's region without
-// re-prompting for geolocation. Rounding matters: the raw lat/lon from
-// `navigator.geolocation` can be accurate to a few meters, which is
-// far more precision than we need and far more than we want to keep
-// in localStorage. 1° is already coarser than "which country/state"
-// (which we store explicitly) and gives plenty of "approximate center
-// of my area" for panning a tile map.
-//
-// Dropping stale v2 entries is cheap (the user just re-grants
-// location; the next fix repopulates v3).
+// Re-exported so existing consumers that import `CoarseLatLon` from
+// this module keep working without an import-path churn. New code
+// should import from '@/lib/geo/coarsen' directly.
+export type { CoarseLatLon };
+
 const STORAGE_KEY = 'birdsong.userLocation.v3';
 
 export type RegionStatus =
@@ -45,34 +60,13 @@ export type RegionStatus =
   | 'denied'
   | 'unavailable';
 
-/** Coarse geographic center stored with the resolved place set. */
-export interface CoarseLatLon {
-  /** Latitude rounded to 1° (≈111 km). Range -90..90. */
-  lat: number;
-  /** Longitude rounded to 1° (≈40–111 km depending on latitude). Range -180..180. */
-  lon: number;
-}
-
 interface StoredState {
   status: RegionStatus;
   /** Only present when status === 'ready'. */
   continent?: RegionCode;
   country?: string;
   subdivision?: string;
-  coarse?: CoarseLatLon;
   resolvedAt?: number;
-}
-
-/**
- * Round a geolocation coordinate to the nearest integer degree. This
- * is the precision we persist; anything finer would be leaking more
- * location than the rest of the app actually uses (the place set
- * itself is country/state-level).
- */
-function roundCoord(n: number): number {
-  // Math.round handles negative values correctly (-0.4 → 0, -0.6 → -1)
-  // which is what we want for a symmetric 1° grid.
-  return Math.round(n);
 }
 
 const VALID_CONTINENTS: RegionCode[] = [
@@ -85,7 +79,7 @@ function readStored(): StoredState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object') return null;
-    const { status, continent, country, subdivision, coarse, resolvedAt } =
+    const { status, continent, country, subdivision, resolvedAt } =
       parsed as Partial<StoredState>;
     if (
       status !== 'ready' &&
@@ -101,31 +95,11 @@ function readStored(): StoredState | null {
       ) {
         return null;
       }
-      // Coarse coords are optional — a v3 entry written through the
-      // manual picker path may not carry them (manual picks start
-      // from a place code, not a lat/lon). Validate the shape when
-      // present and drop it otherwise rather than failing the whole
-      // read.
-      let validCoarse: CoarseLatLon | undefined;
-      if (
-        coarse &&
-        typeof coarse === 'object' &&
-        typeof (coarse as CoarseLatLon).lat === 'number' &&
-        typeof (coarse as CoarseLatLon).lon === 'number' &&
-        Math.abs((coarse as CoarseLatLon).lat) <= 90 &&
-        Math.abs((coarse as CoarseLatLon).lon) <= 180
-      ) {
-        validCoarse = {
-          lat: (coarse as CoarseLatLon).lat,
-          lon: (coarse as CoarseLatLon).lon,
-        };
-      }
       return {
         status,
         continent: continent as RegionCode,
         country: typeof country === 'string' ? country : undefined,
         subdivision: typeof subdivision === 'string' ? subdivision : undefined,
-        coarse: validCoarse,
         resolvedAt: typeof resolvedAt === 'number' ? resolvedAt : undefined,
       };
     }
@@ -145,7 +119,7 @@ function writeStored(state: StoredState): void {
   // that our decision changed. Local storage events don't fire in the
   // same tab, so we piggyback on a custom event instead.
   try {
-    window.dispatchEvent(new Event('birdstar:location-change'));
+    window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT));
   } catch {
     // SSR / non-browser env — no-op.
   }
@@ -170,12 +144,12 @@ export interface UseUserRegion {
    * user has denied geolocation or it is unavailable. Lets UI render
    * a sensible default instead of gating on a missing region. */
   fallbackPlaceSet: UserPlaceSet | null;
-  /** Coarse (1°-rounded) lat/lon of the geolocation fix, when
-   * available. Only populated when the user resolved their location
-   * via the browser's geolocation API — manual-picker resolutions
-   * that came in through a different code path may leave this null.
-   * Downstream features that need a map center should fall back to a
-   * continent/country centroid when this is null. */
+  /** Coarse (1°-rounded) lat/lon derived from the shared location
+   * store. Null when we don't have a fix yet. Use this as the input
+   * to any privacy-sensitive boundary (iNat query params, geohash
+   * encoding, IDB cache keys) so precise coords never leave the
+   * device. Re-coarsen at the call site if you prefer to make the
+   * boundary explicit — `coarsen()` is idempotent. */
   coarse: CoarseLatLon | null;
   status: RegionStatus;
   hasDecided: boolean;
@@ -188,9 +162,8 @@ export interface UseUserRegion {
   /** Commit a manually-chosen lat/lon (e.g. from a pin-drop map in
    * settings). Resolves the coordinates to a continent/country/
    * subdivision place set the same way an auto-resolved GPS fix
-   * would, and persists a 1°-rounded `coarse` value so
-   * location-dependent features (observation map, species bands,
-   * geohash publishing) pick up the change. Returns true if the
+   * would, persists the precise coord to the shared store, and
+   * updates the resolved place set here. Returns true if the
    * coordinates resolved to a known place; false otherwise (e.g.
    * a point in the middle of the ocean without a containing box). */
   setManualCoords: (latitude: number, longitude: number) => boolean;
@@ -199,6 +172,9 @@ export interface UseUserRegion {
 }
 
 export function useUserRegion(): UseUserRegion {
+  const { location: sharedLocation, setLocation: setSharedLocation } =
+    useSharedLocation();
+
   const [state, setState] = useState<StoredState>(() => {
     return readStored() ?? { status: 'unknown' };
   });
@@ -211,12 +187,14 @@ export function useUserRegion(): UseUserRegion {
     };
   }, []);
 
+  // Commit a new region state. Persistence to localStorage is
+  // handled by the `lastWrittenRef` effect below — keeping the
+  // mutation path one-way (state → effect → storage) means we don't
+  // have two places to worry about keeping the localStorage in
+  // sync with React state.
   const commit = useCallback((next: StoredState) => {
     if (!mountedRef.current) return;
     setState(next);
-    if (next.status === 'ready' || next.status === 'denied' || next.status === 'unavailable') {
-      writeStored(next);
-    }
   }, []);
 
   const request = useCallback(() => {
@@ -236,21 +214,22 @@ export function useUserRegion(): UseUserRegion {
           commit({ status: 'unavailable' });
           return;
         }
+        // Persist the precise fix to the shared store — `coarse` is
+        // a read-time derivation from this. Downstream boundaries
+        // (iNat, geohash) coarsen explicitly via `coarsen()` so no
+        // precise coord leaves the device.
+        setSharedLocation({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          source: 'gps',
+          updatedAt: Date.now(),
+        });
         commit({
           status: 'ready',
           continent: resolved.continent,
           country: resolved.country,
           subdivision: resolved.subdivision,
-          // Persist the fix at 1° precision. This is strictly looser
-          // than the raw coord we already used to resolve `continent`
-          // / `country` / `subdivision` above, so we're not leaking
-          // any new information — we're just keeping a coarse center
-          // around for downstream features (e.g. the iNat
-          // observation-density map in BirdInfoDialog).
-          coarse: {
-            lat: roundCoord(pos.coords.latitude),
-            lon: roundCoord(pos.coords.longitude),
-          },
           resolvedAt: Date.now(),
         });
       },
@@ -272,7 +251,7 @@ export function useUserRegion(): UseUserRegion {
         maximumAge: 60 * 60 * 1000,
       },
     );
-  }, [state.status, commit]);
+  }, [state.status, commit, setSharedLocation]);
 
   const reset = useCallback(() => {
     try {
@@ -281,7 +260,7 @@ export function useUserRegion(): UseUserRegion {
       // ignore
     }
     try {
-      window.dispatchEvent(new Event('birdstar:location-change'));
+      window.dispatchEvent(new Event(LOCATION_CHANGE_EVENT));
     } catch {
       // SSR / non-browser env — no-op.
     }
@@ -291,10 +270,11 @@ export function useUserRegion(): UseUserRegion {
   }, []);
 
   // Manual pin-drop from the settings map. Resolves the lat/lon to a
-  // place set the same way an auto-resolved GPS fix would, then
-  // commits both the resolved places and a 1°-rounded `coarse`
-  // coordinate so downstream features (observation map, species
-  // bands, geohash publishing) pick up the change immediately.
+  // place set the same way an auto-resolved GPS fix would, persists
+  // the precise coord to the shared store, and stores the resolved
+  // place set here. Downstream features (observation map, species
+  // bands, geohash publishing) pick up the change immediately — they
+  // read `coarse` which is derived from the shared store each render.
   //
   // Returns `false` when `resolveUserPlaces` can't locate the input
   // (e.g. open-ocean coordinate outside every known box). Callers
@@ -312,20 +292,22 @@ export function useUserRegion(): UseUserRegion {
       }
       const resolved = resolveUserPlaces(latitude, longitude);
       if (!resolved) return false;
+      setSharedLocation({
+        latitude,
+        longitude,
+        source: 'manual',
+        updatedAt: Date.now(),
+      });
       commit({
         status: 'ready',
         continent: resolved.continent,
         country: resolved.country,
         subdivision: resolved.subdivision,
-        coarse: {
-          lat: roundCoord(latitude),
-          lon: roundCoord(longitude),
-        },
         resolvedAt: Date.now(),
       });
       return true;
     },
-    [commit],
+    [commit, setSharedLocation],
   );
 
   // Auto-prompt on mount when there's no cached decision. We key the
@@ -348,6 +330,84 @@ export function useUserRegion(): UseUserRegion {
     }
   }, [state.status]);
 
+  // Cross-mode sync. When another surface (e.g. the Stars settings
+  // pin-drop) writes a new precise coord to the shared store, Birds
+  // should pick it up and refresh its resolved region. Without this,
+  // a Stars pin-drop would update the sky but leave the birdex pinned
+  // to the user's previous region until they manually re-granted in
+  // Birds too.
+  //
+  // We only run `resolveUserPlaces` here — no network, no
+  // getCurrentPosition — so this is cheap enough to do as an
+  // in-render derivation: when the shared coord's resolved region
+  // differs from our current `state`, adjust synchronously. A
+  // separate effect then mirrors the new state to localStorage.
+  //
+  // Guarding on reference equality of the shared-location object
+  // prevents us from re-resolving on every render; only a fresh
+  // `setLocation` call changes the identity.
+  const [prevSharedLocation, setPrevSharedLocation] = useState(sharedLocation);
+  if (sharedLocation !== prevSharedLocation) {
+    setPrevSharedLocation(sharedLocation);
+    if (sharedLocation) {
+      const resolved = resolveUserPlaces(
+        sharedLocation.latitude,
+        sharedLocation.longitude,
+      );
+      if (
+        resolved &&
+        (state.status !== 'ready' ||
+          state.continent !== resolved.continent ||
+          state.country !== resolved.country ||
+          state.subdivision !== resolved.subdivision)
+      ) {
+        // `resolvedAt` is stamped by `commit` for the primary write
+        // paths (request / setManualCoords / auto-prompt). We omit
+        // it here because `Date.now()` is impure and React rejects
+        // impure calls during render. Downstream code doesn't read
+        // `resolvedAt`, so its absence on a cross-mode sync is
+        // cosmetic.
+        setState({
+          status: 'ready',
+          continent: resolved.continent,
+          country: resolved.country,
+          subdivision: resolved.subdivision,
+        });
+      }
+    }
+  }
+
+  // Persist the place-set whenever it transitions to one of the
+  // "decided" statuses. Kept as an effect rather than folded into
+  // the in-render block above because writes to localStorage are a
+  // bona fide side effect and don't belong in render.
+  //
+  // We compare against the raw string already in localStorage to
+  // suppress redundant writes (e.g. the no-op mount case when we
+  // initialized `state` from `readStored()` and nothing changed
+  // before the effect ran). A `useRef` cache would be faster, but
+  // the React Compiler lint rules disallow reading refs during
+  // render-adjacent initialization; a localStorage read here is
+  // synchronous and plenty fast for this workload.
+  useEffect(() => {
+    if (
+      state.status !== 'ready' &&
+      state.status !== 'denied' &&
+      state.status !== 'unavailable'
+    ) {
+      return;
+    }
+    const serialized = JSON.stringify(state);
+    try {
+      const current = localStorage.getItem(STORAGE_KEY);
+      if (current === serialized) return;
+    } catch {
+      // localStorage unavailable — attempting the write below will
+      // also throw and be swallowed by `writeStored`.
+    }
+    writeStored(state);
+  }, [state]);
+
   // Also re-resolve on mount when we came up with a 'ready' fix from
   // the cache. The cached place set is what the user saw last time —
   // but they may have physically moved since (e.g. flew to another
@@ -362,14 +422,17 @@ export function useUserRegion(): UseUserRegion {
   // and only commit a new state when we actually have a fresh fix
   // (or a denial). On error we keep the cached fix in place.
   //
-  // Only runs once on mount. `commit` isn't listed as a dep because
-  // we capture it via ref — listing it would re-fire this effect
-  // on every render of the parent. A `didRunRef` guard makes this
-  // safe under React 18 strict-mode double-mount.
+  // Only runs once on mount. `commit` / `setSharedLocation` are
+  // captured via refs so the effect can stay mount-only without
+  // eslint complaining about missing deps.
   const commitRef = useRef(commit);
   useEffect(() => {
     commitRef.current = commit;
   }, [commit]);
+  const setSharedLocationRef = useRef(setSharedLocation);
+  useEffect(() => {
+    setSharedLocationRef.current = setSharedLocation;
+  }, [setSharedLocation]);
   const didRefreshRef = useRef(false);
   useEffect(() => {
     if (didRefreshRef.current) return;
@@ -385,15 +448,18 @@ export function useUserRegion(): UseUserRegion {
           pos.coords.longitude,
         );
         if (!resolved) return;
+        setSharedLocationRef.current({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          source: 'gps',
+          updatedAt: Date.now(),
+        });
         commitRef.current({
           status: 'ready',
           continent: resolved.continent,
           country: resolved.country,
           subdivision: resolved.subdivision,
-          coarse: {
-            lat: roundCoord(pos.coords.latitude),
-            lon: roundCoord(pos.coords.longitude),
-          },
           resolvedAt: Date.now(),
         });
       },
@@ -443,11 +509,29 @@ export function useUserRegion(): UseUserRegion {
   const fallbackPlaceSet =
     resolvedPlaceSet ? null : placeSetFor('NA');
 
+  // Derive `coarse` from the shared precise coord on every render.
+  // This is the one place the 1°-rounding happens for Birds-side
+  // consumers; downstream boundaries (iNat URLs, geohash encode)
+  // also call `coarsen()` explicitly at the edge for defense in
+  // depth, but this derivation is cheap and keeps the rest of the
+  // app's call sites unchanged. Memoized so reference identity is
+  // stable while the underlying value is — prevents useEffect
+  // deps-arrays that include `coarse` from re-firing on every render.
+  const coarse = useMemo<CoarseLatLon | null>(() => {
+    if (!sharedLocation) return null;
+    // Only surface a coarse value when we also have a resolved
+    // region; otherwise downstream consumers (observation map,
+    // species bands) would fire iNat queries on a centroid the user
+    // hasn't actually committed to.
+    if (state.status !== 'ready') return null;
+    return coarsen(sharedLocation.latitude, sharedLocation.longitude);
+  }, [sharedLocation, state.status]);
+
   return {
     region: resolvedPlaceSet?.continent ?? null,
     placeSet: resolvedPlaceSet,
     fallbackPlaceSet,
-    coarse: state.coarse ?? null,
+    coarse,
     status: state.status,
     hasDecided,
     usingFallback,

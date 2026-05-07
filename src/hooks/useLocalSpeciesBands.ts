@@ -44,6 +44,7 @@ import {
   readLocalSpecies,
   writeLocalSpecies,
 } from '@/lib/inat/localSpeciesStore';
+import { coarsen } from '@/lib/geo/coarsen';
 import type { CoarseLatLon } from '@/hooks/useUserRegion';
 
 const QUERY_KEY_PREFIX = 'local-species-bands';
@@ -151,10 +152,18 @@ export function useLocalSpeciesBands(
     retry: 1,
     queryFn: async () => {
       if (!coarse) return null;
-      const map = await fetchLocalSpeciesBands(coarse.lat, coarse.lon);
+      // Privacy boundary: re-coarsen defensively before handing the
+      // coord to iNat. `coarse` is already 1°-rounded coming from
+      // `useUserRegion`, but the explicit call makes this file
+      // greppable for "places Birdstar transmits location off-device".
+      const rounded = coarsen(coarse.lat, coarse.lon);
+      if (!rounded) return null;
+      const map = await fetchLocalSpeciesBands(rounded.lat, rounded.lon);
       // Empty maps can happen in marine areas or bad network
       // conditions; cache them anyway so we don't re-fire on every
-      // render, but briefer so a retry happens sooner.
+      // render, but briefer so a retry happens sooner. IDB key uses
+      // the caller's coarse (same value as `rounded`), so cache
+      // hits survive small GPS jitter within a 1° cell.
       await writeLocalSpecies(coarse.lat, coarse.lon, map);
       return map;
     },

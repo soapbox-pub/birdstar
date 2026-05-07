@@ -43,26 +43,36 @@ import { Button } from '@/components/ui/button';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { cn } from '@/lib/utils';
 import { useMode } from '@/hooks/useMode';
+import {
+  getSharedLocation,
+  LOCATION_CHANGE_EVENT,
+} from '@/hooks/useSharedLocation';
 
 const EXPLAINER =
   'Birdstar needs access to GPS sensors on your device to show birds in your area and orient you with the stars.';
 
-/** Event dispatched on `window` by `useUserRegion` and `useGeolocation`
- * whenever either commits a new decision (ready / denied / unavailable
- * / granted). Lets the indicator update without re-mounting those
- * hooks. */
-export const LOCATION_CHANGE_EVENT = 'birdstar:location-change';
-
 // -- Persisted-state readers -------------------------------------------------
+//
+// "Disabled" means different things per mode:
+//
+//   - In Birds mode, we have an explicit per-user decision stored in
+//     `birdsong.userLocation.v3.status`: 'denied' or 'unavailable'
+//     means the user actively declined (or the browser can't resolve
+//     them). `ready` / `unknown` are NOT disabled states — the latter
+//     just means the prompt hasn't fired yet.
+//   - In Stars mode there's no persisted denial flag (the hook falls
+//     back silently). Instead, we check whether the shared precise
+//     location store has a value at all: if it does, the user has
+//     granted (or manually pinned) a fix somewhere; if not, they're
+//     either first-time or declined.
 
-const BIRDS_KEY = 'birdsong.userLocation.v3';
-const STARS_KEY = 'starpoint:geo';
+const BIRDS_STATUS_KEY = 'birdsong.userLocation.v3';
 
 type BirdsStatus = 'ready' | 'denied' | 'unavailable' | 'unknown';
 
 function readBirdsStatus(): BirdsStatus {
   try {
-    const raw = localStorage.getItem(BIRDS_KEY);
+    const raw = localStorage.getItem(BIRDS_STATUS_KEY);
     if (!raw) return 'unknown';
     const parsed = JSON.parse(raw) as { status?: string };
     const s = parsed?.status;
@@ -74,16 +84,7 @@ function readBirdsStatus(): BirdsStatus {
 }
 
 function readStarsHasFix(): boolean {
-  try {
-    const raw = localStorage.getItem(STARS_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw) as { latitude?: unknown; longitude?: unknown };
-    return (
-      typeof parsed?.latitude === 'number' && typeof parsed?.longitude === 'number'
-    );
-  } catch {
-    return false;
-  }
+  return getSharedLocation() !== null;
 }
 
 interface Snapshot {
