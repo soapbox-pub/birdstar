@@ -8,6 +8,7 @@ import {
 } from '@/components/BirdInfoDialog';
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
+import { LocationPickerMap } from '@/components/LocationPickerMap';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { CopyrightDialog } from '@/components/CopyrightDialog';
 import { LocationDisabledIndicator } from '@/components/LocationDisabledIndicator';
@@ -342,6 +343,7 @@ const IndexInner = () => {
     status: regionStatus,
     hasDecided: regionHasDecided,
     request: requestRegion,
+    setManualCoords: setManualRegionCoords,
   } = useUserRegion();
 
   const { consider: considerPublish } = useAutoPublishDetection({
@@ -898,6 +900,8 @@ const IndexInner = () => {
             publishLocation={publishLocation}
             setPublishLocation={setPublishLocation}
             hasCoarse={!!coarse}
+            coarse={coarse}
+            onSetLocation={(lat, lon) => setManualRegionCoords(lat, lon)}
           />
         </div>
       </div>
@@ -1310,6 +1314,8 @@ function SettingsSheet({
   publishLocation,
   setPublishLocation,
   hasCoarse,
+  coarse,
+  onSetLocation,
 }: {
   publishLocation: boolean;
   setPublishLocation: (v: boolean) => void;
@@ -1318,7 +1324,19 @@ function SettingsSheet({
    * granted geolocation understand why the `g` tag may be absent
    * on their detections. */
   hasCoarse: boolean;
+  /** Coarse (1°-rounded) lat/lon to center the picker map on, or
+   * null when geolocation hasn't resolved. When null the map falls
+   * back to a neutral continental centroid. */
+  coarse: { lat: number; lon: number } | null;
+  /** Commit the crosshair-centered lat/lon as the user's manual
+   * location. */
+  onSetLocation: (lat: number, lon: number) => void;
 }) {
+  // Fallback center when we don't have a real fix — matches the NA
+  // centroid used elsewhere in the app so the initial view is a
+  // recognizable chunk of continent rather than a random ocean.
+  const mapCenter = coarse ?? { lat: 40, lon: -100 };
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -1339,6 +1357,17 @@ function SettingsSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="space-y-6 mt-6 px-4 pb-4">
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+              Location
+            </h3>
+            <LocationPickerMap
+              center={mapCenter}
+              showMarker={hasCoarse}
+              onCommit={({ lat, lon }) => onSetLocation(lat, lon)}
+            />
+          </section>
+
           <section className="space-y-3">
             <h3 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
               Privacy

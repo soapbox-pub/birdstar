@@ -185,6 +185,15 @@ export interface UseUserRegion {
   usingFallback: boolean;
   /** Trigger the geolocation prompt. Safe to call multiple times. */
   request: () => void;
+  /** Commit a manually-chosen lat/lon (e.g. from a pin-drop map in
+   * settings). Resolves the coordinates to a continent/country/
+   * subdivision place set the same way an auto-resolved GPS fix
+   * would, and persists a 1°-rounded `coarse` value so
+   * location-dependent features (observation map, species bands,
+   * geohash publishing) pick up the change. Returns true if the
+   * coordinates resolved to a known place; false otherwise (e.g.
+   * a point in the middle of the ocean without a containing box). */
+  setManualCoords: (latitude: number, longitude: number) => boolean;
   /** Forget any stored decision so the opt-in affordance returns. */
   reset: () => void;
 }
@@ -280,6 +289,44 @@ export function useUserRegion(): UseUserRegion {
       setState({ status: 'unknown' });
     }
   }, []);
+
+  // Manual pin-drop from the settings map. Resolves the lat/lon to a
+  // place set the same way an auto-resolved GPS fix would, then
+  // commits both the resolved places and a 1°-rounded `coarse`
+  // coordinate so downstream features (observation map, species
+  // bands, geohash publishing) pick up the change immediately.
+  //
+  // Returns `false` when `resolveUserPlaces` can't locate the input
+  // (e.g. open-ocean coordinate outside every known box). Callers
+  // can show a tiny "out of range" hint — but the map's own
+  // world-wrap + bounded zoom should already keep users out of
+  // obviously-nonsense territory. In practice NA/EU/AS/etc. land
+  // resolves fine.
+  const setManualCoords = useCallback(
+    (latitude: number, longitude: number): boolean => {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return false;
+      }
+      if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
+        return false;
+      }
+      const resolved = resolveUserPlaces(latitude, longitude);
+      if (!resolved) return false;
+      commit({
+        status: 'ready',
+        continent: resolved.continent,
+        country: resolved.country,
+        subdivision: resolved.subdivision,
+        coarse: {
+          lat: roundCoord(latitude),
+          lon: roundCoord(longitude),
+        },
+        resolvedAt: Date.now(),
+      });
+      return true;
+    },
+    [commit],
+  );
 
   // Auto-prompt on mount when there's no cached decision. We key the
   // effect on `state.status === 'unknown'` so a subsequent `reset()`
@@ -405,6 +452,7 @@ export function useUserRegion(): UseUserRegion {
     hasDecided,
     usingFallback,
     request,
+    setManualCoords,
     reset,
   };
 }

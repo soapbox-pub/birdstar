@@ -3,7 +3,6 @@ import { useSeoMeta } from "@unhead/react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { nip19 } from "nostr-tools";
 import {
-  MapPin,
   Settings2,
   Sparkles,
   X as XIcon,
@@ -48,6 +47,7 @@ import {
   edgesToChain,
   type EditConstellationDetail,
 } from "@/lib/editConstellationEvent";
+import { LocationPickerMap } from "@/components/LocationPickerMap";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -67,7 +67,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { hapticTap, hapticTick } from "@/lib/haptics";
 import { getEffectiveDeviceClass } from "@/lib/detectDevice";
@@ -110,7 +109,7 @@ const Index = () => {
     status: orientationStatus,
     requestPermission,
   } = useDeviceOrientation({ smoothing });
-  const { coords, status: geoStatus, request: requestGeo, setManual } = useGeolocation();
+  const { coords, status: geoStatus, request: requestGeo, setManual, usingFallback } = useGeolocation();
 
   const [showNames, setShowNames] = useLocalStorage("starpoint:showNames", true);
   const [fov, setFov] = useLocalStorage<number>("starpoint:fov", 75);
@@ -688,8 +687,7 @@ const Index = () => {
             latitude={coords.latitude}
             longitude={coords.longitude}
             onSetLocation={(lat, lon) => setManual({ latitude: lat, longitude: lon })}
-            geoStatus={geoStatus}
-            onRequestGeo={requestGeo}
+            hasRealFix={!usingFallback}
           />
         </div>
       </div>
@@ -870,8 +868,7 @@ function SettingsSheet({
   latitude,
   longitude,
   onSetLocation,
-  geoStatus,
-  onRequestGeo,
+  hasRealFix,
 }: {
   showNames: boolean;
   setShowNames: (v: boolean) => void;
@@ -884,12 +881,12 @@ function SettingsSheet({
   latitude: number;
   longitude: number;
   onSetLocation: (lat: number, lon: number) => void;
-  geoStatus: string;
-  onRequestGeo: () => void;
+  /** True when the lat/lon is a real geolocation fix (as opposed to
+   * the North America fallback centroid). Controls whether the
+   * picker map draws a "you are here" dot — a pin on a fallback
+   * centroid would misrepresent where the user is. */
+  hasRealFix: boolean;
 }) {
-  const [latInput, setLatInput] = useState(latitude.toFixed(4));
-  const [lonInput, setLonInput] = useState(longitude.toFixed(4));
-
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -958,52 +955,12 @@ function SettingsSheet({
             <h3 className="text-sm font-semibold uppercase tracking-widest text-white/50">
               Location
             </h3>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs text-white/70">Latitude</Label>
-                <Input
-                  value={latInput}
-                  onChange={(e) => setLatInput(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white mt-1"
-                />
-              </div>
-              <div>
-                <Label className="text-xs text-white/70">Longitude</Label>
-                <Input
-                  value={lonInput}
-                  onChange={(e) => setLonInput(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white mt-1"
-                />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"
-                onClick={() => {
-                  const lat = parseFloat(latInput);
-                  const lon = parseFloat(lonInput);
-                  if (!isNaN(lat) && !isNaN(lon)) onSetLocation(lat, lon);
-                }}
-              >
-                Set manually
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 bg-white/5 border-white/10 hover:bg-white/10 text-white hover:text-white"
-                onClick={onRequestGeo}
-              >
-                <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                Use GPS
-              </Button>
-            </div>
-            {geoStatus === "denied" && (
-              <p className="text-xs text-rose-300">
-                Location permission denied — set coordinates manually.
-              </p>
-            )}
+            <LocationPickerMap
+              center={{ lat: latitude, lon: longitude }}
+              showMarker={hasRealFix}
+              onCommit={({ lat, lon }) => onSetLocation(lat, lon)}
+              theme="dark"
+            />
           </section>
 
           <div className="pt-4 border-t border-white/10 flex justify-center">
