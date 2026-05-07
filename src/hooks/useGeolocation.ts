@@ -86,6 +86,68 @@ export function useGeolocation() {
     };
   }, []);
 
+  // Silent background refresh on mount when we started from a cached
+  // fix. Users who move between sessions (e.g. fly to another city)
+  // would otherwise stay pinned to their old coords forever — the
+  // hook starts in status='granted' so nothing would ever re-prompt
+  // the browser. We deliberately DON'T go through `start()` here
+  // because that flips status to 'prompting' and, on error, clobbers
+  // `coords` with the NA fallback — which would be a UI regression
+  // (a real cached fix swapped out for Lebanon, KS just because a
+  // background refresh timed out). On success we commit the fresh
+  // fix; on error we silently keep the cached one.
+  //
+  // maximumAge: 0 — we explicitly want a fresh fix from the device,
+  // not whatever the browser has cached internally. This is the
+  // whole point of the refresh.
+  //
+  // `setCached` isn't memoized by `useLocalStorage` so we stash it
+  // on a ref rather than listing it in the deps — otherwise this
+  // effect would re-fire on every render and hammer getCurrentPosition.
+  // A `didRunRef` guard makes this safe under React 18 strict-mode
+  // double-mount too.
+  const setCachedRef = useRef(setCached);
+  useEffect(() => {
+    setCachedRef.current = setCached;
+  }, [setCached]);
+  const didRefreshRef = useRef(false);
+  useEffect(() => {
+    if (didRefreshRef.current) return;
+    didRefreshRef.current = true;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    try {
+      if (!localStorage.getItem('starpoint:geo')) return;
+    } catch {
+      return;
+    }
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const c: GeoCoords = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        };
+        setCoords(c);
+        setCachedRef.current(c);
+        setStatus("granted");
+        setUsingFallback(false);
+        notifyLocationChange();
+      },
+      () => {
+        // Background refresh failed (permission revoked, offline,
+        // timeout, etc). Keep the cached fix in place — it might be
+        // stale but it's better than dumping the user to the NA
+        // fallback unprompted.
+      },
+      { enableHighAccuracy: false, maximumAge: 0, timeout: 15_000 },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setManual = useCallback((c: GeoCoords) => {
     setCoords(c);
     setCached(c);

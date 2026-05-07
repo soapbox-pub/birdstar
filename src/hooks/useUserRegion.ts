@@ -301,6 +301,72 @@ export function useUserRegion(): UseUserRegion {
     }
   }, [state.status]);
 
+  // Also re-resolve on mount when we came up with a 'ready' fix from
+  // the cache. The cached place set is what the user saw last time —
+  // but they may have physically moved since (e.g. flew to another
+  // country), and without this refresh we'd keep them stuck on their
+  // old region until they manually reset.
+  //
+  // We deliberately DON'T go through `request()` here, because that
+  // flips status to 'resolving' and would make `resolvedPlaceSet`
+  // transiently null — the UI would briefly swap from "my real
+  // region" to the NA fallback, then back, which is worse than the
+  // bug we're fixing. Instead, fire `getCurrentPosition` directly
+  // and only commit a new state when we actually have a fresh fix
+  // (or a denial). On error we keep the cached fix in place.
+  //
+  // Only runs once on mount. `commit` isn't listed as a dep because
+  // we capture it via ref — listing it would re-fire this effect
+  // on every render of the parent. A `didRunRef` guard makes this
+  // safe under React 18 strict-mode double-mount.
+  const commitRef = useRef(commit);
+  useEffect(() => {
+    commitRef.current = commit;
+  }, [commit]);
+  const didRefreshRef = useRef(false);
+  useEffect(() => {
+    if (didRefreshRef.current) return;
+    didRefreshRef.current = true;
+    if (readStored()?.status !== 'ready') return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+    let cancelled = false;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (cancelled) return;
+        const resolved = resolveUserPlaces(
+          pos.coords.latitude,
+          pos.coords.longitude,
+        );
+        if (!resolved) return;
+        commitRef.current({
+          status: 'ready',
+          continent: resolved.continent,
+          country: resolved.country,
+          subdivision: resolved.subdivision,
+          coarse: {
+            lat: roundCoord(pos.coords.latitude),
+            lon: roundCoord(pos.coords.longitude),
+          },
+          resolvedAt: Date.now(),
+        });
+      },
+      () => {
+        // Background refresh failed (permission revoked since last
+        // visit, transient timeout, etc). Keep the cached fix in
+        // place — showing the old region is better than dumping the
+        // user back to a continent fallback.
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 10_000,
+        maximumAge: 60 * 60 * 1000,
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const hasDecided =
     state.status === 'ready' ||
     state.status === 'denied' ||
