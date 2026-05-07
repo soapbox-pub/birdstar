@@ -109,7 +109,7 @@ const Index = () => {
     status: orientationStatus,
     requestPermission,
   } = useDeviceOrientation({ smoothing });
-  const { coords, status: geoStatus, request: requestGeo, setManual, usingFallback } = useGeolocation();
+  const { coords, status: geoStatus, request: requestGeo, usingFallback } = useGeolocation();
 
   const [showNames, setShowNames] = useLocalStorage("starpoint:showNames", true);
   const [fov, setFov] = useLocalStorage<number>("starpoint:fov", 75);
@@ -686,7 +686,8 @@ const Index = () => {
             setFov={setFov}
             latitude={coords.latitude}
             longitude={coords.longitude}
-            onSetLocation={(lat, lon) => setManual({ latitude: lat, longitude: lon })}
+            onRequestGeo={requestGeo}
+            isRequestingGeo={geoStatus === "prompting"}
             hasRealFix={!usingFallback}
           />
         </div>
@@ -867,7 +868,8 @@ function SettingsSheet({
   setFov,
   latitude,
   longitude,
-  onSetLocation,
+  onRequestGeo,
+  isRequestingGeo,
   hasRealFix,
 }: {
   showNames: boolean;
@@ -880,7 +882,13 @@ function SettingsSheet({
   setFov: (v: number) => void;
   latitude: number;
   longitude: number;
-  onSetLocation: (lat: number, lon: number) => void;
+  /** Fire `navigator.geolocation.getCurrentPosition` and persist
+   * the result as the user's location. Wired to the crosshair
+   * button inside the picker map. */
+  onRequestGeo: () => void;
+  /** True while the GPS prompt is in flight, so the crosshair
+   * swaps for a spinner. */
+  isRequestingGeo: boolean;
   /** True when the lat/lon is a real geolocation fix (as opposed to
    * the North America fallback centroid). Controls whether the
    * picker map draws a "you are here" dot — a pin on a fallback
@@ -958,7 +966,8 @@ function SettingsSheet({
             <LocationPickerMap
               center={{ lat: latitude, lon: longitude }}
               showMarker={hasRealFix}
-              onCommit={({ lat, lon }) => onSetLocation(lat, lon)}
+              onRequestGeo={onRequestGeo}
+              isRequestingGeo={isRequestingGeo}
               theme="dark"
             />
           </section>

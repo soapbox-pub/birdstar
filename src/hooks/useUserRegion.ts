@@ -159,14 +159,6 @@ export interface UseUserRegion {
   usingFallback: boolean;
   /** Trigger the geolocation prompt. Safe to call multiple times. */
   request: () => void;
-  /** Commit a manually-chosen lat/lon (e.g. from a pin-drop map in
-   * settings). Resolves the coordinates to a continent/country/
-   * subdivision place set the same way an auto-resolved GPS fix
-   * would, persists the precise coord to the shared store, and
-   * updates the resolved place set here. Returns true if the
-   * coordinates resolved to a known place; false otherwise (e.g.
-   * a point in the middle of the ocean without a containing box). */
-  setManualCoords: (latitude: number, longitude: number) => boolean;
   /** Forget any stored decision so the opt-in affordance returns. */
   reset: () => void;
 }
@@ -269,47 +261,6 @@ export function useUserRegion(): UseUserRegion {
     }
   }, []);
 
-  // Manual pin-drop from the settings map. Resolves the lat/lon to a
-  // place set the same way an auto-resolved GPS fix would, persists
-  // the precise coord to the shared store, and stores the resolved
-  // place set here. Downstream features (observation map, species
-  // bands, geohash publishing) pick up the change immediately — they
-  // read `coarse` which is derived from the shared store each render.
-  //
-  // Returns `false` when `resolveUserPlaces` can't locate the input
-  // (e.g. open-ocean coordinate outside every known box). Callers
-  // can show a tiny "out of range" hint — but the map's own
-  // world-wrap + bounded zoom should already keep users out of
-  // obviously-nonsense territory. In practice NA/EU/AS/etc. land
-  // resolves fine.
-  const setManualCoords = useCallback(
-    (latitude: number, longitude: number): boolean => {
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        return false;
-      }
-      if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) {
-        return false;
-      }
-      const resolved = resolveUserPlaces(latitude, longitude);
-      if (!resolved) return false;
-      setSharedLocation({
-        latitude,
-        longitude,
-        source: 'manual',
-        updatedAt: Date.now(),
-      });
-      commit({
-        status: 'ready',
-        continent: resolved.continent,
-        country: resolved.country,
-        subdivision: resolved.subdivision,
-        resolvedAt: Date.now(),
-      });
-      return true;
-    },
-    [commit, setSharedLocation],
-  );
-
   // Auto-prompt on mount when there's no cached decision. We key the
   // effect on `state.status === 'unknown'` so a subsequent `reset()`
   // (status → 'unknown') will re-prompt too.
@@ -362,7 +313,7 @@ export function useUserRegion(): UseUserRegion {
           state.subdivision !== resolved.subdivision)
       ) {
         // `resolvedAt` is stamped by `commit` for the primary write
-        // paths (request / setManualCoords / auto-prompt). We omit
+        // paths (request / auto-prompt). We omit
         // it here because `Date.now()` is impure and React rejects
         // impure calls during render. Downstream code doesn't read
         // `resolvedAt`, so its absence on a cross-mode sync is
@@ -536,7 +487,6 @@ export function useUserRegion(): UseUserRegion {
     hasDecided,
     usingFallback,
     request,
-    setManualCoords,
     reset,
   };
 }

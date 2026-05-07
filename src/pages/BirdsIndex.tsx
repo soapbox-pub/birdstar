@@ -9,6 +9,7 @@ import {
 import { SpeciesCell } from '@/components/SpeciesCell';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationPickerMap } from '@/components/LocationPickerMap';
+import { useSharedLocation } from '@/hooks/useSharedLocation';
 import { LocationHelpDialog } from '@/components/LocationHelpDialog';
 import { CopyrightDialog } from '@/components/CopyrightDialog';
 import { LocationDisabledIndicator } from '@/components/LocationDisabledIndicator';
@@ -343,7 +344,6 @@ const IndexInner = () => {
     status: regionStatus,
     hasDecided: regionHasDecided,
     request: requestRegion,
-    setManualCoords: setManualRegionCoords,
   } = useUserRegion();
 
   const { consider: considerPublish } = useAutoPublishDetection({
@@ -900,8 +900,8 @@ const IndexInner = () => {
             publishLocation={publishLocation}
             setPublishLocation={setPublishLocation}
             hasCoarse={!!coarse}
-            coarse={coarse}
-            onSetLocation={(lat, lon) => setManualRegionCoords(lat, lon)}
+            onRequestGeo={requestRegion}
+            isRequestingGeo={regionStatus === 'resolving'}
           />
         </div>
       </div>
@@ -1314,8 +1314,8 @@ function SettingsSheet({
   publishLocation,
   setPublishLocation,
   hasCoarse,
-  coarse,
-  onSetLocation,
+  onRequestGeo,
+  isRequestingGeo,
 }: {
   publishLocation: boolean;
   setPublishLocation: (v: boolean) => void;
@@ -1324,18 +1324,25 @@ function SettingsSheet({
    * granted geolocation understand why the `g` tag may be absent
    * on their detections. */
   hasCoarse: boolean;
-  /** Coarse (1°-rounded) lat/lon to center the picker map on, or
-   * null when geolocation hasn't resolved. When null the map falls
-   * back to a neutral continental centroid. */
-  coarse: { lat: number; lon: number } | null;
-  /** Commit the crosshair-centered lat/lon as the user's manual
-   * location. */
-  onSetLocation: (lat: number, lon: number) => void;
+  /** Fire `navigator.geolocation.getCurrentPosition` and persist
+   * the result as the user's location. Wired to the crosshair
+   * button inside the picker map. */
+  onRequestGeo: () => void;
+  /** True while the GPS prompt is in flight, so the crosshair
+   * swaps for a spinner. */
+  isRequestingGeo: boolean;
 }) {
-  // Fallback center when we don't have a real fix — matches the NA
-  // centroid used elsewhere in the app so the initial view is a
-  // recognizable chunk of continent rather than a random ocean.
-  const mapCenter = coarse ?? { lat: 40, lon: -100 };
+  // Read the precise shared location directly for the map center.
+  // We deliberately don't use `coarse` here — the map is a purely
+  // client-side display (no network calls driven off its center),
+  // so there's no privacy benefit to degrading it to a 1° grid,
+  // and "you are here" is much more useful at actual-street scale.
+  // Fallback to the NA centroid when we have nothing to show so
+  // the initial view is a recognizable chunk of continent.
+  const { location: sharedLocation } = useSharedLocation();
+  const mapCenter = sharedLocation
+    ? { lat: sharedLocation.latitude, lon: sharedLocation.longitude }
+    : { lat: 40, lon: -100 };
 
   return (
     <Sheet>
@@ -1364,7 +1371,8 @@ function SettingsSheet({
             <LocationPickerMap
               center={mapCenter}
               showMarker={hasCoarse}
-              onCommit={({ lat, lon }) => onSetLocation(lat, lon)}
+              onRequestGeo={onRequestGeo}
+              isRequestingGeo={isRequestingGeo}
             />
           </section>
 

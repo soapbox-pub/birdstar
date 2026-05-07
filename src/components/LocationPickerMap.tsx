@@ -1,29 +1,23 @@
-// Small location-picker map for the Birds/Stars settings sheets.
+// Small location map + GPS re-request button for the Birds/Stars
+// settings sheets.
 //
-// Shows a CARTO basemap centered on the user's current location (or
-// a fallback) with a "you are here" marker and a fixed crosshair at
-// the map center. Dragging the map pans the crosshair to a new spot;
-// the bottom-right crosshair button commits the current center as
-// the user's manual coordinates via `onCommit`.
+// Shows a CARTO basemap centered on the user's current location with
+// a "you are here" marker. The bottom-right crosshair button re-
+// triggers `navigator.geolocation` so users whose device position
+// drifted (e.g. they flew somewhere) can refresh without leaving the
+// sheet.
 //
 // Deliberately narrower in scope than `ObservationMap`:
 //   - No iNat grid layer, no taxon lookup.
 //   - No "engagement" dance for scrollWheelZoom — this component
-//     lives in a Sheet with its own scroll container, and the
-//     Leaflet map usually fills the whole section width, so
-//     wheel-zoom is fine on by default.
+//     lives in a Sheet with its own scroll container.
 //   - No attribution block: the settings sheet already links to a
 //     `CopyrightDialog` at the bottom, which is where the CARTO /
 //     OSM attribution belongs.
-//
-// The crosshair overlay is a pure CSS element — not a Leaflet marker
-// — positioned absolutely at the center. That way it stays pinned
-// as the user drags the map underneath it, which is the whole point
-// of a drop-pin UI. A Leaflet marker would move *with* the map.
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useEffect, useRef, useState } from 'react';
-import { Crosshair } from 'lucide-react';
+import { Crosshair, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -40,9 +34,14 @@ interface LocationPickerMapProps {
    * is a fallback centroid rather than a real fix — a pin sitting in
    * "middle of your continent" would misrepresent where the user is. */
   showMarker: boolean;
-  /** Called with the lat/lon at the current map center when the user
-   * taps the crosshair button. */
-  onCommit: (coords: LatLon) => void;
+  /** Fire `navigator.geolocation.getCurrentPosition` and persist the
+   * result as the user's location. Called when the user taps the
+   * bottom-right crosshair button. */
+  onRequestGeo: () => void;
+  /** True while a geolocation request is in flight. Swaps the
+   * crosshair icon for a spinner and disables the button so
+   * double-taps don't fire a second prompt. */
+  isRequestingGeo?: boolean;
   /** Visual theme. Dark applies CSS filters to the basemap tiles
    * matching the parent sheet's palette (Stars) while light leaves
    * them untouched (Birds). */
@@ -50,14 +49,20 @@ interface LocationPickerMapProps {
   className?: string;
 }
 
-const DEFAULT_ZOOM = 6;
+// Zoom levels matching ObservationMap's semantics: 8 ≈ metro area
+// (close enough for "here I am" to feel personal), 5 ≈ continent
+// (used as a looser default when we don't have a real fix yet and
+// the marker will be hidden).
+const LOCATED_ZOOM = 8;
+const FALLBACK_ZOOM = 5;
 const MIN_ZOOM = 2;
 const MAX_ZOOM = 15;
 
 export function LocationPickerMap({
   center,
   showMarker,
-  onCommit,
+  onRequestGeo,
+  isRequestingGeo = false,
   theme = 'light',
   className,
 }: LocationPickerMapProps) {
@@ -65,15 +70,6 @@ export function LocationPickerMap({
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
   const [mapReady, setMapReady] = useState(false);
-
-  // Stash the latest `onCommit` on a ref so the button handler reads
-  // the current one without needing to rebuild the handler (and without
-  // listing `onCommit` as a dep on the init effect, which would
-  // rebuild the whole map on every parent render).
-  const onCommitRef = useRef(onCommit);
-  useEffect(() => {
-    onCommitRef.current = onCommit;
-  }, [onCommit]);
 
   // Init the map once the container has a measurable size (same
   // pattern as ObservationMap — Radix's Sheet mounts with an
@@ -93,7 +89,7 @@ export function LocationPickerMap({
 
       map = L.map(el, {
         center: [center.lat, center.lon],
-        zoom: DEFAULT_ZOOM,
+        zoom: showMarker ? LOCATED_ZOOM : FALLBACK_ZOOM,
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
         zoomControl: false,
@@ -136,8 +132,8 @@ export function LocationPickerMap({
   }, []);
 
   // Re-center when `center` changes (e.g. geolocation just resolved
-  // after the sheet opened). Skips the animation so the pin doesn't
-  // slide away under the user if they're already dragging.
+  // after the sheet opened). Skips the animation so the map doesn't
+  // slide away under the user if they're interacting.
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -179,17 +175,6 @@ export function LocationPickerMap({
     markerRef.current = marker;
   }, [center, showMarker, mapReady]);
 
-  const handleCommit = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    const c = map.getCenter();
-    // Normalize longitude into [-180, 180] — Leaflet's worldCopyJump
-    // lets users pan across copies, so getCenter().lng can come back
-    // as e.g. 540 (= -180). Callers downstream expect canonical coords.
-    const lon = ((c.lng + 540) % 360) - 180;
-    onCommitRef.current({ lat: c.lat, lon });
-  };
-
   return (
     <div
       className={cn(
@@ -208,35 +193,31 @@ export function LocationPickerMap({
     >
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* Center crosshair. Pointer-events disabled so the user's drag
-          hits the Leaflet map underneath, not this overlay. */}
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <Crosshair
-          className={cn(
-            'h-5 w-5 drop-shadow',
-            theme === 'dark' ? 'text-white/90' : 'text-stone-900/80',
-          )}
-          strokeWidth={2.25}
-          aria-hidden
-        />
-      </div>
-
-      {/* Commit button. Bottom-right, same square size as a Leaflet
-          zoom control so it reads as part of the map chrome. */}
+      {/* Re-request GPS button. Bottom-right, same square size as a
+          Leaflet zoom control so it reads as part of the map chrome.
+          z-[1000] so it sits above every Leaflet pane (the highest
+          built-in is the popup pane at z-index 700) and the Leaflet
+          control container (z-index 800); without this the button
+          renders *behind* the tiles and appears invisible. */}
       <Button
         type="button"
         size="icon"
         variant="secondary"
-        onClick={handleCommit}
-        aria-label="Set location to map center"
+        onClick={onRequestGeo}
+        disabled={isRequestingGeo}
+        aria-label="Use my current location"
         className={cn(
-          'absolute bottom-2 right-2 h-8 w-8 rounded-md shadow',
+          'absolute bottom-2 right-2 z-[1000] h-8 w-8 rounded-md shadow',
           theme === 'dark'
             ? 'bg-slate-900/90 border border-white/15 text-white hover:bg-slate-800'
             : 'bg-white/95 border border-stone-300 text-stone-900 hover:bg-white',
         )}
       >
-        <Crosshair className="h-4 w-4" />
+        {isRequestingGeo ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Crosshair className="h-4 w-4" />
+        )}
       </Button>
     </div>
   );
