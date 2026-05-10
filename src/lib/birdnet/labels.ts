@@ -62,6 +62,26 @@ function isBirdLabel(scientificName: string): boolean {
   return true;
 }
 
+/**
+ * Parse a BirdNET labels.txt file (raw text) into BirdLabel entries.
+ * Exposed for build-time tooling (scripts/generate-wikidata-map.ts) that
+ * needs to consume labels.txt from the filesystem rather than via fetch.
+ */
+export function parseBirdLabels(text: string): BirdLabel[] {
+  return text
+    .trim()
+    .split(/\r?\n/)
+    .map((line, index) => {
+      const [scientificName, commonName] = line.split('_');
+      return {
+        index,
+        scientificName: scientificName ?? line,
+        commonName: commonName ?? line,
+        isBird: isBirdLabel(scientificName ?? ''),
+      };
+    });
+}
+
 let labelsPromise: Promise<BirdLabel[]> | null = null;
 
 export async function loadBirdLabels(): Promise<BirdLabel[]> {
@@ -71,20 +91,7 @@ export async function loadBirdLabels(): Promise<BirdLabel[]> {
         if (!r.ok) throw new Error(`Failed to load labels: ${r.status}`);
         return r.text();
       })
-      .then((text) =>
-        text
-          .trim()
-          .split(/\r?\n/)
-          .map((line, index) => {
-            const [scientificName, commonName] = line.split('_');
-            return {
-              index,
-              scientificName: scientificName ?? line,
-              commonName: commonName ?? line,
-              isBird: isBirdLabel(scientificName ?? ''),
-            };
-          }),
-      );
+      .then((text) => parseBirdLabels(text));
   }
   return labelsPromise;
 }
