@@ -707,12 +707,24 @@ const IndexInner = () => {
 
   const publishGlow = useBirdGlowPublisher();
 
-  const handleChunk = useCallback(
-    async (samples: Float32Array) => {
+  // Process one captured 3-second window through the model and
+  // funnel results into the dex-glow publisher and the detection
+  // accumulator. Hoisted out of the live `handleChunk` callback
+  // so the drain effect (replaying chunks captured during model
+  // load) can use the exact same path.
+  //
+  // `capturedAt` is the wall-clock timestamp of when the chunk
+  // was recorded -- typically Date.now() for live samples, but
+  // for replayed buffered chunks it's the moment they were
+  // pulled off the mic. Passing it through means the detection
+  // accumulator's time-decay treats early replayed hits as a few
+  // seconds old (which is the truth) rather than artificially
+  // "fresh", so the listening window math stays honest.
+  const processChunk = useCallback(
+    async (samples: Float32Array, capturedAt: number) => {
       if (!labels) return;
       const preds = await predict(samples, 5);
       if (preds.length === 0) return;
-      const now = Date.now();
 
       // Broadcast raw scores to the dex-glow store BEFORE the
       // accumulator filter. We want every bird the user hears
@@ -738,13 +750,89 @@ const IndexInner = () => {
         const label = labels[pred.index];
         if (!label || !label.isBird) continue;
         if (pred.score < MIN_RAW_CONFIDENCE) continue;
-        ingest(pred, label, now);
+        ingest(pred, label, capturedAt);
       }
     },
     [labels, predict, ingest, publishGlow],
   );
 
+  // FIFO of audio windows captured before the BirdNET model
+  // finished loading. The mic starts immediately on Birds mount
+  // (in parallel with the model download / shader warm-up), so
+  // any bird the user is *already* hearing when they open the
+  // app gets captured into memory and processed as soon as the
+  // model is ready. Without this queue, the mic only came online
+  // after the ~3s load and any sound that triggered the user to
+  // open the app would be missed.
+  //
+  // Each entry is the chronological-order Float32Array (~576 KB)
+  // emitted by `useAudioRecorder` plus the wall-clock time the
+  // window was completed. A status ref lets the live `handleChunk`
+  // callback decide whether to forward or buffer without being
+  // re-created on every status change (which would force the
+  // recorder to re-bind its onChunk closure).
+  const pendingChunksRef = useRef<{ samples: Float32Array; capturedAt: number }[]>([]);
+  const statusStateRef = useRef(status.state);
+  useEffect(() => {
+    statusStateRef.current = status.state;
+  }, [status.state]);
+
+  // Cap the queue so a stuck or extremely slow model load can't
+  // grow it without bound. At 1 chunk every `predictEveryMs` (2s)
+  // a 16-entry cap covers ~32 seconds of audio — far more than a
+  // realistic model load (~3-5s) — and tops out at <10 MB of
+  // Float32Array memory. If we ever exceed it we drop the oldest
+  // entries since the newest are most likely to still match what
+  // the user can hear.
+  const PENDING_CHUNK_CAP = 16;
+
+  const handleChunk = useCallback(
+    async (samples: Float32Array) => {
+      const now = Date.now();
+      if (statusStateRef.current !== 'ready') {
+        // Take a fresh copy: the recorder reuses its ring buffer
+        // across chunks, so the array we get is only valid for
+        // this tick. (In current code `useAudioRecorder` already
+        // allocates a new Float32Array per emit, but copying here
+        // keeps the queue robust to any future micro-optimisation
+        // that turns the emit into a view.)
+        const copy = new Float32Array(samples);
+        const queue = pendingChunksRef.current;
+        queue.push({ samples: copy, capturedAt: now });
+        while (queue.length > PENDING_CHUNK_CAP) queue.shift();
+        return;
+      }
+      await processChunk(samples, now);
+    },
+    [processChunk],
+  );
+
   const recorder = useAudioRecorder({ onChunk: handleChunk, predictEveryMs: 2000 });
+
+  // Drain the buffered chunks once the model becomes ready. Done
+  // sequentially -- the BirdNET worker can only handle one
+  // predict at a time, and the accumulator wants observations in
+  // chronological order so the trailing-window confidence builds
+  // up the way it would have during live capture.
+  useEffect(() => {
+    if (status.state !== 'ready') return;
+    const queue = pendingChunksRef.current;
+    if (queue.length === 0) return;
+
+    let cancelled = false;
+    // Snapshot + clear synchronously so a second status flip
+    // (shouldn't happen, but) can't double-drain the same items.
+    const toDrain = queue.splice(0, queue.length);
+    void (async () => {
+      for (const entry of toDrain) {
+        if (cancelled) return;
+        await processChunk(entry.samples, entry.capturedAt);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [status.state, processChunk]);
 
   const [userPaused, setUserPaused] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -759,8 +847,14 @@ const IndexInner = () => {
 
   const mode: Mode = useMemo(() => {
     if (status.state === 'error' || recorder.error) return 'error';
-    if (status.state === 'loading') return 'loading';
+    // Recorder takes precedence over model-loading: we now start
+    // the mic in parallel with the model download, so even though
+    // BirdNET isn't ready yet we ARE listening and buffering. The
+    // PlayerBar shows a small "warming up" indicator (driven by
+    // `loadingPct`) when status is still 'loading'; the mode
+    // itself stays in 'listening' so the visualizer keeps drawing.
     if (recorder.isRecording || isStarting) return 'listening';
+    if (status.state === 'loading') return 'loading';
     if (status.state === 'ready' && userPaused) return 'paused';
     if (status.state === 'ready') return 'ready-idle';
     return 'idle';
@@ -770,10 +864,24 @@ const IndexInner = () => {
     load();
   }, [load]);
 
+  // Start the mic immediately on Birds mount -- NOT gated on the
+  // BirdNET model being ready. The two operations run in parallel:
+  // the worker downloads + warms up the model while the recorder
+  // already streams audio into the rolling ring buffer. Any 3-second
+  // window that completes before the model is ready gets stashed in
+  // `pendingChunksRef` (see handleChunk) and processed by the drain
+  // effect the moment status flips to 'ready'.
+  //
+  // Why this matters: the user's most common path into Birds mode
+  // is hearing a bird, opening the app, and wanting it identified.
+  // Previously they paid ~3 seconds of dead time before the mic
+  // even started -- often longer than the bird kept singing. Now
+  // capture begins essentially instantly (just the getUserMedia
+  // permission resolution).
   const hasAutoStartedRef = useRef(false);
   useEffect(() => {
     if (
-      status.state === 'ready' &&
+      status.state !== 'error' &&
       !recorder.isRecording &&
       !recorder.error &&
       !userPaused &&
@@ -793,7 +901,12 @@ const IndexInner = () => {
 
   const handleResume = useCallback(() => {
     setUserPaused(false);
-    if (status.state === 'ready' && !recorder.isRecording) {
+    // Allow resuming the mic even while the model is still
+    // loading -- chunks captured pre-ready will be queued and
+    // drained automatically by the effect above. Only block if
+    // the model itself errored out (then the Try Again button
+    // routes through handleRetry instead).
+    if (status.state !== 'error' && !recorder.isRecording) {
       setIsStarting(true);
       void recorder.start();
     }
@@ -804,7 +917,7 @@ const IndexInner = () => {
     setUserPaused(false);
     if (status.state === 'error') {
       load();
-    } else if (status.state === 'ready' && !recorder.isRecording) {
+    } else if (!recorder.isRecording) {
       setIsStarting(true);
       void recorder.start();
     }
@@ -976,6 +1089,7 @@ const IndexInner = () => {
       <PlayerBar
         mode={mode}
         loadingPct={loadingPct}
+        modelLoading={status.state === 'loading'}
         errorMessage={playerErrorMessage}
         errorKind={playerErrorKind}
         latestDetection={latestDetection}

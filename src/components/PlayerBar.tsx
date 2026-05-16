@@ -67,6 +67,17 @@ export type PlayerMode =
 interface PlayerBarProps {
   mode: PlayerMode;
   loadingPct: number;
+  /**
+   * True while the BirdNET model is still downloading / warming
+   * up. When the mic is already capturing (mode === 'listening')
+   * this drives a small "warming up X%" subtitle so the user
+   * understands the squiggle is live but BirdNET hasn't started
+   * scoring yet. Independent of `mode` because we want to keep
+   * showing the visualizer (and the mic button) during load —
+   * audio is being buffered and will be replayed through the
+   * model the instant it's ready.
+   */
+  modelLoading: boolean;
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
   /**
@@ -135,6 +146,7 @@ interface PlayerBarProps {
 function PlayerBarImpl({
   mode,
   loadingPct,
+  modelLoading,
   errorMessage,
   errorKind,
   latestDetection,
@@ -263,6 +275,7 @@ function PlayerBarImpl({
               <CenterRegion
                 mode={mode}
                 loadingPct={loadingPct}
+                modelLoading={modelLoading}
                 errorMessage={errorMessage}
                 errorKind={errorKind}
                 latestHit={latestHit}
@@ -646,6 +659,7 @@ function ConfidencePie({ progress }: { progress: number }) {
 function CenterRegion({
   mode,
   loadingPct,
+  modelLoading,
   errorMessage,
   errorKind,
   latestHit,
@@ -657,6 +671,15 @@ function CenterRegion({
 }: {
   mode: PlayerMode;
   loadingPct: number;
+  /**
+   * True while the BirdNET model is still loading. Used by the
+   * 'listening' branch to swap the subtitle from "Point the mic
+   * toward the trees" to "Warming up BirdNET model… X%" so the
+   * user understands the squiggle is live but identification is
+   * still spinning up. Audio captured during this window is being
+   * buffered and will be processed the instant the model is ready.
+   */
+  modelLoading: boolean;
   errorMessage: string | null;
   errorKind: RecorderErrorKind | null;
   /**
@@ -761,6 +784,20 @@ function CenterRegion({
               ? `Last heard ${formatClock(latestHit.timestamp)}`
               : `Listening… ${hitPct}% to confirmation`,
             clickable: true,
+            resumable: false,
+          };
+        }
+        // Model still loading? Tell the user. The mic IS already
+        // capturing into a buffer — chunks captured now will be
+        // fed to BirdNET the instant it's ready — but we don't
+        // want them to think the squiggle means we've started
+        // identifying yet. Once the model is ready this branch
+        // falls through to the normal "Point the mic" copy.
+        if (modelLoading) {
+          return {
+            top: 'Listening…',
+            bottom: `Warming up BirdNET model… ${loadingPct}%`,
+            clickable: false,
             resumable: false,
           };
         }
@@ -1000,11 +1037,13 @@ function PrimaryButton({
   if (isError && errorKind === 'permission-denied') {
     return <div className="h-11 w-11 shrink-0 sm:h-12 sm:w-12" aria-hidden />;
   }
-  // While the BirdNET model is still downloading, there's nothing useful
-  // the user can do with the mic button — hide it (render a same-sized
-  // spacer so the player bar layout doesn't shift when the button appears).
-  // The CenterRegion already shows the "Loading BirdNET model… X%"
-  // progress affordance, which is the signal the user actually needs.
+  // The `loading` mode is now rarely reached: we start the mic in
+  // parallel with the BirdNET model load, so the player goes straight
+  // from 'idle' → 'listening' on Birds mount. This branch still fires
+  // if the recorder fails to start AND the model is still loading
+  // (e.g. permission revoked mid-load) — in that case there's nothing
+  // useful the button can do, so render a same-sized spacer to keep
+  // the bar's layout stable.
   if (isLoading) {
     return <div className="h-11 w-11 shrink-0 sm:h-12 sm:w-12" aria-hidden />;
   }
