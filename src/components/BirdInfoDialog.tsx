@@ -208,7 +208,13 @@ export function BirdInfoDialog({
                   // of sky/headroom that makes the composition look
                   // intentional. 33% leaves that headroom while still
                   // keeping the head safely in view.
-                  className="h-full w-full object-cover object-[50%_25%]"
+                  className={cn(
+                    'h-full w-full object-cover object-[50%_25%]',
+                    // Black-and-white treatment for unheard birds, matching
+                    // the grayscale birdex cells. Confirmed (heard)
+                    // detections render in full color.
+                    !confirmed && 'filter-[grayscale(1)]',
+                  )}
                   loading="lazy"
                 />
               ) : null}
@@ -982,9 +988,8 @@ function useSongPlayer(
         // the button in emerald so it matches the cell's green
         // confirmation badge — the cell opens this dialog and
         // the colors should feel continuous. Everything else
-        // (pending, unheard birdex entries, rare) keeps the
-        // original amber palette, which reads as "tentative /
-        // notable" rather than "confirmed."
+        // (pending, unheard birdex entries, rare) renders in gray
+        // to match the black-and-white treatment of unheard birds.
         confirmed
           ? cn(
               'bg-emerald-500 text-white ring-emerald-400/40',
@@ -993,10 +998,10 @@ function useSongPlayer(
               'dark:bg-emerald-400 dark:text-emerald-950 dark:hover:bg-emerald-300',
             )
           : cn(
-              'bg-amber-500 text-white ring-amber-400/40',
-              'hover:bg-amber-600',
-              'focus-visible:ring-amber-500/60',
-              'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+              'bg-stone-500 text-white ring-stone-400/40',
+              'hover:bg-stone-600',
+              'focus-visible:ring-stone-500/60',
+              'dark:bg-stone-400 dark:text-stone-950 dark:hover:bg-stone-300',
             ),
       )}
     >
