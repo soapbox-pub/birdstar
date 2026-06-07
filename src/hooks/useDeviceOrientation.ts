@@ -211,13 +211,48 @@ export function useDeviceOrientation(options?: {
       const suy = up1y * cs + righty * ss;
       const suz = up1z * cs + rightz * ss;
 
-      // roll = angle between screen-up vector and world-up (z axis), projected.
-      const roll =
-        Math.atan2(
-          sux * by - suy * bx, // horizontal component of screen-up
-          suz, // vertical component (world up alignment)
-        ) *
-        (180 / Math.PI);
+      // --- Roll ---------------------------------------------------------------
+      // Roll is the signed angle by which the device's screen-up vector is
+      // rotated, about the view (back) axis, away from the "reference up" the
+      // renderer uses — world-up (the celestial z axis) projected onto the
+      // plane perpendicular to the view direction. SkyMap rebuilds that exact
+      // reference frame and then applies our `roll` as `rRad = -roll`, so the
+      // value we emit here MUST be the negative of the screen-up's angle in
+      // that frame for the rendered horizon to track the real one.
+      //
+      // Deriving roll from this reference frame (rather than the older
+      // `atan2(sux*by - suy*bx, suz)` formula) fixes two things:
+      //   1. The previous formula produced the wrong SIGN whenever the screen
+      //      was physically tilted, so the rendered horizon rotated the wrong
+      //      way during a pan instead of staying level ("chicken-head" stable).
+      //   2. It degrades gracefully through the beta≈90° singularity (phone
+      //      held upright), where Euler-derived roll is otherwise unstable.
+      const viewX = bx, viewY = by, viewZ = bz;
+      const dotVU = viewZ; // world-up · view = (0,0,1)·view = viewZ
+      let refUpX = -viewX * dotVU;
+      let refUpY = -viewY * dotVU;
+      let refUpZ = 1 - viewZ * dotVU;
+      let refLen = Math.hypot(refUpX, refUpY, refUpZ);
+      if (refLen < 0.01) {
+        // Looking straight up/down: fall back to north (0,1,0) as reference up,
+        // matching SkyMap's identical fallback.
+        const dotVN = viewY;
+        refUpX = -viewX * dotVN;
+        refUpY = 1 - viewY * dotVN;
+        refUpZ = -viewZ * dotVN;
+        refLen = Math.hypot(refUpX, refUpY, refUpZ) || 1;
+      }
+      refUpX /= refLen; refUpY /= refLen; refUpZ /= refLen;
+      // refRight = view × refUp
+      const refRightX = viewY * refUpZ - viewZ * refUpY;
+      const refRightY = viewZ * refUpX - viewX * refUpZ;
+      const refRightZ = viewX * refUpY - viewY * refUpX;
+      // Components of screen-up in the (refUp, refRight) basis.
+      const compUp = sux * refUpX + suy * refUpY + suz * refUpZ;
+      const compRight = sux * refRightX + suy * refRightY + suz * refRightZ;
+      // Screen-up's angle from refUp toward refRight is atan2(compRight, compUp).
+      // SkyMap applies -roll, so negate to get the value that cancels the tilt.
+      const roll = -Math.atan2(compRight, compUp) * (180 / Math.PI);
 
       // --- Smoothing --------------------------------------------------------
       const sm = smoothedRef.current;
