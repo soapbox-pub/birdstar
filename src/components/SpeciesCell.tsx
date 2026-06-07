@@ -285,15 +285,16 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
                   'peer-focus-visible:ring-stone-400/60',
                   'dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:group-hover:border-indigo-800/70',
                   'dark:peer-focus-visible:ring-amber-400/40',
-                  // Grayed-out treatment for unheard birds: fade the
-                  // whole clip subtree (image + gradient + label). Kept
-                  // on the clip wrapper rather than the individual
-                  // layers so the effect is uniform and survives the
-                  // image-loading handoff from gradient to photo.
-                  // Unconfirmed cells share this exact treatment — the
-                  // grid reads as a simple heard/not-heard checklist,
-                  // with no visual distinction for "possibly heard".
-                  'opacity-60 filter-[grayscale(0.3)] group-hover:opacity-80',
+                  // Grayed-out treatment for unheard birds: fully
+                  // desaturate (black-and-white) *and* fade the whole
+                  // clip subtree (image + gradient + label). Kept on the
+                  // clip wrapper rather than the individual layers so the
+                  // effect is uniform and survives the image-loading
+                  // handoff from gradient to photo. Unconfirmed cells
+                  // share this exact treatment — the grid reads as a
+                  // simple heard/not-heard checklist, with no visual
+                  // distinction for "possibly heard".
+                  'opacity-60 filter-[grayscale(1)] group-hover:opacity-80',
                 ),
           )}
         >
@@ -314,7 +315,6 @@ function SpeciesCellImpl({ entry, onSelect }: SpeciesCellProps) {
               className={cn(
                 'absolute inset-0 h-full w-full object-cover object-[50%_25%]',
                 'transition-transform duration-500 group-hover:scale-[1.04]',
-                !heard && 'saturate-50',
               )}
             />
           ) : (
