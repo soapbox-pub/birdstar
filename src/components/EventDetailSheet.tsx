@@ -6,23 +6,16 @@
 // The event is resolved by the parent (BirdsIndex) from the URL via
 // `useBirdstarEventByAddr`; this component is purely presentational.
 import { useMemo } from 'react';
-import {
-  CalendarDays,
-  Clock,
-  ExternalLink,
-  Loader2,
-  MapPin,
-} from 'lucide-react';
+import { CalendarDays, Clock, Loader2, MapPin } from 'lucide-react';
 
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { LinkifiedEventText } from '@/components/EventDescription';
 import {
   formatEventWhen,
   sanitizeImageUrl,
   type BirdstarCalendarEvent,
 } from '@/components/communityEventUtils';
-import { BIRDSTAR_PUBKEY } from '@/hooks/useBirdstarEvents';
-import { nip19 } from 'nostr-tools';
 
 interface EventDetailSheetProps {
   /** The resolved event, or null when nothing is open. */
@@ -45,20 +38,6 @@ export function EventDetailSheet({
     () => sanitizeImageUrl(event?.image ?? null),
     [event?.image],
   );
-
-  const njumpUrl = useMemo(() => {
-    if (!event) return null;
-    try {
-      const naddr = nip19.naddrEncode({
-        kind: event.kind,
-        pubkey: BIRDSTAR_PUBKEY,
-        identifier: event.identifier,
-      });
-      return `https://njump.me/${naddr}`;
-    } catch {
-      return null;
-    }
-  }, [event]);
 
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
@@ -106,7 +85,7 @@ export function EventDetailSheet({
             </div>
 
             {/* Scrollable body. */}
-            <div className="flex-1 overflow-y-auto overscroll-contain">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
               <div className="space-y-5 p-5">
                 <div>
                   <h2 className="font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
@@ -136,31 +115,23 @@ export function EventDetailSheet({
                         className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-amber-300"
                         aria-hidden
                       />
-                      <span className="wrap-break-word">{event.location}</span>
+                      {/* Location can be an address or a link (e.g. a
+                          video-call URL per NIP-52), so linkify it. */}
+                      <LinkifiedEventText text={event.location} />
                     </div>
                   ) : null}
                 </div>
 
                 {event.description ? (
-                  <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-stone-700 dark:text-stone-200">
-                    {event.description}
-                  </p>
+                  <LinkifiedEventText
+                    text={event.description}
+                    className="text-sm leading-relaxed text-stone-700 dark:text-stone-200"
+                  />
                 ) : event.summary ? (
-                  <p className="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-stone-700 dark:text-stone-200">
-                    {event.summary}
-                  </p>
-                ) : null}
-
-                {njumpUrl ? (
-                  <a
-                    href={njumpUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-700 hover:text-emerald-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-amber-300 dark:hover:text-amber-200 dark:focus-visible:ring-amber-400/60"
-                  >
-                    <ExternalLink className="size-4" aria-hidden />
-                    View on njump
-                  </a>
+                  <LinkifiedEventText
+                    text={event.summary}
+                    className="text-sm leading-relaxed text-stone-700 dark:text-stone-200"
+                  />
                 ) : null}
               </div>
             </div>

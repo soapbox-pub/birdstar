@@ -21,7 +21,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Card } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   formatEventWhen,
   sanitizeImageUrl,
@@ -58,7 +57,7 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
           </SheetDescription>
         </SheetHeader>
 
-        <ScrollArea className="flex-1">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <div className="p-5">
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
@@ -82,7 +81,7 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
               </ul>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </SheetContent>
     </Sheet>
   );
