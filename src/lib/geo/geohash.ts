@@ -97,3 +97,80 @@ export function encodeGeohash(
 
   return hash;
 }
+
+// Adjacency / border tables for computing the geohash cell immediately
+// adjacent to a given cell in a cardinal direction. This is the
+// standard algorithm (after David Troy's geohash.js): a geohash grid
+// alternates orientation with each character, so the lookup table is
+// indexed by parity (even/odd length) within each direction.
+const NEIGHBOR = {
+  n: ['p0r21436x8zb9dcf5h7kjnmqesgutwvy', 'bc01fg45238967deuvhjyznpkmstqrwx'],
+  s: ['14365h7k9dcfesgujnmqp0r2twvyx8zb', '238967debc01fg45kmstqrwxuvhjyznp'],
+  e: ['bc01fg45238967deuvhjyznpkmstqrwx', 'p0r21436x8zb9dcf5h7kjnmqesgutwvy'],
+  w: ['238967debc01fg45kmstqrwxuvhjyznp', '14365h7k9dcfesgujnmqp0r2twvyx8zb'],
+} as const;
+
+const BORDER = {
+  n: ['prxz', 'bcfguvyz'],
+  s: ['028b', '0145hjnp'],
+  e: ['bcfguvyz', 'prxz'],
+  w: ['0145hjnp', '028b'],
+} as const;
+
+type Direction = keyof typeof NEIGHBOR;
+
+/**
+ * Return the geohash of the cell directly adjacent to `hash` in the
+ * given cardinal direction. The result is the same length as the
+ * input. Throws on an empty or malformed geohash.
+ */
+function adjacentGeohash(hash: string, direction: Direction): string {
+  const lower = hash.toLowerCase();
+  if (lower.length === 0) {
+    throw new Error('adjacentGeohash: empty geohash');
+  }
+
+  const lastChar = lower.charAt(lower.length - 1);
+  let base = lower.slice(0, -1);
+  // Parity: even-length prefixes flip the orientation of the table.
+  const type = lower.length % 2; // 0 = even, 1 = odd
+
+  // If the last char sits on the border for this direction, the base
+  // (everything but the last char) must itself be carried over to its
+  // own neighbor before we append the new last char.
+  if (BORDER[direction][type].indexOf(lastChar) !== -1 && base !== '') {
+    base = adjacentGeohash(base, direction);
+  }
+
+  const idx = NEIGHBOR[direction][type].indexOf(lastChar);
+  if (idx === -1) {
+    throw new Error(`adjacentGeohash: invalid geohash character: ${lastChar}`);
+  }
+  return base + GEOHASH_BASE32.charAt(idx);
+}
+
+/**
+ * Return the geohash cell containing `hash` plus its eight surrounding
+ * cells (N, NE, E, SE, S, SW, W, NW), deduplicated. Used to widen a
+ * "nearby" query so events that fall just across a grid-cell boundary
+ * from the user aren't missed — a single geohash prefix is a fixed
+ * grid square, so a user near an edge would otherwise see only half
+ * their true neighborhood.
+ *
+ * The center cell is always first in the returned array.
+ */
+export function geohashNeighbors(hash: string): string[] {
+  const n = adjacentGeohash(hash, 'n');
+  const s = adjacentGeohash(hash, 's');
+  const e = adjacentGeohash(hash, 'e');
+  const w = adjacentGeohash(hash, 'w');
+  const ne = adjacentGeohash(n, 'e');
+  const nw = adjacentGeohash(n, 'w');
+  const se = adjacentGeohash(s, 'e');
+  const sw = adjacentGeohash(s, 'w');
+
+  const all = [hash, n, ne, e, se, s, sw, w, nw];
+  // Dedup while preserving order (center first). Near the poles or the
+  // ±180° meridian some neighbors can coincide.
+  return Array.from(new Set(all));
+}

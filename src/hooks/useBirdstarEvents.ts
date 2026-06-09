@@ -12,6 +12,8 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
+import { encodeGeohash, geohashNeighbors } from '@/lib/geo/geohash';
+import type { CoarseLatLon } from '@/lib/geo/coarsen';
 
 /** Official Birdstar account that curates community birding events. */
 export const BIRDSTAR_PUBKEY =
@@ -31,6 +33,41 @@ export function isCalendarEventKind(kind: number): boolean {
 }
 
 const MAX_EVENTS = 100;
+
+/**
+ * Geohash precision used for the "Nearby" filter. The Birdstar curator
+ * tags every event with a ladder of `g` prefixes (lengths 2–7); a
+ * length-3 prefix is a ~150 km cell, which matches "events I could
+ * realistically travel to" without being so tight that a metro spills
+ * across the boundary. We also query the eight neighboring cells (see
+ * {@link geohashNeighbors}) so an event just over a grid edge from the
+ * user isn't dropped.
+ */
+const NEARBY_GEOHASH_PRECISION = 3;
+
+/** How the events list is scoped. */
+export type EventScope = 'nearby' | 'world';
+
+/**
+ * Build the set of length-3 geohash prefixes to match against the
+ * event `#g` tags for a "Nearby" query: the user's own cell plus its
+ * eight neighbors. Returns null when we can't derive a geohash (no
+ * coordinate), which the hook treats as "fall back to World".
+ */
+function nearbyGeohashes(coarse: CoarseLatLon | null): string[] | null {
+  if (!coarse) return null;
+  try {
+    const center = encodeGeohash(
+      coarse.lat,
+      coarse.lon,
+      NEARBY_GEOHASH_PRECISION,
+    );
+    return geohashNeighbors(center);
+  } catch {
+    // Coordinate out of range / unencodable — treat as no location.
+    return null;
+  }
+}
 
 export interface BirdstarCalendarEvent {
   /** Stable key for React lists — derived from the event id. */
@@ -129,22 +166,58 @@ export interface BirdstarEventsResult {
   /** Upcoming events, soonest-first. */
   upcoming: BirdstarCalendarEvent[];
   isLoading: boolean;
+  /**
+   * The scope actually in effect. This can differ from the requested
+   * scope: asking for `'nearby'` without a usable location silently
+   * falls back to `'world'` so the list is never empty just because we
+   * don't know where the user is.
+   */
+  effectiveScope: EventScope;
 }
 
-export function useBirdstarEvents(): BirdstarEventsResult {
+export interface UseBirdstarEventsOptions {
+  /** Requested scope. Defaults to `'world'`. */
+  scope?: EventScope;
+  /**
+   * Coarse (1°-rounded) user location, used to build the geohash
+   * filter for `'nearby'`. When absent, a `'nearby'` request falls
+   * back to `'world'`.
+   */
+  coarse?: CoarseLatLon | null;
+}
+
+export function useBirdstarEvents(
+  options: UseBirdstarEventsOptions = {},
+): BirdstarEventsResult {
   const { nostr } = useNostr();
+  const { scope = 'world', coarse = null } = options;
+
+  // Build the nearby geohash set (center + 8 neighbors). When this is
+  // null — no coordinate, or a requested scope of 'world' — we query
+  // the whole curated list. `effectiveScope` reflects what we actually
+  // did so callers can tailor empty-state copy.
+  const geohashes = scope === 'nearby' ? nearbyGeohashes(coarse) : null;
+  const effectiveScope: EventScope = geohashes ? 'nearby' : 'world';
+
+  // Stable, primitive cache key for the geohash set so the query only
+  // refetches when the cells actually change.
+  const geohashKey = geohashes ? geohashes.join(',') : null;
 
   const query = useQuery({
-    queryKey: ['birdstar-events'],
+    queryKey: ['birdstar-events', geohashKey],
     staleTime: 1000 * 60 * 5, // 5 minutes — events change rarely
     queryFn: async ({ signal }) => {
       // Combine both calendar-event kinds in one filter and split
-      // client-side, constrained to the curated Birdstar author.
+      // client-side, constrained to the curated Birdstar author. For a
+      // nearby query we additionally constrain on the `#g` geohash tag;
+      // relays index single-letter tags, so this filtering happens at
+      // the relay rather than client-side.
       const events = await nostr.query(
         [
           {
             kinds: [DATE_BASED_KIND, TIME_BASED_KIND],
             authors: [BIRDSTAR_PUBKEY],
+            ...(geohashes ? { '#g': geohashes } : {}),
             limit: MAX_EVENTS,
           },
         ],
@@ -194,8 +267,9 @@ export function useBirdstarEvents(): BirdstarEventsResult {
     return {
       upcoming,
       isLoading: query.isLoading,
+      effectiveScope,
     };
-  }, [query.data, query.isLoading, fetchedAt]);
+  }, [query.data, query.isLoading, fetchedAt, effectiveScope]);
 }
 
 export interface BirdstarEventByAddrResult {
