@@ -16,7 +16,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
-import { CalendarDays, Clock, Loader2, MapPin } from 'lucide-react';
+import { CalendarDays, Clock, Globe, Loader2, MapPin } from 'lucide-react';
 
 import {
   Sheet,
@@ -26,13 +26,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Card } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   formatEventWhen,
   sanitizeImageUrl,
@@ -89,21 +82,7 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
           </SheetDescription>
 
           <div className="mt-2">
-            <Select
-              value={scope}
-              onValueChange={(value) => setScope(value as EventScope)}
-            >
-              <SelectTrigger
-                className="h-9 w-[7.25rem] border-stone-200/70 bg-white/80 text-stone-700 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-stone-200"
-                aria-label="Filter events by location"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nearby">Nearby</SelectItem>
-                <SelectItem value="world">World</SelectItem>
-              </SelectContent>
-            </Select>
+            <ScopeToggle value={scope} onChange={setScope} />
           </div>
         </SheetHeader>
 
@@ -137,6 +116,85 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+interface ScopeToggleProps {
+  value: EventScope;
+  onChange: (value: EventScope) => void;
+}
+
+/**
+ * Two-position Nearby/World toggle, modeled on the top-nav Birds/Stars
+ * `ModeSelector` (sliding-knob pill). Unlike that one — which always
+ * sits over a dark background — this lives inside the events drawer, so
+ * it's themed to the drawer's light/dark surfaces and its emerald
+ * (light) / amber (dark) accent.
+ *
+ * Each half is its own button for keyboard + screen-reader affordance
+ * (each `aria-pressed`, each labeled), but selecting a half just sets
+ * that scope.
+ */
+function ScopeToggle({ value, onChange }: ScopeToggleProps) {
+  const isNearby = value === 'nearby';
+
+  return (
+    <div
+      role="group"
+      aria-label="Filter events by location"
+      className={cn(
+        'relative inline-flex h-9 w-[180px] items-center rounded-full border p-1',
+        'border-stone-200/80 bg-stone-100/80 text-stone-700',
+        'focus-within:ring-2 focus-within:ring-emerald-500/50',
+        'dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-stone-200',
+        'dark:focus-within:ring-amber-400/50',
+        'transition-colors',
+      )}
+    >
+      {/* Sliding knob tracks the active scope. */}
+      <span
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute top-1 h-7 w-[86px] rounded-full shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none',
+          'bg-emerald-500/90 dark:bg-amber-400/90',
+          isNearby ? 'translate-x-0' : 'translate-x-[86px]',
+        )}
+      />
+
+      <button
+        type="button"
+        onClick={() => onChange('nearby')}
+        aria-pressed={isNearby}
+        aria-label="Show nearby events"
+        className={cn(
+          'relative z-10 inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-medium',
+          'transition-colors focus-visible:outline-hidden',
+          isNearby
+            ? 'text-white dark:text-indigo-950'
+            : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100',
+        )}
+      >
+        <MapPin className="size-4" aria-hidden />
+        <span>Nearby</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onChange('world')}
+        aria-pressed={!isNearby}
+        aria-label="Show events worldwide"
+        className={cn(
+          'relative z-10 inline-flex h-7 flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-medium',
+          'transition-colors focus-visible:outline-hidden',
+          !isNearby
+            ? 'text-white dark:text-indigo-950'
+            : 'text-stone-500 hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-100',
+        )}
+      >
+        <Globe className="size-4" aria-hidden />
+        <span>World</span>
+      </button>
+    </div>
   );
 }
 
