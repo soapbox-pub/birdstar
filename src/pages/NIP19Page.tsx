@@ -5,6 +5,7 @@ import { nip19 } from "nostr-tools";
 import Index from "@/pages/Index";
 import NotFound from "@/pages/NotFound";
 import { CUSTOM_CONSTELLATION_KIND } from "@/lib/customConstellations";
+import { isCalendarEventKind } from "@/hooks/useBirdstarEvents";
 
 /**
  * Root-level NIP-19 identifier dispatcher. Routes like `/npub1…`,
@@ -33,9 +34,13 @@ export function NIP19Page() {
       case "nprofile":
         return true;
       case "naddr":
-        // We only know how to render custom constellations; other
-        // addressable kinds fall through to 404.
-        return decoded.data.kind === CUSTOM_CONSTELLATION_KIND;
+        // We know how to render custom constellations (Stars mode) and
+        // Birdstar calendar events (Birds mode); other addressable kinds
+        // fall through to 404.
+        return (
+          decoded.data.kind === CUSTOM_CONSTELLATION_KIND ||
+          isCalendarEventKind(decoded.data.kind)
+        );
       default:
         return false;
     }

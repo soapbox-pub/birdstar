@@ -1,6 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { nip19 } from 'nostr-tools';
 import { useSeoMeta } from '@unhead/react';
-import { MapPin, Settings2 } from 'lucide-react';
+import { CalendarDays, MapPin, Settings2 } from 'lucide-react';
 import { type Detection } from '@/components/BirdCard';
 import {
   BirdInfoDialog,
@@ -51,7 +53,12 @@ import { BirdGlowProvider } from '@/components/BirdGlowProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { BirdFeed } from '@/components/BirdFeed';
-import { CommunityEvents } from '@/components/CommunityEvents';
+import { EventsDrawer } from '@/components/EventsDrawer';
+import { EventDetailSheet } from '@/components/EventDetailSheet';
+import {
+  isCalendarEventKind,
+  useBirdstarEventByAddr,
+} from '@/hooks/useBirdstarEvents';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
 import { useDeleteBirdDetection } from '@/hooks/useDeleteBirdDetection';
@@ -322,6 +329,39 @@ const IndexInner = () => {
   // we gate the whole section on `user` here so anonymous visitors
   // don't see an empty promise.
   const { user } = useCurrentUser();
+
+  // Community birding events. The drawer (a right-side sheet listing
+  // upcoming Birdstar-curated calendar events) is opened from a
+  // calendar button in the HUD; the individual event detail sheet is
+  // driven entirely by the URL. When the path is a calendar-event
+  // `naddr` (forced into Birds mode by `modeFromPath`), we decode it,
+  // resolve the event, and mount `EventDetailSheet` over the page —
+  // mirroring how Stars opens its constellation detail sheet from a
+  // deep link.
+  const navigate = useNavigate();
+  const { nip19Id } = useParams<{ nip19Id?: string }>();
+  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
+
+  const eventAddr = useMemo(() => {
+    if (!nip19Id) return null;
+    try {
+      const decoded = nip19.decode(nip19Id);
+      if (decoded.type !== 'naddr') return null;
+      if (!isCalendarEventKind(decoded.data.kind)) return null;
+      return { kind: decoded.data.kind, identifier: decoded.data.identifier };
+    } catch {
+      return null;
+    }
+  }, [nip19Id]);
+
+  const { event: openedEvent, isLoading: openedEventLoading } =
+    useBirdstarEventByAddr(eventAddr?.kind, eventAddr?.identifier);
+
+  const closeEvent = useCallback(() => {
+    // Return to the bare Birds page; the event sheet self-closes once
+    // the URL no longer carries an event naddr.
+    navigate('/');
+  }, [navigate]);
 
   // Settings: "Publish location" toggle (off by default). When on,
   // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
@@ -1009,6 +1049,19 @@ const IndexInner = () => {
               {formatPlaceSet(placeSet)}
             </Button>
           ) : null}
+          {/* Birding-events button — opens the events drawer. Mirrors
+              the constellation (Sparkles) button in the Stars HUD:
+              an icon button sitting immediately to the left of the
+              avatar / LoginArea. */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => setEventsDrawerOpen(true)}
+            aria-label="Birding events"
+            className="rounded-full border-stone-200/70 bg-white/80 text-stone-700 backdrop-blur-sm hover:bg-white hover:text-stone-900 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-stone-200 dark:hover:bg-indigo-950/70 dark:hover:text-stone-50"
+          >
+            <CalendarDays className="h-4 w-4" />
+          </Button>
           <LoginArea className="max-w-60" />
           <SettingsSheet
             publishLocation={publishLocation}
@@ -1085,18 +1138,6 @@ const IndexInner = () => {
             <BirdFeed />
           </section>
         ) : null}
-
-        {/* Community birding events — curated NIP-52 calendar events
-            (kinds 31922/31923) published by the Birdstar account.
-            Surfaced for everyone (logged in or not) so people can
-            discover real-world meetups to attend. Gated on the birdex
-            being ready so the page settles as a single coherent block,
-            and self-handles its own loading / empty states. */}
-        {labels && !showRehomeGate && placeSet ? (
-          <section className="mt-12 w-full">
-            <CommunityEvents />
-          </section>
-        ) : null}
       </main>
 
       <PlayerBar
@@ -1127,6 +1168,23 @@ const IndexInner = () => {
       />
 
       <LiferCelebration item={liferItem} onDismiss={dismissLifer} />
+
+      {/* Curated birding-events drawer, opened from the HUD calendar
+          button. */}
+      <EventsDrawer
+        open={eventsDrawerOpen}
+        onOpenChange={setEventsDrawerOpen}
+      />
+
+      {/* Individual event detail — URL-driven. Open whenever the path
+          is a calendar-event naddr; resolves the event via
+          `useBirdstarEventByAddr` and closes by navigating back to `/`. */}
+      <EventDetailSheet
+        event={openedEvent}
+        isLoading={openedEventLoading}
+        open={eventAddr !== null}
+        onClose={closeEvent}
+      />
     </div>
   );
 };

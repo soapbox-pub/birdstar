@@ -17,8 +17,18 @@ import type { NostrEvent } from '@nostrify/nostrify';
 export const BIRDSTAR_PUBKEY =
   '26c71ddc66f279347fb15bdcd18f385b5766a943e61cf82b5b64c3675e415997';
 
-const DATE_BASED_KIND = 31922;
-const TIME_BASED_KIND = 31923;
+/** NIP-52 date-based (all-day / multi-day) calendar event. */
+export const DATE_BASED_KIND = 31922;
+/** NIP-52 time-based calendar event. */
+export const TIME_BASED_KIND = 31923;
+
+/** The calendar-event kinds this app renders. */
+export const CALENDAR_EVENT_KINDS = [DATE_BASED_KIND, TIME_BASED_KIND] as const;
+
+/** True for any kind this app treats as a Birdstar calendar event. */
+export function isCalendarEventKind(kind: number): boolean {
+  return kind === DATE_BASED_KIND || kind === TIME_BASED_KIND;
+}
 
 const MAX_EVENTS = 100;
 
@@ -60,7 +70,7 @@ function firstTag(event: NostrEvent, name: string): string | undefined {
  * for anything that doesn't carry the required NIP-52 tags (`d`,
  * `title`, `start`) or whose `start` can't be parsed for its kind.
  */
-function eventToCalendarEvent(
+export function eventToCalendarEvent(
   event: NostrEvent,
 ): BirdstarCalendarEvent | null {
   if (event.kind !== DATE_BASED_KIND && event.kind !== TIME_BASED_KIND) {
@@ -186,4 +196,66 @@ export function useBirdstarEvents(): BirdstarEventsResult {
       isLoading: query.isLoading,
     };
   }, [query.data, query.isLoading, fetchedAt]);
+}
+
+export interface BirdstarEventByAddrResult {
+  event: BirdstarCalendarEvent | null;
+  isLoading: boolean;
+}
+
+/**
+ * Fetch a single calendar event by its addressable coordinates
+ * (kind + `d` identifier). Used to resolve cold deep-links to
+ * `/{naddr}` when the event isn't already in the cached list.
+ *
+ * The author is hard-pinned to {@link BIRDSTAR_PUBKEY} regardless of
+ * the `pubkey` embedded in the naddr — only Birdstar-authored events
+ * are renderable, so a deep-link claiming some other author resolves
+ * to "not found" rather than rendering spoofed content.
+ */
+export function useBirdstarEventByAddr(
+  kind: number | undefined,
+  identifier: string | undefined,
+): BirdstarEventByAddrResult {
+  const { nostr } = useNostr();
+
+  const enabled =
+    typeof kind === 'number' &&
+    isCalendarEventKind(kind) &&
+    typeof identifier === 'string' &&
+    identifier.length > 0;
+
+  const query = useQuery({
+    queryKey: ['birdstar-event', kind, identifier],
+    enabled,
+    staleTime: 1000 * 60 * 5,
+    queryFn: async ({ signal }) => {
+      const events = await nostr.query(
+        [
+          {
+            kinds: [kind as number],
+            authors: [BIRDSTAR_PUBKEY],
+            '#d': [identifier as string],
+            limit: 1,
+          },
+        ],
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) },
+      );
+      return events;
+    },
+  });
+
+  return useMemo<BirdstarEventByAddrResult>(() => {
+    const events = query.data ?? [];
+    // Newest revision wins.
+    let latest: NostrEvent | null = null;
+    for (const event of events) {
+      if (!latest || event.created_at > latest.created_at) latest = event;
+    }
+    const event = latest ? eventToCalendarEvent(latest) : null;
+    return {
+      event,
+      isLoading: enabled && query.isLoading,
+    };
+  }, [query.data, query.isLoading, enabled]);
 }

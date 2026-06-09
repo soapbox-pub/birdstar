@@ -2,6 +2,7 @@ import { nip19 } from "nostr-tools";
 
 import type { Mode } from "@/contexts/ModeContext";
 import { CUSTOM_CONSTELLATION_KIND } from "@/lib/customConstellations";
+import { isCalendarEventKind } from "@/hooks/useBirdstarEvents";
 
 /**
  * Stars-only overlay path prefixes declared in `AppRouter.tsx`.
@@ -39,8 +40,10 @@ const STARS_OVERLAY_EXACT = new Set(["/sun", "/moon"]);
  * The npub/nprofile case is intentionally left to the stored mode:
  * profile sheets exist in both Birds (via the LoginArea author menu)
  * and Stars (via the sky overlay), so the path alone doesn't disambiguate.
- * Only `naddr` identifiers for custom constellations
- * (kind {@link CUSTOM_CONSTELLATION_KIND}) are forced to Stars.
+ * `naddr` identifiers for custom constellations
+ * (kind {@link CUSTOM_CONSTELLATION_KIND}) are forced to Stars; `naddr`
+ * identifiers for Birdstar calendar events (kinds 31922/31923) are
+ * forced to Birds, since the event detail sheet only mounts there.
  */
 export function modeFromPath(pathname: string): Mode | null {
   if (STARS_OVERLAY_EXACT.has(pathname)) return "stars";
@@ -50,9 +53,10 @@ export function modeFromPath(pathname: string): Mode | null {
     }
   }
 
-  // `/:nip19Id` — only naddrs for custom constellations are stars-only.
-  // Everything else (npub, nprofile, malformed) defers to stored mode;
-  // NIP19Page itself 404s the unsupported cases.
+  // `/:nip19Id` — naddrs for custom constellations force Stars, and
+  // naddrs for Birdstar calendar events force Birds. Everything else
+  // (npub, nprofile, malformed) defers to stored mode; NIP19Page itself
+  // 404s the unsupported cases.
   const nip19Match = /^\/([a-z0-9]+)$/i.exec(pathname);
   if (nip19Match) {
     const id = nip19Match[1];
@@ -64,11 +68,13 @@ export function modeFromPath(pathname: string): Mode | null {
     if (!id.startsWith("naddr1")) return null;
     try {
       const decoded = nip19.decode(id);
-      if (
-        decoded.type === "naddr" &&
-        decoded.data.kind === CUSTOM_CONSTELLATION_KIND
-      ) {
-        return "stars";
+      if (decoded.type === "naddr") {
+        if (decoded.data.kind === CUSTOM_CONSTELLATION_KIND) {
+          return "stars";
+        }
+        if (isCalendarEventKind(decoded.data.kind)) {
+          return "birds";
+        }
       }
     } catch {
       // fall through
