@@ -69,27 +69,32 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
         className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
       >
         <SheetHeader className="shrink-0 border-b border-stone-200/70 px-5 pb-4 pt-5 text-left dark:border-indigo-900/40">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <SheetTitle className="flex items-center gap-2 font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
-                <CalendarDays
-                  className="size-5 text-emerald-600 dark:text-amber-300"
-                  aria-hidden
-                />
-                Birding events
-              </SheetTitle>
-              <SheetDescription className="mt-1 text-stone-600 dark:text-stone-300">
-                Go outside and meet other birders — group walks, bird
-                counts, and meetups curated by Birdstar.
-              </SheetDescription>
-            </div>
+          {/* Title row — the Sheet's close (X) button floats at the
+              top-right of the content, so keep this row to the title
+              alone and put the scope dropdown on the line below where
+              the description used to sit, clear of the X. */}
+          <SheetTitle className="flex items-center gap-2 font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
+            <CalendarDays
+              className="size-5 text-emerald-600 dark:text-amber-300"
+              aria-hidden
+            />
+            Birding events
+          </SheetTitle>
 
+          {/* Kept for screen readers; the visible affordance is the
+              scope dropdown below. */}
+          <SheetDescription className="sr-only">
+            Go outside and meet other birders — group walks, bird counts,
+            and meetups curated by Birdstar.
+          </SheetDescription>
+
+          <div className="mt-2">
             <Select
               value={scope}
               onValueChange={(value) => setScope(value as EventScope)}
             >
               <SelectTrigger
-                className="h-9 w-[7.25rem] shrink-0 border-stone-200/70 bg-white/80 text-stone-700 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-stone-200"
+                className="h-9 w-[7.25rem] border-stone-200/70 bg-white/80 text-stone-700 dark:border-indigo-900/40 dark:bg-indigo-950/40 dark:text-stone-200"
                 aria-label="Filter events by location"
               >
                 <SelectValue />
