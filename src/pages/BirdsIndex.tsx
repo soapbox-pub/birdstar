@@ -51,6 +51,7 @@ import { BirdGlowProvider } from '@/components/BirdGlowProvider';
 import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { BirdFeed } from '@/components/BirdFeed';
+import { CommunityEvents } from '@/components/CommunityEvents';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
 import { useDeleteBirdDetection } from '@/hooks/useDeleteBirdDetection';
@@ -1082,6 +1083,18 @@ const IndexInner = () => {
         {user && labels && !showRehomeGate && placeSet ? (
           <section className="mt-12 w-full">
             <BirdFeed />
+          </section>
+        ) : null}
+
+        {/* Community birding events — curated NIP-52 calendar events
+            (kinds 31922/31923) published by the Birdstar account.
+            Surfaced for everyone (logged in or not) so people can
+            discover real-world meetups to attend. Gated on the birdex
+            being ready so the page settles as a single coherent block,
+            and self-handles its own loading / empty states. */}
+        {labels && !showRehomeGate && placeSet ? (
+          <section className="mt-12 w-full">
+            <CommunityEvents />
           </section>
         ) : null}
       </main>
