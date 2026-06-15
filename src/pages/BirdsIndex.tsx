@@ -1025,7 +1025,7 @@ const IndexInner = () => {
           edge-to-edge HUD in Stars mode. `pointer-events-none` on the
           strip + `pointer-events-auto` on each child keeps the area
           between the two groups click-through to the birdex. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 p-4">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
         <div className="pointer-events-auto">
           <ModeSelector />
         </div>
