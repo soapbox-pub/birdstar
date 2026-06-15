@@ -1025,7 +1025,7 @@ const IndexInner = () => {
           edge-to-edge HUD in Stars mode. `pointer-events-none` on the
           strip + `pointer-events-auto` on each child keeps the area
           between the two groups click-through to the birdex. */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 p-4">
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-2 pb-4 pt-[calc(1rem+env(safe-area-inset-top))] pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))]">
         <div className="pointer-events-auto">
           <ModeSelector />
         </div>
@@ -1073,7 +1073,11 @@ const IndexInner = () => {
         </div>
       </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-16 sm:pb-36">
+      {/* `pt` matches the HUD's height + its safe-area inset so the
+          Header (Birdstar title) clears the absolutely-positioned nav
+          even when iOS pushes the bar down past the notch / Dynamic
+          Island in standalone mode. */}
+      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-[calc(4rem+env(safe-area-inset-top))] sm:pb-36">
         <div className="mt-6 sm:mt-8">
           <Header />
         </div>

@@ -625,12 +625,12 @@ const Index = () => {
           settings on the right. Two separate absolutely-positioned
           groups so they hug their own edges without tangling on
           narrower phones. */}
-      <div className="pointer-events-none absolute top-0 left-0 p-4 flex items-center gap-2">
+      <div className="pointer-events-none absolute top-0 left-0 pb-4 pr-4 pt-[calc(1rem+env(safe-area-inset-top))] pl-[calc(1rem+env(safe-area-inset-left))] flex items-center gap-2">
         <div className="pointer-events-auto">
           <ModeSelector />
         </div>
       </div>
-      <div className="pointer-events-none absolute top-0 right-0 p-4 flex items-center justify-end gap-2">
+      <div className="pointer-events-none absolute top-0 right-0 pb-4 pl-4 pt-[calc(1rem+env(safe-area-inset-top))] pr-[calc(1rem+env(safe-area-inset-right))] flex items-center justify-end gap-2">
         <div className="pointer-events-auto">
           <Button
             variant="outline"
