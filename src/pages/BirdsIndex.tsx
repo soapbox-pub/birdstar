@@ -1073,7 +1073,11 @@ const IndexInner = () => {
         </div>
       </div>
 
-      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-16 sm:pb-36">
+      {/* `pt` matches the HUD's height + its safe-area inset so the
+          Header (Birdstar title) clears the absolutely-positioned nav
+          even when iOS pushes the bar down past the notch / Dynamic
+          Island in standalone mode. */}
+      <main className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-4 pb-32 pt-[calc(4rem+env(safe-area-inset-top))] sm:pb-36">
         <div className="mt-6 sm:mt-8">
           <Header />
         </div>
