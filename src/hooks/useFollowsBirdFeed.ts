@@ -37,12 +37,13 @@
 //     author list to query, and the BirdFeed component hides the
 //     whole section in that case anyway.
 import { useNostr } from '@nostrify/react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import type { NostrEvent } from '@nostrify/nostrify';
 
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFollowList } from '@/hooks/useFollowList';
+import { useNostrStorage } from '@/hooks/useNostrStorage';
 
 /** Canonical Wikidata entity URI shape per NIP.md §"Kind 2473". */
 const WIKIDATA_ENTITY_URI_RE = /^https:\/\/www\.wikidata\.org\/entity\/Q\d+$/;
@@ -76,14 +77,14 @@ export interface BirdFeedItem {
 interface FeedPage {
   items: BirdFeedItem[];
   /** The oldest `created_at` (seconds) in the raw query result,
-   *  even for events we filtered out (deletions, malformed). Used as
-   *  the pagination cursor — subtracting 1 from it prevents the next
+   *  even for events we filtered out (malformed). Used as the
+   *  pagination cursor — subtracting 1 from it prevents the next
    *  page from overlapping on the boundary event. */
   oldestCreatedAt: number | null;
-  /** Number of raw events returned by the relay (any kind) before
-   *  client-side filtering. When this is 0 we stop paginating; a
-   *  non-zero raw count with 0 valid items just means the page was
-   *  all deletions and we should keep going. */
+  /** Number of raw events returned by the relay before client-side
+   *  filtering. When this is 0 we stop paginating; a non-zero raw
+   *  count with 0 valid items just means the page was all malformed
+   *  events and we should keep going. */
   rawCount: number;
 }
 
@@ -139,6 +140,32 @@ function eventToFeedItem(event: NostrEvent): BirdFeedItem | null {
   };
 }
 
+/**
+ * Turn a raw list of kind 2473 detections into feed items. Shared by the
+ * network query and the cache read.
+ *
+ * We deliberately do NOT query or process NIP-09 deletions (kind 5): a
+ * popular follow set can produce a torrent of deletion events that dominate
+ * the page limit and starve the actual detections, choking the feed query for
+ * no real benefit. Detections are effectively immutable sightings.
+ */
+function rawEventsToFeedItems(raw: NostrEvent[]): BirdFeedItem[] {
+  const items: BirdFeedItem[] = [];
+  for (const e of raw) {
+    if (e.kind !== 2473) continue;
+    const item = eventToFeedItem(e);
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+/** Newest-first comparator, stable on tie (id break avoids flicker on
+ *  refetch when two events share a second). */
+function compareItems(a: BirdFeedItem, b: BirdFeedItem): number {
+  if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
+  return a.id.localeCompare(b.id);
+}
+
 export interface UseFollowsBirdFeedResult {
   items: BirdFeedItem[];
   isLoading: boolean;
@@ -154,11 +181,13 @@ export interface UseFollowsBirdFeedResult {
 
 /**
  * Paginated feed of bird detections authored by the current user plus
- * everyone they follow. Honors NIP-09 deletions within the same
- * author's history.
+ * everyone they follow, merged with the locally-cached detections in
+ * IndexedDB so the feed renders offline / before the relay round-trip and
+ * fills any gaps the relay omits.
  */
 export function useFollowsBirdFeed(): UseFollowsBirdFeedResult {
   const { nostr } = useNostr();
+  const { store } = useNostrStorage();
   const { user } = useCurrentUser();
   const { data: follows, isLoading: followsLoading } = useFollowList();
 
@@ -198,7 +227,7 @@ export function useFollowsBirdFeed(): UseFollowsBirdFeedResult {
         limit: number;
         until?: number;
       } = {
-        kinds: [2473, 5],
+        kinds: [2473],
         authors,
         limit: PAGE_SIZE,
       };
@@ -212,45 +241,18 @@ export function useFollowsBirdFeed(): UseFollowsBirdFeedResult {
         return { items: [], oldestCreatedAt: null, rawCount: 0 };
       }
 
-      // NIP-09: an event is deleted if a kind 5 from the SAME author
-      // references its id. We trust deletions only from the matching
-      // author, built as `author -> Set<deleted event ids>`. The
-      // authors filter already constrains both sides; this map just
-      // makes the check O(1).
-      const deletionsByAuthor = new Map<string, Set<string>>();
-      for (const e of raw) {
-        if (e.kind !== 5) continue;
-        let bucket = deletionsByAuthor.get(e.pubkey);
-        if (!bucket) {
-          bucket = new Set();
-          deletionsByAuthor.set(e.pubkey, bucket);
-        }
-        for (const [name, value] of e.tags) {
-          if (name === 'e' && typeof value === 'string') bucket.add(value);
-        }
-      }
+      const items = rawEventsToFeedItems(raw);
 
-      const items: BirdFeedItem[] = [];
+      // Track oldest across ALL raw events (even malformed ones) so the
+      // cursor advances even when a page is entirely malformed — otherwise
+      // we'd spin on the same `until` forever.
       let oldest: number | null = null;
       for (const e of raw) {
-        // Track oldest across ALL raw events (even deletions) so the
-        // cursor advances even when a page is entirely deletions —
-        // otherwise we'd spin on the same `until` forever.
         oldest = oldest === null ? e.created_at : Math.min(oldest, e.created_at);
-
-        if (e.kind !== 2473) continue;
-        if (deletionsByAuthor.get(e.pubkey)?.has(e.id)) continue;
-
-        const item = eventToFeedItem(e);
-        if (item) items.push(item);
       }
 
-      // Newest first, stable on tie (id break avoids flicker on
-      // refetch when two events share a second).
-      items.sort((a, b) => {
-        if (b.timestamp !== a.timestamp) return b.timestamp - a.timestamp;
-        return a.id.localeCompare(b.id);
-      });
+      // Newest first, stable on tie.
+      items.sort(compareItems);
 
       return {
         items,
@@ -271,25 +273,67 @@ export function useFollowsBirdFeed(): UseFollowsBirdFeedResult {
     },
   });
 
-  // Flatten pages and dedupe by event id — relays occasionally
-  // include the same event across boundary pages if two events share
-  // a `created_at` second. Preserves the first (newest) occurrence.
+  // Cache read: detections the AppPool has already mirrored into IndexedDB
+  // for self + follows (see AppPool.shouldCache). This resolves fast and lets
+  // the feed render offline / before the relay round-trip lands, and fills
+  // any gaps the relay omits. The network query stays authoritative — both
+  // sources are merged and deduped below.
+  const cacheQuery = useQuery<BirdFeedItem[], Error>({
+    queryKey: ['bird-feed-cache', user?.pubkey ?? '', authorsKey],
+    enabled: followsReady && authors.length > 0,
+    // The cache is local and cheap; a short staleTime keeps it fresh as the
+    // pool mirrors newly-seen detections in, without thrashing.
+    staleTime: 10 * 1000,
+    queryFn: async ({ signal }) => {
+      const raw = await store.query(
+        [{ kinds: [2473], authors, limit: 500 }],
+        { signal },
+      );
+      const items = rawEventsToFeedItems(raw);
+      items.sort(compareItems);
+      return items;
+    },
+  });
+
+  // Flatten network pages and merge with the cached items, deduping by event
+  // id (newest occurrence wins) and re-sorting newest-first.
+  //
+  // We bound cached items to the window the network has already loaded: only
+  // surface a cached item older than the oldest loaded network item once the
+  // relay has no more pages. Otherwise a cached detection from deep in history
+  // would jump to the bottom of the feed before the user scrolled there,
+  // leaving a confusing gap when intervening network pages later load above it.
   const items = useMemo(() => {
-    const seen = new Set<string>();
-    const out: BirdFeedItem[] = [];
+    const byId = new Map<string, BirdFeedItem>();
+
+    let oldestNetworkTs = Infinity;
     for (const page of query.data?.pages ?? []) {
       for (const item of page.items) {
-        if (seen.has(item.id)) continue;
-        seen.add(item.id);
-        out.push(item);
+        if (!byId.has(item.id)) byId.set(item.id, item);
+        if (item.timestamp < oldestNetworkTs) oldestNetworkTs = item.timestamp;
       }
     }
-    return out;
-  }, [query.data]);
+
+    const networkExhausted = !query.hasNextPage;
+    const floor = networkExhausted ? -Infinity : oldestNetworkTs;
+
+    for (const item of cacheQuery.data ?? []) {
+      if (byId.has(item.id)) continue;
+      // Only include cached items within the currently-loaded window unless
+      // the network has nothing older to give us.
+      if (item.timestamp < floor) continue;
+      byId.set(item.id, item);
+    }
+
+    return [...byId.values()].sort(compareItems);
+  }, [query.data, query.hasNextPage, cacheQuery.data]);
 
   return {
     items,
-    isLoading: query.isLoading,
+    // Skeleton only while the network query is still loading AND the cache
+    // hasn't produced anything to show. Cached items let us render
+    // immediately (and offline), without waiting on the relay round-trip.
+    isLoading: query.isLoading && items.length === 0,
     isFetchingNextPage: query.isFetchingNextPage,
     hasNextPage: Boolean(query.hasNextPage),
     fetchNextPage: () => {

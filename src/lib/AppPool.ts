@@ -6,6 +6,9 @@ import { isNostrId } from '@/lib/nostrId';
 /** Maximum number of items per batch to avoid hitting relay filter limits. */
 const MAX_BATCH_SIZE = 50;
 
+/** Bird detection event kind (regular). See NIP.md §"Kind 2473". */
+const BIRD_DETECTION_KIND = 2473;
+
 /**
  * Pending request waiting for a batched query result.
  * Each caller gets its own resolve/reject and optional abort signal.
@@ -526,6 +529,10 @@ export class AppPool {
    *   - Always keep events authored by a logged-in account.
    *   - Keep replaceable events authored by someone a logged-in account
    *     follows (followers are read from the cache only).
+   *   - Keep bird detections (kind 2473) authored by a follow, so the
+   *     "Recent sightings" feed can be served from cache (offline-first) and
+   *     merged with the network result. These are regular events, so they'd
+   *     otherwise be dropped by the replaceable rule above.
    *
    * Everything else (e.g. kind 1 notes from strangers in a public feed, or
    * addressable events from follows) is dropped so the cache stays focused on
@@ -534,6 +541,9 @@ export class AppPool {
   private shouldCache(event: NostrEvent, followed: Set<string>): boolean {
     if (this.loggedInPubkeys.has(event.pubkey)) return true;
     if (NKinds.replaceable(event.kind)) {
+      return followed.has(event.pubkey);
+    }
+    if (event.kind === BIRD_DETECTION_KIND) {
       return followed.has(event.pubkey);
     }
     return false;
