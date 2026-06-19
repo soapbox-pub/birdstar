@@ -129,26 +129,47 @@ export function useBirdexEvent(): BirdexEventResult {
         [{ kinds: [BIRDEX_KIND], authors: [pubkey], limit: 1 }],
         { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) },
       );
-      // Relays may return 0 events (new user) or 1 (the current
-      // replaceable). If multiple slipped through we trust the newest
-      // by created_at — relays are supposed to dedupe but clients
-      // should be defensive.
+
+      // The locally cached Birdex. Used both as a relay-miss fallback and,
+      // crucially, as a floor: a replaceable event is uniquely identified by
+      // (kind, pubkey), so the one with the highest `created_at` is canonical.
+      // Relays don't all agree — some lag behind, and a few don't enforce
+      // replaceable semantics and will hand back a stale version. Reading a
+      // newer event into cache and then letting an older one from a laggy
+      // relay overwrite it is exactly how a recently-added species (and its
+      // grid cell) blinks out after load. Reconcile newest-wins against the
+      // cache so a stale relay can never downgrade the Birdex.
+      const [cached] = await store.query([
+        { kinds: [BIRDEX_KIND], authors: [pubkey] },
+      ]);
+
+      // Relay miss — fall back to the locally cached Birdex rather than
+      // treating it as empty. A miss is almost always a transient relay
+      // hiccup, not an intentional erasure, and wiping the Birdex would
+      // make the dex look reset until the next successful fetch.
       if (events.length === 0) {
-        // Relay miss — fall back to the locally cached Birdex rather than
-        // treating it as empty. A miss is almost always a transient relay
-        // hiccup, not an intentional erasure, and wiping the Birdex would
-        // make the dex look reset until the next successful fetch.
-        const [cached] = await store.query([
-          { kinds: [BIRDEX_KIND], authors: [pubkey] },
-        ]);
         return cached ?? null;
       }
-      const latest = events.reduce<NostrEvent>(
+
+      const latestFromRelay = events.reduce<NostrEvent>(
         (acc, e) => (e.created_at > acc.created_at ? e : acc),
         events[0],
       );
-      // Persist the fresh event to the local store (fire-and-forget).
-      void store.event(latest);
+
+      // Newest of {relay result, local cache} wins. Without this floor, a
+      // laggy/non-compliant relay returning an older replaceable version
+      // would silently roll the Birdex back.
+      const latest =
+        cached && cached.created_at > latestFromRelay.created_at
+          ? cached
+          : latestFromRelay;
+
+      // Persist the fresh event to the local store (fire-and-forget). Only
+      // worth writing when it actually came from the network — re-persisting
+      // the cached event is a no-op the store would dedupe anyway.
+      if (latest === latestFromRelay) {
+        void store.event(latest);
+      }
       return latest;
     },
   });
