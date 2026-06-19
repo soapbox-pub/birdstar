@@ -95,11 +95,15 @@ export function useBirdHistory(): HistoryResult {
     staleTime: 1000 * 60, // 1 minute — history changes rarely mid-session
     queryFn: async ({ signal }) => {
       if (!pubkey) return [] as NostrEvent[];
-      // Fetch the user's detections and any deletion requests they've
-      // issued in a single query — combining kinds is cheaper for the
-      // relay than two round-trips.
+      // Fetch only the user's detections. We deliberately do NOT pull in
+      // their kind 5 deletion requests: NIP-09 deletion is already enforced
+      // relay-side (a deleted 2473 won't be returned) and by the local
+      // NIndexedDB cache's kind-5 handling, so re-fetching them here is
+      // wasted bandwidth. Worse, a user with many deletions would have them
+      // crowd out actual detections within the shared `limit`, making
+      // recently-heard species vanish from the dex.
       const events = await nostr.query(
-        [{ kinds: [2473, 5], authors: [pubkey], limit: MAX_HISTORY }],
+        [{ kinds: [2473], authors: [pubkey], limit: MAX_HISTORY }],
         { signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) },
       );
       return events;
@@ -109,20 +113,6 @@ export function useBirdHistory(): HistoryResult {
   return useMemo<HistoryResult>(() => {
     const events = query.data ?? [];
 
-    // NIP-09: collect the set of event ids this user has asked to delete
-    // so we can hide the corresponding detections below. We only trust
-    // deletion requests authored by the same pubkey as the events, which
-    // is guaranteed here because the query filters by `authors: [pubkey]`.
-    const deletedIds = new Set<string>();
-    for (const event of events) {
-      if (event.kind !== 5) continue;
-      for (const [name, value] of event.tags) {
-        if (name === 'e' && typeof value === 'string') {
-          deletedIds.add(value);
-        }
-      }
-    }
-
     // Newest event per species wins, so the displayed timestamp reflects
     // the most recent hearing. The same map is used to expose an
     // entity-URI -> most-recent-timestamp lookup for re-publish rate
@@ -130,7 +120,6 @@ export function useBirdHistory(): HistoryResult {
     const byUri = new Map<string, Detection & { entityUri: string }>();
     for (const event of events) {
       if (event.kind !== 2473) continue;
-      if (deletedIds.has(event.id)) continue;
       const det = eventToDetection(event);
       if (!det) continue;
       const existing = byUri.get(det.entityUri);
