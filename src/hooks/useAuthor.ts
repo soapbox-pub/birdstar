@@ -1,33 +1,71 @@
 import { type NostrEvent, type NostrMetadata, NSchema as n } from '@nostrify/nostrify';
 import { useNostr } from '@nostrify/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { useCacheFirstSeed } from '@/hooks/useCacheFirstSeed';
+import { useNostrStorage } from '@/hooks/useNostrStorage';
+
+export type AuthorResult = { event?: NostrEvent; metadata?: NostrMetadata };
+
+/** Parse a kind-0 event into metadata + event, or return just the event on parse failure. */
+export function parseAuthorEvent(event: NostrEvent): AuthorResult {
+  try {
+    const metadata = n.json().pipe(n.metadata()).parse(event.content);
+    return { metadata, event };
+  } catch {
+    return { event };
+  }
+}
 
 export function useAuthor(pubkey: string | undefined) {
   const { nostr } = useNostr();
+  const queryClient = useQueryClient();
+  const { store } = useNostrStorage();
 
-  return useQuery<{ event?: NostrEvent; metadata?: NostrMetadata }>({
+  // Seed the query from the local event store so a known profile renders
+  // immediately, without waiting on the network. The network query below
+  // stays authoritative and overwrites this when it resolves.
+  useCacheFirstSeed<AuthorResult>({
+    queryKey: pubkey ? ['nostr', 'author', pubkey] : undefined,
+    filter: { kinds: [0], authors: pubkey ? [pubkey] : [] },
+    toData: parseAuthorEvent,
+    getEvent: (data) => data.event,
+  });
+
+  return useQuery<AuthorResult>({
     queryKey: ['nostr', 'author', pubkey ?? ''],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!pubkey) {
         return {};
       }
 
       const [event] = await nostr.query(
-        [{ kinds: [0], authors: [pubkey!], limit: 1 }],
-        { signal: AbortSignal.timeout(1500) },
+        [{ kinds: [0], authors: [pubkey], limit: 1 }],
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(1500)]) },
       );
 
       if (!event) {
-        throw new Error('No event found');
+        // Relay returned nothing — a kind-0 miss is almost always transient
+        // (the relay didn't have it, or the query timed out). Never discard a
+        // profile we already have: fall back to the locally cached event so a
+        // name/avatar already on screen doesn't blank out.
+        const existing = queryClient.getQueryData<AuthorResult>(['nostr', 'author', pubkey]);
+        if (existing?.event) {
+          return existing;
+        }
+        const [cached] = await store.query([{ kinds: [0], authors: [pubkey] }]);
+        if (cached) {
+          return parseAuthorEvent(cached);
+        }
+        return {};
       }
 
-      try {
-        const metadata = n.json().pipe(n.metadata()).parse(event.content);
-        return { metadata, event };
-      } catch {
-        return { event };
-      }
+      // Persist the fresh event to the local store (fire-and-forget).
+      void store.event(event);
+
+      return parseAuthorEvent(event);
     },
+    enabled: !!pubkey,
     staleTime: 5 * 60 * 1000, // Keep cached data fresh for 5 minutes
     retry: 3,
   });

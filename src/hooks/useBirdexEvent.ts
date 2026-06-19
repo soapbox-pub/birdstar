@@ -22,6 +22,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useNostrStorage } from '@/hooks/useNostrStorage';
+import { useCacheFirstSeed } from '@/hooks/useCacheFirstSeed';
 
 /** Canonical Wikidata entity URI shape per NIP.md. Shared with
  *  useBirdHistory — duplicated here to keep the hook self-contained. */
@@ -99,7 +101,19 @@ function parseBirdexEvent(event: NostrEvent): BirdexSpeciesEntry[] {
 export function useBirdexEvent(): BirdexEventResult {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { store } = useNostrStorage();
   const pubkey = user?.pubkey;
+
+  // Seed the query from the local event store so a returning user's Birdex
+  // renders instantly, before the network round-trip resolves. The Birdex is a
+  // replaceable event, so the cache holds at most one per author. The network
+  // query below stays authoritative and overwrites this when it lands.
+  useCacheFirstSeed<NostrEvent | null>({
+    queryKey: pubkey ? ['birdex-event', pubkey] : undefined,
+    filter: { kinds: [BIRDEX_KIND], authors: pubkey ? [pubkey] : [] },
+    toData: (event) => event,
+    getEvent: (data) => data ?? undefined,
+  });
 
   const query = useQuery({
     queryKey: ['birdex-event', pubkey],
@@ -119,11 +133,23 @@ export function useBirdexEvent(): BirdexEventResult {
       // replaceable). If multiple slipped through we trust the newest
       // by created_at — relays are supposed to dedupe but clients
       // should be defensive.
-      if (events.length === 0) return null;
-      return events.reduce<NostrEvent>(
+      if (events.length === 0) {
+        // Relay miss — fall back to the locally cached Birdex rather than
+        // treating it as empty. A miss is almost always a transient relay
+        // hiccup, not an intentional erasure, and wiping the Birdex would
+        // make the dex look reset until the next successful fetch.
+        const [cached] = await store.query([
+          { kinds: [BIRDEX_KIND], authors: [pubkey] },
+        ]);
+        return cached ?? null;
+      }
+      const latest = events.reduce<NostrEvent>(
         (acc, e) => (e.created_at > acc.created_at ? e : acc),
         events[0],
       );
+      // Persist the fresh event to the local store (fire-and-forget).
+      void store.event(latest);
+      return latest;
     },
   });
 
