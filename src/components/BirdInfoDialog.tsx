@@ -149,7 +149,12 @@ export function BirdInfoDialog({
     subject ? commonName : null,
   );
 
-  const canDelete = Boolean(onDelete && detection?.eventId);
+  // Deletable when we can identify the species to retract: either a
+  // concrete kind 2473 event (`eventId`) or, for species known only from
+  // the cumulative kind 12473 Birdex, the species' Wikidata `entityUri`.
+  // The delete handler retracts every loaded 2473 event for the species
+  // and prunes it from the Birdex.
+  const canDelete = Boolean(onDelete && (detection?.eventId || detection?.entityUri));
 
   const song = useSongPlayer(
     sound,
@@ -655,7 +660,11 @@ function BirdInfoFooter({
 
       {showPublishedRow ? (
         <div className="flex items-center gap-1.5">
-          <span>Published to Nostr at {formatTime(detection.timestamp)}</span>
+          <span>
+            {detection.eventId
+              ? `Published to Nostr at ${formatTime(detection.timestamp)}`
+              : 'Recorded in your Birdex'}
+          </span>
           <span className="text-stone-300 dark:text-stone-600" aria-hidden>
             ·
           </span>
@@ -701,9 +710,13 @@ function BirdInfoFooter({
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this sighting?</AlertDialogTitle>
               <AlertDialogDescription>
-                This removes your published Nostr event. Deletion
-                isn't guaranteed — some relays may keep a copy
-                indefinitely.
+                {detection.eventId
+                  ? `This removes your published Nostr event and the species
+                     from your Birdex. Deletion isn't guaranteed — some relays
+                     may keep a copy indefinitely.`
+                  : `This removes the species from your Birdex and retracts any
+                     detections of it. Deletion isn't guaranteed — some relays
+                     may keep a copy indefinitely.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

@@ -17,6 +17,14 @@ export interface Detection {
    * published yet (or never will be, e.g. when logged out) omit this.
    */
   eventId?: string;
+  /**
+   * The species' canonical Wikidata entity URI, when known. Present on
+   * detections derived from a kind 2473 event (`i` tag) and on detections
+   * synthesized from the user's kind 12473 Birdex. Lets the delete path
+   * identify the species to prune from the Birdex even when no underlying
+   * 2473 `eventId` is loaded.
+   */
+  entityUri?: string;
 }
 
 interface BirdCardProps {

@@ -676,8 +676,63 @@ const IndexInner = () => {
         byKey.set(key, { ...d, eventId: d.eventId ?? prior?.eventId });
       }
     }
+
+    // Fold in the user's canonical kind 12473 Birdex. It's the durable,
+    // cumulative record of every species ever confirmed, so it — not the
+    // last MAX_HISTORY kind 2473 detections — is the authority on which
+    // cells the grid should light up. Without this a heavy birder (or one
+    // whose old detections have aged off relays) would see species silently
+    // drop out of their dex.
+    //
+    // Birdex entries carry no per-species timestamp, only their first-seen
+    // order in the tag array (earliest entry = oldest sighting). We
+    // synthesize descending timestamps anchored *below* every real
+    // detection so:
+    //   - species with a real kind 2473 detection always keep that richer
+    //     record (true timestamp, eventId) and sort by it, and
+    //   - Birdex-only species sort newest-first among themselves by their
+    //     tag order, but never above a species the user actually has a
+    //     recent detection for.
+    if (birdexEvent.entries.length > 0) {
+      const seenSci = new Set<string>();
+      for (const d of byKey.values()) {
+        seenSci.add(d.scientificName.toLowerCase());
+      }
+      // Anchor synthetic timestamps strictly below the oldest real
+      // detection. When there are no real detections, anchor at the Birdex
+      // event's own `created_at` (ms) — a stable value from the data, so the
+      // memo stays pure. Synthetic timestamps descend by tag order so later
+      // (more recent) Birdex entries sort first, and stay below any real
+      // detection.
+      let floor = Number.POSITIVE_INFINITY;
+      for (const d of byKey.values()) floor = Math.min(floor, d.timestamp);
+      if (!Number.isFinite(floor)) {
+        floor = (birdexEvent.event?.created_at ?? 0) * 1000;
+      }
+      const total = birdexEvent.entries.length;
+      birdexEvent.entries.forEach((entry, idx) => {
+        if (!entry.scientificName) return; // need a name to match a label
+        const sci = entry.scientificName.toLowerCase();
+        if (seenSci.has(sci)) return; // a real detection already covers it
+        seenSci.add(sci);
+        // idx 0 is the oldest entry; later entries get a higher (newer)
+        // synthetic timestamp, all kept below `floor`.
+        const synthetic = floor - (total - idx);
+        byKey.set(`birdex:${sci}`, {
+          id: `birdex-${entry.entityUri}`,
+          scientificName: entry.scientificName,
+          // The Birdex stores only the scientific name; useBirdex resolves
+          // the BirdLabel (and thus the common name) by scientific name, so
+          // an empty common name here is fine for grid display.
+          commonName: '',
+          timestamp: synthetic,
+          entityUri: entry.entityUri,
+        });
+      });
+    }
+
     return Array.from(byKey.values());
-  }, [history.detections, confirmedSightings]);
+  }, [history.detections, confirmedSightings, birdexEvent.entries, birdexEvent.event]);
 
   const birdex = useBirdex({
     placeSet,
@@ -712,7 +767,13 @@ const IndexInner = () => {
   // re-deriving them from range classification.
   const handleSelectBirdex = useCallback((entry: BirdexEntry) => {
     if (entry.detection) {
-      setSelectedSubject({ kind: 'detection', detection: entry.detection });
+      // Birdex-only detections carry no common name (the kind 12473 event
+      // stores only scientific names); fill it in from the resolved label
+      // so the dialog title isn't blank.
+      const detection = entry.detection.commonName
+        ? entry.detection
+        : { ...entry.detection, commonName: entry.label.commonName };
+      setSelectedSubject({ kind: 'detection', detection });
     } else {
       setSelectedSubject({
         kind: 'label',
@@ -742,8 +803,12 @@ const IndexInner = () => {
 
   const selectedDetection =
     selectedSubject?.kind === 'detection' ? selectedSubject.detection : null;
+  // The delete tracker keys on the underlying event id when present, else
+  // the species' Birdex entity URI (for Birdex-only species).
+  const selectedDeleteKey =
+    selectedDetection?.eventId ?? selectedDetection?.entityUri ?? null;
   const selectedIsDeleting = Boolean(
-    selectedDetection?.eventId && deletingIds.has(selectedDetection.eventId),
+    selectedDeleteKey && deletingIds.has(selectedDeleteKey),
   );
 
   const publishGlow = useBirdGlowPublisher();
