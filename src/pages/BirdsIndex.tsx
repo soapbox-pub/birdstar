@@ -75,6 +75,7 @@ import { useEncounteredSpecies } from '@/hooks/useEncounteredSpecies';
 import { useLiferCelebration } from '@/hooks/useLiferCelebration';
 import { useLocalSpeciesBands } from '@/hooks/useLocalSpeciesBands';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useNearestObservation } from '@/hooks/useNearestObservation';
 import { isSpeciesInRegion } from '@/lib/birdnet/speciesRegions';
 import {
@@ -387,12 +388,24 @@ const IndexInner = () => {
     request: requestRegion,
   } = useUserRegion();
 
-  const { consider: considerPublish } = useAutoPublishDetection({
+  const { consider: considerPublish, flushQueue } = useAutoPublishDetection({
     lastPublishedAt: history.lastPublishedAt,
     birdexEntries: birdexEvent.entries,
     publishLocation,
     coarse,
   });
+
+  // Drain any detections that were heard while offline (or that otherwise
+  // failed to publish) as soon as we have a user + a connection. Re-runs
+  // whenever the browser reports it's back online, and once on mount /
+  // login to clear out anything left from a previous session. The flush
+  // itself is idempotent and self-guarded against overlap, and preserves
+  // each sighting's original heard timestamp.
+  const isOnline = useOnlineStatus();
+  useEffect(() => {
+    if (!user || !isOnline) return;
+    void flushQueue();
+  }, [user, isOnline, flushQueue]);
 
   const [manualLocation, setManualLocation] = useState<StoredManualLocation | null>(
     () => readManualLocation(),

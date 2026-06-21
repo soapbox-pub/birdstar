@@ -8,6 +8,19 @@
 // cumulative set of species the author has ever detected, in
 // chronological order. See NIP.md §"Kind 12473 — Birdex" for the
 // schema.
+//
+// ## Offline durability
+//
+// A detection must never be lost just because the network was down when
+// the bird was heard. When a publish fails (offline, relay timeout, etc.)
+// the raw detection is persisted to an IndexedDB queue (see
+// birdQueueStore). `flushQueue()` replays queued detections through the
+// same publish path — oldest heard-time first — and only removes an item
+// once its kind 2473 event is actually on a relay; a repeated failure
+// leaves it queued for the next attempt. Because the detection carries
+// its original heard timestamp, the eventual event's `created_at` reflects
+// when the bird was heard, not when the queue drained. Callers wire
+// `flushQueue` to the browser coming back online (see useOnlineStatus).
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -19,6 +32,13 @@ import { coarsen } from '@/lib/geo/coarsen';
 import { encodeGeohash } from '@/lib/geo/geohash';
 import { fetchWikidataEntityUri } from '@/lib/birdnet/wikidata';
 import { lookupPregeneratedEntityUri } from '@/lib/birdnet/wikidataMap';
+import {
+  enqueueDetection,
+  getQueuedDetections,
+  markAttempt,
+  removeQueuedDetection,
+  type QueuedDetection,
+} from '@/lib/birdQueueStore';
 
 /**
  * Length of the geohash attached to the optional `g` tag when the user
@@ -89,9 +109,32 @@ export interface AutoPublishApi {
   /**
    * Submit a detection for possible auto-publishing. No-op if the user is
    * logged out, or the species has been published within the recent
-   * cooldown window (either in this session or historically).
+   * cooldown window (either in this session or historically). On a publish
+   * failure the detection is queued to IndexedDB and retried via
+   * `flushQueue`.
    */
   consider: (detection: Detection) => void;
+  /**
+   * Drain the offline publish queue, replaying each queued detection
+   * (oldest heard-time first) through the normal publish path. Items are
+   * removed only once their kind 2473 event lands on a relay; anything
+   * that fails again stays queued. Safe to call repeatedly and
+   * concurrently — overlapping calls are coalesced. No-op when logged out.
+   */
+  flushQueue: () => Promise<void>;
+}
+
+/**
+ * Distinguishes a publish/network failure (re-queue and retry) from a
+ * resolution failure where the species genuinely has no Wikidata QID
+ * (skip; nothing to publish).
+ */
+class PublishFailedError extends Error {
+  constructor(cause: unknown) {
+    super('Failed to publish bird detection event');
+    this.name = 'PublishFailedError';
+    this.cause = cause;
+  }
 }
 
 export function useAutoPublishDetection({
@@ -149,16 +192,187 @@ export function useAutoPublishDetection({
   // the same species don't race each other into the network.
   const inFlightSpeciesKeys = useRef<Set<string>>(new Set());
   // Species we've already confirmed have no resolvable Q-id this
-  // session. Once a species falls through both Wikipedia lookups AND
-  // both Wikidata SPARQL fallbacks, repeating the whole chain on every
-  // subsequent detection is pure network waste. Cleared on page reload
-  // so a transient outage doesn't permanently hide a species.
+  // session WHILE ONLINE. Once a species falls through both Wikipedia
+  // lookups AND both Wikidata SPARQL fallbacks with a working
+  // connection, repeating the whole chain on every subsequent detection
+  // is pure network waste. We deliberately do NOT add a species here
+  // when the lookup failed because we were offline — that would lose a
+  // species whose QID simply couldn't be checked yet (it gets queued
+  // instead and resolved at flush time). Cleared on page reload so a
+  // transient outage doesn't permanently hide a species.
   const unresolvableSpeciesKeys = useRef<Set<string>>(new Set());
 
   const userRef = useRef(user);
   useEffect(() => {
     userRef.current = user;
   }, [user]);
+
+  // `publish` from useNostrPublish is itself a stable mutateAsync, but
+  // mirror it through a ref so the long-lived callbacks below don't list
+  // it as a dependency and churn.
+  const publishRef = useRef(publish);
+  useEffect(() => {
+    publishRef.current = publish;
+  }, [publish]);
+
+  /**
+   * Build the kind 2473 tag set for a resolved detection. When `geohash`
+   * is provided it's attached verbatim as the optional NIP-52 `g` tag
+   * (used by the queue, which snapshots the geohash at detection time);
+   * otherwise, for a live detection, we derive it from the current
+   * publish-location toggle + coarse coord.
+   */
+  const buildDetectionTags = useCallback(
+    (
+      detection: { scientificName: string; commonName: string },
+      entityUri: string,
+      geohash: string | undefined,
+    ): string[][] => {
+      // Base tag set required by NIP.md §"Kind 2473":
+      //   alt (NIP-31 summary), i (Wikidata URI), n (scientific name).
+      const tags: string[][] = [
+        [
+          'alt',
+          `Bird detection: ${detection.commonName} (${detection.scientificName})`,
+        ],
+        ['i', entityUri],
+        ['n', detection.scientificName],
+      ];
+      if (geohash) {
+        tags.push(['g', geohash]);
+      }
+      return tags;
+    },
+    [],
+  );
+
+  /**
+   * Derive the optional length-3 geohash for a *live* detection from the
+   * current "Publish location" toggle and coarse coordinate. Returns
+   * undefined when location publishing is off, no coordinate is known, or
+   * encoding fails. Captured at detection time so a later queue flush
+   * keeps the location where the bird was actually heard.
+   */
+  const deriveLiveGeohash = useCallback((): string | undefined => {
+    if (!publishLocationRef.current || !coarseRef.current) return undefined;
+    // Re-coarsen defensively at the privacy boundary. The value from
+    // `useUserRegion().coarse` is already 1°-rounded, but running it
+    // through `coarsen()` here makes the boundary explicit to anyone
+    // grepping the codebase for "calls that transmit location".
+    const rounded = coarsen(coarseRef.current.lat, coarseRef.current.lon);
+    if (!rounded) return undefined;
+    try {
+      return encodeGeohash(rounded.lat, rounded.lon, DETECTION_GEOHASH_PRECISION);
+    } catch (err) {
+      // Defensive: encoder throws on out-of-range input, which would mean
+      // our upstream coord is corrupt. Publish without a geohash rather
+      // than dropping the detection.
+      console.warn('Failed to encode detection geohash', err);
+      return undefined;
+    }
+  }, []);
+
+  /**
+   * Publish a fully-resolved detection: the kind 2473 event, then (if this
+   * is a lifer) the kind 12473 Birdex republish. Shared by both the live
+   * path and the queue-flush path.
+   *
+   * Throws `PublishFailedError` if the kind 2473 publish fails so the
+   * caller can re-queue. The Birdex publish is best-effort: if it fails we
+   * roll back the local Birdex state and swallow, because the underlying
+   * 2473 detection is already on the network and the Birdex can be
+   * reconstructed from history (and will retry on the next lifer).
+   */
+  const publishResolvedDetection = useCallback(
+    async (params: {
+      scientificName: string;
+      commonName: string;
+      timestamp: number;
+      entityUri: string;
+      geohash: string | undefined;
+    }): Promise<void> => {
+      const { scientificName, commonName, timestamp, entityUri, geohash } =
+        params;
+
+      try {
+        await publishRef.current({
+          kind: 2473,
+          content: '',
+          tags: buildDetectionTags({ scientificName, commonName }, entityUri, geohash),
+          created_at: Math.floor(timestamp / 1000),
+        });
+      } catch (err) {
+        throw new PublishFailedError(err);
+      }
+
+      // Record the in-session publish so the cooldown window covers
+      // detections heard right after this one (live path), and so a flush
+      // doesn't immediately re-consider the same species.
+      sessionPublishedAt.current.set(entityUri, timestamp);
+
+      // First-time species? Extend the Birdex (kind 12473) with this URI +
+      // scientific name appended to the end and republish. We check the
+      // session-local set AFTER the 2473 publish succeeded so a failed
+      // detection publish doesn't leak an entry into the Birdex. We also
+      // update the ref immediately to suppress duplicate Birdex publishes
+      // in case a second detection for the same species races in.
+      const isLifer = !birdexSetRef.current.has(entityUri);
+      if (isLifer) {
+        const newEntry: BirdexSpeciesEntry = { entityUri, scientificName };
+        birdexSetRef.current.add(entityUri);
+        const nextEntries = [...birdexEntriesRef.current, newEntry];
+        birdexEntriesRef.current = nextEntries;
+
+        const birdexTags: string[][] = [
+          ['alt', `Birdex: ${nextEntries.length} species`],
+        ];
+        for (const entry of nextEntries) {
+          birdexTags.push(['i', entry.entityUri]);
+          // Omit the `n` tag entirely when we have no paired scientific
+          // name (older events in history). Per NIP.md clients accept
+          // unpaired `i` tags — better than emitting an empty string that
+          // readers have to special-case.
+          if (entry.scientificName) {
+            birdexTags.push(['n', entry.scientificName]);
+          }
+        }
+
+        try {
+          await publishRef.current({
+            kind: BIRDEX_KIND,
+            content: '',
+            tags: birdexTags,
+            created_at: Math.floor(timestamp / 1000),
+          });
+          if (userRef.current) {
+            queryClient.invalidateQueries({
+              queryKey: ['birdex-event', userRef.current.pubkey],
+            });
+          }
+        } catch (err) {
+          // Roll back the local Birdex state so the next first-time
+          // detection retries the publish. The underlying kind 2473
+          // detection is already on the network, so the user's Birdex can
+          // be reconstructed from history even if the replaceable event
+          // temporarily lags.
+          birdexSetRef.current.delete(entityUri);
+          birdexEntriesRef.current = birdexEntriesRef.current.filter(
+            (e) => e.entityUri !== entityUri,
+          );
+          console.warn('Failed to publish Birdex', err);
+        }
+      }
+
+      // Invalidate so the history query eventually picks up the new event
+      // and merges it back into `lastPublishedAt`.
+      if (userRef.current) {
+        queryClient.invalidateQueries({
+          queryKey: ['bird-history', userRef.current.pubkey],
+        });
+      }
+    },
+    [buildDetectionTags, queryClient],
+  );
 
   const consider = useCallback(
     (detection: Detection) => {
@@ -169,15 +383,20 @@ export function useAutoPublishDetection({
       if (unresolvableSpeciesKeys.current.has(speciesKey)) return;
       inFlightSpeciesKeys.current.add(speciesKey);
 
+      // Snapshot the geohash NOW (at the heard moment) so that if the
+      // publish fails and the detection is queued, it keeps the location
+      // where the bird was actually heard rather than wherever the user
+      // happens to be when the queue later drains.
+      const geohash = deriveLiveGeohash();
+
       (async () => {
         try {
           // Consult the pregenerated scientificName → entityUri map first.
-          // It covers every BirdNET-supported species we've successfully
-          // resolved at build time, so the common case skips ALL of
-          // Wikipedia + SPARQL on the hot path. Misses (a stale map, a
-          // species genuinely unresolvable, or a transient build outage)
-          // fall through to the live chain below — same behavior as
-          // before this map existed.
+          // It's a bundled, service-worker-precached static file, so it
+          // resolves the common case WITHOUT a network round-trip — which
+          // also means most detections can be fully built (and published,
+          // or correctly queued) while offline. Misses fall through to the
+          // live Wikipedia + SPARQL chain.
           let entityUri = await lookupPregeneratedEntityUri(
             detection.scientificName,
           );
@@ -188,9 +407,22 @@ export function useAutoPublishDetection({
             );
           }
           if (!entityUri) {
-            // Remember the miss so we don't re-run the full Wikipedia +
-            // SPARQL chain on every subsequent chirp of this species.
-            unresolvableSpeciesKeys.current.add(speciesKey);
+            // Couldn't resolve a QID. If we're offline that's almost
+            // certainly because the live fallback couldn't reach the
+            // network — queue the raw detection so we can resolve it at
+            // flush time. If we're online, the species genuinely has no
+            // resolvable QID; remember the miss so we don't re-run the
+            // whole chain on every subsequent chirp.
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+              await enqueueDetection({
+                scientificName: detection.scientificName,
+                commonName: detection.commonName,
+                timestamp: detection.timestamp,
+                geohash,
+              });
+            } else {
+              unresolvableSpeciesKeys.current.add(speciesKey);
+            }
             return;
           }
 
@@ -210,140 +442,128 @@ export function useAutoPublishDetection({
           sessionPublishedAt.current.set(entityUri, detection.timestamp);
 
           try {
-            // Base tag set required by NIP.md §"Kind 2473":
-            //   alt (NIP-31 summary), i (Wikidata URI), n (scientific name).
-            const detectionTags: string[][] = [
-              [
-                'alt',
-                `Bird detection: ${detection.commonName} (${detection.scientificName})`,
-              ],
-              ['i', entityUri],
-              ['n', detection.scientificName],
-            ];
-
-            // Optional NIP-52 `g` tag — only when the user opted in via
-            // Settings → "Publish location" AND we actually have a
-            // coarse coordinate to geohash. If the toggle is on but
-            // the coord is missing (geolocation denied / still
-            // resolving) we publish without it rather than stalling
-            // the detection; the user asked to include location when
-            // available, not to suppress publishing when it isn't.
-            if (publishLocationRef.current && coarseRef.current) {
-              // Re-coarsen defensively at the privacy boundary. The
-              // value from `useUserRegion().coarse` is already 1°-
-              // rounded, but running it through `coarsen()` here
-              // makes the boundary explicit to anyone grepping the
-              // codebase for "calls that transmit location" — this
-              // file, `src/lib/inat/localSpecies.ts`, and
-              // `useNearestObservation` are the three places.
-              const rounded = coarsen(
-                coarseRef.current.lat,
-                coarseRef.current.lon,
-              );
-              if (rounded) {
-                try {
-                  const geohash = encodeGeohash(
-                    rounded.lat,
-                    rounded.lon,
-                    DETECTION_GEOHASH_PRECISION,
-                  );
-                  detectionTags.push(['g', geohash]);
-                } catch (err) {
-                  // Defensive: encoder throws on out-of-range input,
-                  // which would mean our upstream coord is corrupt.
-                  // Swallow and publish without a geohash rather than
-                  // dropping the detection entirely.
-                  console.warn('Failed to encode detection geohash', err);
-                }
-              }
-            }
-
-            await publish({
-              kind: 2473,
-              content: '',
-              tags: detectionTags,
-              created_at: Math.floor(detection.timestamp / 1000),
+            await publishResolvedDetection({
+              scientificName: detection.scientificName,
+              commonName: detection.commonName,
+              timestamp: detection.timestamp,
+              entityUri,
+              geohash,
             });
-
-            // First-time species? Extend the Birdex (kind 12473) with
-            // this URI + scientific name appended to the end and
-            // republish. We check the session-local set AFTER the
-            // 2473 publish succeeded so a failed detection publish
-            // doesn't leak an entry into the Birdex. We also update
-            // the ref immediately to suppress duplicate Birdex
-            // publishes in case a second detection for the same
-            // species races in before the Nostr query refetches.
-            const isLifer = !birdexSetRef.current.has(entityUri);
-            if (isLifer) {
-              const newEntry: BirdexSpeciesEntry = {
-                entityUri,
-                scientificName: detection.scientificName,
-              };
-              birdexSetRef.current.add(entityUri);
-              const nextEntries = [...birdexEntriesRef.current, newEntry];
-              birdexEntriesRef.current = nextEntries;
-
-              const birdexTags: string[][] = [
-                ['alt', `Birdex: ${nextEntries.length} species`],
-              ];
-              for (const entry of nextEntries) {
-                birdexTags.push(['i', entry.entityUri]);
-                // Omit the `n` tag entirely when we have no paired
-                // scientific name (older events in history). Per
-                // NIP.md clients accept unpaired `i` tags — better
-                // than emitting an empty string that readers have to
-                // special-case.
-                if (entry.scientificName) {
-                  birdexTags.push(['n', entry.scientificName]);
-                }
-              }
-
-              try {
-                await publish({
-                  kind: BIRDEX_KIND,
-                  content: '',
-                  tags: birdexTags,
-                  created_at: Math.floor(detection.timestamp / 1000),
-                });
-                if (userRef.current) {
-                  queryClient.invalidateQueries({
-                    queryKey: ['birdex-event', userRef.current.pubkey],
-                  });
-                }
-              } catch (err) {
-                // Roll back the local Birdex state so the next first-
-                // time detection retries the publish. The underlying
-                // kind 2473 detection is already on the network, so
-                // the user's Birdex can be reconstructed from history
-                // even if the replaceable event temporarily lags.
-                birdexSetRef.current.delete(entityUri);
-                birdexEntriesRef.current = birdexEntriesRef.current.filter(
-                  (e) => e.entityUri !== entityUri,
-                );
-                console.warn('Failed to publish Birdex', err);
-              }
-            }
-
-            // Invalidate so the history query eventually picks up the new
-            // event and merges it back into `lastPublishedAt`.
-            if (userRef.current) {
-              queryClient.invalidateQueries({
-                queryKey: ['bird-history', userRef.current.pubkey],
-              });
-            }
           } catch (err) {
-            // Publish failed — roll back the session timestamp so we'll
-            // try again for the next detection of this species.
+            // Publish failed (offline, relay timeout, …). Roll back the
+            // session timestamp and persist the detection so it's retried
+            // when the connection returns — the heard timestamp is
+            // preserved, so the eventual event is correctly dated.
             sessionPublishedAt.current.delete(entityUri);
-            console.warn('Failed to publish bird detection', err);
+            await enqueueDetection({
+              scientificName: detection.scientificName,
+              commonName: detection.commonName,
+              timestamp: detection.timestamp,
+              geohash,
+            });
+            console.warn('Queued bird detection for later publish', err);
           }
         } finally {
           inFlightSpeciesKeys.current.delete(speciesKey);
         }
       })();
     },
-    [publish, queryClient],
+    [deriveLiveGeohash, publishResolvedDetection],
   );
 
-  return { consider };
+  // Guards against overlapping flushes (e.g. an `online` event firing while
+  // a mount-time flush is still draining).
+  const flushingRef = useRef(false);
+
+  const flushOne = useCallback(
+    async (item: QueuedDetection): Promise<void> => {
+      if (item.id === undefined) return;
+
+      // Resolve the QID now — at flush time we're (probably) online, so the
+      // live fallback can fill gaps the bundled map missed.
+      let entityUri = await lookupPregeneratedEntityUri(item.scientificName);
+      if (!entityUri) {
+        entityUri = await fetchWikidataEntityUri(
+          item.scientificName,
+          item.commonName,
+        );
+      }
+      if (!entityUri) {
+        // Still unresolvable. If we're offline again, leave it queued and
+        // bump the attempt counter; if online, the species genuinely has no
+        // QID and never will — drop it so the queue doesn't grow forever.
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          await markAttempt(item.id);
+        } else {
+          console.warn(
+            'Dropping queued detection with no resolvable Wikidata QID',
+            item.scientificName,
+          );
+          await removeQueuedDetection(item.id);
+        }
+        return;
+      }
+
+      // Cooldown check against everything we know about this species so a
+      // queued detection heard within 10 min of an already-published one
+      // (or another queued one for the same species) doesn't duplicate.
+      const historicalAt = historyRef.current.get(entityUri) ?? 0;
+      const sessionAt = sessionPublishedAt.current.get(entityUri) ?? 0;
+      const lastAt = Math.max(historicalAt, sessionAt);
+      if (lastAt > 0 && item.timestamp - lastAt < REPUBLISH_COOLDOWN_MS) {
+        // Within the cooldown of a more-recent publish — treat as a dup and
+        // drop it. (We flush oldest-first, so `lastAt` here is from an
+        // earlier-or-equal sighting that already represents this encounter.)
+        await removeQueuedDetection(item.id);
+        return;
+      }
+
+      try {
+        await publishResolvedDetection({
+          scientificName: item.scientificName,
+          commonName: item.commonName,
+          timestamp: item.timestamp,
+          entityUri,
+          geohash: item.geohash,
+        });
+        // Published — remove from the queue for good.
+        await removeQueuedDetection(item.id);
+      } catch (err) {
+        if (err instanceof PublishFailedError) {
+          // Network still down / relay rejected. Leave it queued; bump the
+          // attempt counter and stop this flush pass so we don't hammer a
+          // dead connection with the rest of the queue.
+          sessionPublishedAt.current.delete(entityUri);
+          await markAttempt(item.id);
+          throw err;
+        }
+        // Non-publish error (shouldn't happen) — re-throw to abort the pass.
+        throw err;
+      }
+    },
+    [publishResolvedDetection],
+  );
+
+  const flushQueue = useCallback(async (): Promise<void> => {
+    if (!userRef.current) return; // can't sign while logged out
+    if (flushingRef.current) return; // a flush is already in progress
+    flushingRef.current = true;
+    try {
+      const items = await getQueuedDetections(); // oldest heard-time first
+      for (const item of items) {
+        try {
+          await flushOne(item);
+        } catch {
+          // A publish failure means the connection is (still) down. Abort
+          // the rest of this pass; the next `online` event or mount will
+          // retry the remaining items.
+          break;
+        }
+      }
+    } finally {
+      flushingRef.current = false;
+    }
+  }, [flushOne]);
+
+  return { consider, flushQueue };
 }

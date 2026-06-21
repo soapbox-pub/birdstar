@@ -209,6 +209,16 @@ published by the same author for at least 10 minutes.
 
 Detections from logged-out users are never published.
 
+Detections heard while offline are not lost. When a publish fails (no
+connection, relay timeout, etc.) the detection is persisted to a local
+queue and retried when connectivity returns, repeatedly if necessary,
+until the event lands on a relay. The event's `created_at` always
+carries the original heard time, so a sighting published hours or days
+late is still timestamped to when the bird was actually heard — readers
+should expect kind 2473 events whose `created_at` precedes their arrival
+by an arbitrary amount, and SHOULD order detections by `created_at`
+rather than receipt time.
+
 Birdstar does not publish any location information on detections by
 default. The optional `g` tag is only attached when the user has
 explicitly enabled "Publish location" in the Birds-mode Settings
