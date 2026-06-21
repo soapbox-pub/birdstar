@@ -53,6 +53,33 @@ export default defineConfig(() => ({
         // so the full ~49 MB model is precached for offline inference.
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB per file
         cleanupOutdatedCaches: true,
+        // Runtime cache for Wikimedia media (bird/celestial photos and the
+        // Commons-hosted reference recordings shown in the detail sheets).
+        // CacheFirst because this content is effectively immutable — a
+        // species photo or song recording never changes — so once fetched
+        // it's served from cache forever, and works offline. Keeps these
+        // bytes out of the install precache (they'd bloat it) while still
+        // making repeat and offline views instant. The CSP already allows
+        // img-src/media-src https:, so no policy change is needed.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }: { url: URL }) =>
+              url.hostname === "upload.wikimedia.org",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "wikimedia-media",
+              expiration: {
+                maxEntries: 2000,
+                maxAgeSeconds: 60 * 60 * 24 * 60, // 60 days
+                purgeOnQuotaError: true,
+              },
+              cacheableResponse: {
+                // 0 covers opaque responses, 200 the normal CORS case.
+                statuses: [0, 200],
+              },
+            },
+          },
+        ],
       },
       devOptions: {
         enabled: false,
