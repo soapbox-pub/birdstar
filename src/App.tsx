@@ -9,6 +9,7 @@ import NostrProvider from '@/components/NostrProvider';
 import { NostrSync } from '@/components/NostrSync';
 import { BirdNetProvider } from '@/components/BirdNetProvider';
 import { FollowDetectionToaster } from '@/components/FollowDetectionToaster';
+import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { NostrLoginProvider } from '@nostrify/react/login';
@@ -58,6 +59,10 @@ export function App() {
               <NostrSync />
               <TooltipProvider>
                 <Toaster />
+                {/* Prompts the user to reload when a new service worker
+                    is available; also registers the service worker for
+                    offline support. */}
+                <PWAUpdatePrompt />
                 {/* Listens for kind 2473 bird-detection events from
                     the logged-in user's follows and raises a rich
                     toast per event. Needs to live inside
