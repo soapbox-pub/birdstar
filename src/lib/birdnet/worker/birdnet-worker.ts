@@ -14,13 +14,12 @@
 //     this approach works today even though an earlier attempt under a
 //     different bundler had to be abandoned (see useBirdNet.ts history).
 //
-//   • The worker has its *own* tfjs instance, its own WebGL context, and its
-//     own IndexedDB namespace-per-origin-per-worker. In practice this means
-//     the model is cached independently of the main thread's cache. That's
-//     fine — IndexedDB on the same origin is shared by default, and tfjs's
-//     IOHandler uses the same `indexeddb://` URL scheme, so a worker read
-//     hits the same entry the main thread would write (and vice versa). If
-//     a browser ever changed that we would just pay one extra download.
+//   • The worker has its *own* tfjs instance and its own WebGL context, but
+//     it loads the model from the same /birdnet/model/ URL as the main
+//     thread would. The service worker intercepts that fetch (workers are
+//     SW clients), so the weights come from the shared SW precache — no
+//     per-worker copy, no IndexedDB caching. Worst case on a browser that
+//     somehow bypassed the SW for worker fetches is one extra download.
 //
 //   • We never free the model between predicts: the worker lives for the
 //     lifetime of the page and a single terminate() call from the main

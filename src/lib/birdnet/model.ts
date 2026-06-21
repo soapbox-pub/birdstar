@@ -7,8 +7,9 @@
 // We ship them with the app under /birdnet/model/ (downloaded at build time
 // by `scripts/download-birdnet-model.ts` from the Chirpity jsDelivr mirror)
 // so they're served same-origin and precached by the service worker for
-// fully-offline use. The first load still downloads ~49 MB, after which the
-// model is cached in IndexedDB and served by the SW precache thereafter.
+// fully-offline use. The service-worker cache is the single source of
+// truth: the first install downloads ~49 MB, and every load thereafter —
+// online or offline, main thread or worker — is served from that precache.
 //
 // ## Hybrid CPU-mel-spec / GPU-CNN pipeline
 //
@@ -60,11 +61,16 @@ export const BIRDNET_CHUNK_SAMPLES = BIRDNET_SAMPLE_RATE * BIRDNET_CHUNK_SECONDS
 
 const MODEL_BASE_URL = '/birdnet/model';
 
-// IndexedDB key used by tfjs's built-in IOHandler to cache the model weights
-// between sessions. Bump the version suffix when switching to an incompatible
-// model to invalidate old caches.
-const MODEL_CACHE_KEY = 'birdnet-global-6k-v2.4';
-const MODEL_CACHE_URL = `indexeddb://${MODEL_CACHE_KEY}`;
+// IndexedDB key used by tfjs's IOHandler in earlier versions, when we
+// cached the freshly-downloaded weights here between sessions. We no
+// longer do that — the model is a same-origin asset under /birdnet/model/
+// precached by the service worker, so the SW cache is now the single
+// source of offline truth and the IndexedDB copy was pure duplication
+// (~49 MB) plus a version-skew hazard. The key is retained only so
+// `clearBirdNetCache` can evict the stale entry left on existing
+// installs. Safe to delete once all clients have upgraded.
+const LEGACY_MODEL_CACHE_KEY = 'birdnet-global-6k-v2.4';
+const LEGACY_MODEL_CACHE_URL = `indexeddb://${LEGACY_MODEL_CACHE_KEY}`;
 
 export interface BirdPrediction {
   /** Index into the labels array. */
@@ -120,58 +126,26 @@ export interface MelSpecSlot {
 
 let enginePromise: Promise<BirdNetEngine> | null = null;
 
-/** Check if the model is already cached in IndexedDB. */
-async function isModelCached(): Promise<boolean> {
-  try {
-    const models = await tf.io.listModels();
-    return MODEL_CACHE_URL in models;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Load the raw tfjs LayersModel. Prefer `loadBirdNetEngine` in production
  * code — the engine wrapper is what makes the hybrid CPU-mel-spec pipeline
  * work. This function is exported separately so warm-up code and tests can
  * still exercise the unmodified model.
+ *
+ * The weights live under /birdnet/model/ as same-origin static assets that
+ * the service worker precaches (see vite.config.ts). That makes the SW
+ * cache the single source of truth — online it serves from disk after the
+ * first install, offline it serves from the precache — so we load straight
+ * from the URL every time rather than maintaining a second copy in
+ * IndexedDB. (On a worker thread the SW still intercepts the fetch, so this
+ * works there too.)
  */
 export async function loadBirdNetModel(
   onProgress?: (fraction: number) => void,
 ): Promise<tf.LayersModel> {
-  // Fast path: model weights are already in IndexedDB from a previous visit.
-  if (await isModelCached()) {
-    try {
-      const cached = await tf.loadLayersModel(MODEL_CACHE_URL);
-      // Report instant completion so the UI can advance past the loading state.
-      onProgress?.(1);
-      return cached;
-    } catch (err) {
-      // Cached copy is corrupt or incompatible — wipe it and fall through
-      // to a fresh network fetch.
-      console.warn('Failed to load cached BirdNET model, re-downloading', err);
-      try {
-        await tf.io.removeModel(MODEL_CACHE_URL);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  const model = await tf.loadLayersModel(`${MODEL_BASE_URL}/model.json`, {
+  return tf.loadLayersModel(`${MODEL_BASE_URL}/model.json`, {
     onProgress: (fraction) => onProgress?.(fraction),
   });
-
-  // Persist for next time. This is a background-ish operation, but we await
-  // it so errors surface; it's fast once the weights are already in memory.
-  try {
-    await model.save(MODEL_CACHE_URL);
-  } catch (err) {
-    // Not fatal — quota errors etc. just mean we'll re-download next visit.
-    console.warn('Failed to cache BirdNET model in IndexedDB', err);
-  }
-
-  return model;
 }
 
 /**
@@ -281,6 +255,11 @@ export async function loadBirdNetEngine(
 ): Promise<BirdNetEngine> {
   if (enginePromise) return enginePromise;
   enginePromise = (async () => {
+    // Reclaim the ~49 MB legacy IndexedDB copy on existing installs. The
+    // model now loads from the service-worker precache instead, so the old
+    // cache is dead weight. Fire-and-forget — eviction must never block or
+    // fail the model load.
+    void clearBirdNetCache();
     const model = await loadBirdNetModel(onProgress);
     return buildBirdNetEngine(model);
   })();
@@ -291,14 +270,17 @@ export async function loadBirdNetEngine(
 }
 
 /**
- * Delete the cached BirdNET model from IndexedDB.
- * Useful for debugging or if the user wants to reclaim storage.
+ * Evict the legacy IndexedDB-cached BirdNET model left by versions that
+ * cached the weights there. No-op when nothing is cached. Existing installs
+ * carry a ~49 MB copy that's now redundant with the service-worker
+ * precache; `loadBirdNetEngine` fires this once on first load so that
+ * storage is reclaimed without the user doing anything. Idempotent.
  */
 export async function clearBirdNetCache(): Promise<void> {
   try {
-    await tf.io.removeModel(MODEL_CACHE_URL);
+    await tf.io.removeModel(LEGACY_MODEL_CACHE_URL);
   } catch {
-    // ignore — nothing cached
+    // ignore — nothing cached (the common case after the first cleanup)
   }
 }
 

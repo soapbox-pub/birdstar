@@ -40,9 +40,10 @@ const REPO_ROOT = resolve(__dirname, '..');
 const OUTPUT_DIR = resolve(REPO_ROOT, 'public/birdnet/model');
 
 // Pin to the same jsDelivr-served Chirpity export the app loaded at
-// runtime before. Keep this in sync with the version suffix in
-// src/lib/birdnet/model.ts (MODEL_CACHE_KEY) — bumping the upstream
-// model means bumping that cache key too.
+// runtime before. When bumping to an incompatible upstream model, also
+// bump the service-worker precache (it keys on file contents, so changed
+// shards are re-fetched automatically) and clear any stale legacy
+// IndexedDB copy via clearBirdNetCache in src/lib/birdnet/model.ts.
 const MODEL_BASE_URL =
   'https://cdn.jsdelivr.net/gh/Mattk70/Chirpity-Electron@master/BirdNET_GLOBAL_6K_V2.4_Model_TFJS/static/model';
 
