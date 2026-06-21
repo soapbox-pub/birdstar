@@ -1675,7 +1675,7 @@ function SettingsSheet({
             </div>
           </section>
 
-          <div className="pt-4 border-t flex justify-center">
+          <div className="pt-4 border-t flex flex-col items-center gap-2">
             <CopyrightDialog
               trigger={
                 <button
@@ -1686,6 +1686,9 @@ function SettingsSheet({
                 </button>
               }
             />
+            <span className="font-mono text-[10px] tracking-widest text-muted-foreground/60">
+              {__COMMIT_HASH__.slice(0, 8)}
+            </span>
           </div>
         </div>
       </SheetContent>
