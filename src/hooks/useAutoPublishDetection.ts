@@ -441,6 +441,27 @@ export function useAutoPublishDetection({
           // rather than the relay round-trip.
           sessionPublishedAt.current.set(entityUri, detection.timestamp);
 
+          // If we already know we're offline, don't even attempt to sign +
+          // publish — queue straight away. This matters for remote signers
+          // (NIP-46): signing requires reaching the bunker over the network,
+          // so an offline `signEvent` would just hang until it times out.
+          // We sign at flush time instead, when the connection (and the
+          // signer) are reachable again. The heard timestamp is preserved
+          // in the queue, so the later signature is over the correct
+          // `created_at`. Local signers (nsec / NIP-07) could sign offline,
+          // but queuing them the same way keeps one code path and avoids
+          // publishing a signed-but-undeliverable event.
+          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            sessionPublishedAt.current.delete(entityUri);
+            await enqueueDetection({
+              scientificName: detection.scientificName,
+              commonName: detection.commonName,
+              timestamp: detection.timestamp,
+              geohash,
+            });
+            return;
+          }
+
           try {
             await publishResolvedDetection({
               scientificName: detection.scientificName,
