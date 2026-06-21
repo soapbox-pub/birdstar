@@ -4,9 +4,11 @@
 //
 // The model weights were converted to TFJS format by the Chirpity project
 // (MIT-licensed source, CC-BY-NC-SA-4.0 model weights — non-commercial use only).
-// We load them from jsDelivr, which serves the GitHub repo contents with
-// proper CORS headers and edge caching, and avoids us having to re-host ~50MB
-// of weight shards ourselves.
+// We ship them with the app under /birdnet/model/ (downloaded at build time
+// by `scripts/download-birdnet-model.ts` from the Chirpity jsDelivr mirror)
+// so they're served same-origin and precached by the service worker for
+// fully-offline use. The first load still downloads ~49 MB, after which the
+// model is cached in IndexedDB and served by the SW precache thereafter.
 //
 // ## Hybrid CPU-mel-spec / GPU-CNN pipeline
 //
@@ -56,8 +58,7 @@ export const BIRDNET_SAMPLE_RATE = 48_000;
 export const BIRDNET_CHUNK_SECONDS = 3;
 export const BIRDNET_CHUNK_SAMPLES = BIRDNET_SAMPLE_RATE * BIRDNET_CHUNK_SECONDS;
 
-const MODEL_BASE_URL =
-  'https://cdn.jsdelivr.net/gh/Mattk70/Chirpity-Electron@master/BirdNET_GLOBAL_6K_V2.4_Model_TFJS/static/model';
+const MODEL_BASE_URL = '/birdnet/model';
 
 // IndexedDB key used by tfjs's built-in IOHandler to cache the model weights
 // between sessions. Bump the version suffix when switching to an incompatible

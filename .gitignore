@@ -17,6 +17,11 @@ dist-ssr
 yarn.lock
 deploy.sh
 
+# BirdNET model weights (~49 MB, CC-BY-NC-SA-4.0). Downloaded on demand by
+# `npm run fetch:birdnet-model` (runs automatically in dev/build/test);
+# not committed to keep the repo lean and to avoid vendoring the weights.
+/public/birdnet/model/
+
 # Editor directories and files
 .idea
 .DS_Store

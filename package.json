@@ -13,9 +13,10 @@
     "url": "https://gitlab.com/soapbox-pub/birdstar/-/issues"
   },
   "scripts": {
-    "dev": "npm i --silent && vite",
-    "build": "npm i --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'Project built successfully!'",
-    "test": "npm i --silent && tsc --noEmit && eslint --cache && vitest run --reporter=dot --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'All tests passed!'",
+    "dev": "npm i --silent && npm run fetch:birdnet-model && vite",
+    "build": "npm i --silent && npm run fetch:birdnet-model && vite build -l error && cp dist/index.html dist/404.html && echo 'Project built successfully!'",
+    "test": "npm i --silent && npm run fetch:birdnet-model && tsc --noEmit && eslint --cache && vitest run --reporter=dot --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'All tests passed!'",
+    "fetch:birdnet-model": "tsx scripts/download-birdnet-model.ts",
     "generate:wikidata-map": "tsx scripts/generate-wikidata-map.ts"
   },
   "dependencies": {

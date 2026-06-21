@@ -20,8 +20,10 @@ export default defineConfig(() => ({
       // generating one.
       manifest: false,
       // Precache the bundled app plus the static assets both modes need
-      // offline: BirdNET model data (.bin/.txt), the wikidata label map
-      // (.json), and audio assets (.m4a).
+      // offline: the BirdNET TFJS model weights (model.json + .bin shards,
+      // ~49 MB total, downloaded into public/birdnet/model/ at build time),
+      // the species/label data (.txt/.bin), the wikidata map (.json), and
+      // audio assets (.m4a).
       includeAssets: [
         "favicon.png",
         "birdstar.png",
@@ -34,9 +36,10 @@ export default defineConfig(() => ({
         globPatterns: [
           "**/*.{js,css,html,ico,png,svg,webp,woff,woff2,wasm,m4a,mp3,bin,txt,json}",
         ],
-        // BirdNET's TensorFlow.js wasm/model chunks are large; raise the
-        // per-file precache ceiling so they're available offline.
-        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB
+        // BirdNET weight shards are ~4 MB each; the per-file ceiling just
+        // needs headroom above that. There's no cap on total precache size,
+        // so the full ~49 MB model is precached for offline inference.
+        maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB per file
         cleanupOutdatedCaches: true,
       },
       devOptions: {
