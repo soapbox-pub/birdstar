@@ -53,14 +53,17 @@ export default defineConfig(() => ({
         // so the full ~49 MB model is precached for offline inference.
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15 MB per file
         cleanupOutdatedCaches: true,
-        // Runtime cache for Wikimedia media (bird/celestial photos and the
-        // Commons-hosted reference recordings shown in the detail sheets).
-        // CacheFirst because this content is effectively immutable — a
-        // species photo or song recording never changes — so once fetched
-        // it's served from cache forever, and works offline. Keeps these
-        // bytes out of the install precache (they'd bloat it) while still
-        // making repeat and offline views instant. The CSP already allows
-        // img-src/media-src https:, so no policy change is needed.
+        // Runtime caches for the third-party content both modes pull in:
+        // the Wikimedia media bytes (bird/celestial photos, Commons
+        // recordings) and the Wikipedia/Wikidata API responses that tell us
+        // which media URLs to fetch. All CacheFirst because the content is
+        // effectively immutable — a species photo, recording, or its
+        // canonical Wikipedia/Wikidata mapping doesn't change — so once
+        // fetched it serves from cache and works offline. Kept out of the
+        // install precache (it'd bloat it) while still making repeat and
+        // offline views instant. The CSP already allows img-src/media-src
+        // https: and connect-src the wiki API hosts, so no policy change is
+        // needed.
         runtimeCaching: [
           {
             urlPattern: ({ url }: { url: URL }) =>
@@ -68,6 +71,45 @@ export default defineConfig(() => ({
             handler: "CacheFirst",
             options: {
               cacheName: "wikimedia-media",
+              expiration: {
+                maxEntries: 2000,
+                maxAgeSeconds: 60 * 60 * 24 * 60, // 60 days
+                purgeOnQuotaError: true,
+              },
+              cacheableResponse: {
+                // 0 covers opaque responses, 200 the normal CORS case.
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // The Wikipedia/Wikidata API responses that resolve a species to
+            // its image, sound, and Wikidata entity URLs. Without caching
+            // these, offline Birdex entries never learn the
+            // upload.wikimedia.org URL of their photo (the bytes are cached
+            // above, but the URL pointing at them isn't known), so the image
+            // can't render. Covers:
+            //   - en.wikipedia.org/api/rest_v1/page/summary/*  (Birdex image
+            //     + extract, useBirdInfo / useWikipediaSummary)
+            //   - en.wikipedia.org/api/rest_v1/page/media-list/* (bird sound
+            //     discovery, useWikipediaSound)
+            //   - en.wikipedia.org/w/api.php?...                (videoinfo
+            //     sound URL resolution, useWikipediaSound)
+            //   - query.wikidata.org/sparql?...                 (entity URI
+            //     resolution, wikidata.ts)
+            // CacheFirst because these resolutions are effectively immutable —
+            // a species' canonical Wikipedia article and Wikidata entity don't
+            // meaningfully change — so once fetched they serve from cache and
+            // work offline. Like the media cache, this stays out of the
+            // install precache.
+            urlPattern: ({ url }: { url: URL }) =>
+              (url.hostname === "en.wikipedia.org" &&
+                (url.pathname.startsWith("/api/rest_v1/") ||
+                  url.pathname === "/w/api.php")) ||
+              url.hostname === "query.wikidata.org",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "wiki-api",
               expiration: {
                 maxEntries: 2000,
                 maxAgeSeconds: 60 * 60 * 24 * 60, // 60 days
