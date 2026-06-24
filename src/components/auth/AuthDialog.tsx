@@ -5,11 +5,8 @@ import {
   Eye,
   EyeOff,
   Key,
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronUp,
   Loader2,
+  FileUp,
   ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,22 +14,22 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { QRCodeCanvas } from '@/components/ui/qrcode';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/useToast';
 import {
   useLoginActions,
   generateNostrConnectParams,
   generateNostrConnectURI,
   type NostrConnectParams,
+  type NostrConnectStatus,
 } from '@/hooks/useLoginActions';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useUploadFile } from '@/hooks/useUploadFile';
-import { useIsMobile } from '@/hooks/useIsMobile';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 
 interface AuthDialogProps {
@@ -40,10 +37,21 @@ interface AuthDialogProps {
   onClose: () => void;
 }
 
-type Step = 'welcome' | 'generate' | 'secure' | 'profile' | 'login' | 'connect';
+type Step = 'welcome' | 'generate' | 'secure' | 'profile' | 'login';
 
 const validateNsec = (nsec: string) => /^nsec1[a-zA-Z0-9]{58}$/.test(nsec);
 const validateBunkerUri = (uri: string) => uri.startsWith('bunker://');
+
+const connectStatusLabel = (status: NostrConnectStatus | null): string => {
+  switch (status) {
+    case 'awaiting-connect':
+      return 'Waiting for signer connection…';
+    case 'getting-public-key':
+      return 'Getting public key…';
+    default:
+      return '';
+  }
+};
 
 /** Check if running on an actual mobile device (not just a small screen). */
 function isMobileDevice(): boolean {
@@ -80,36 +88,44 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [profileData, setProfileData] = useState({ name: '', about: '', picture: '' });
 
-  // Login state
-  const [loginNsec, setLoginNsec] = useState('');
+  // Login state — single input accepting either an nsec or a bunker URI.
+  const [loginInput, setLoginInput] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
-  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
-  // Nostrconnect / bunker state
+  // Nostrconnect ("Open signer app") state. No QR code is shown — the URI is
+  // launched directly on the device and the app listens for the handshake.
   const [nostrConnectParams, setNostrConnectParams] = useState<NostrConnectParams | null>(null);
   const [nostrConnectUri, setNostrConnectUri] = useState('');
-  const [isWaitingForConnect, setIsWaitingForConnect] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
-  const [uriCopied, setUriCopied] = useState(false);
-  const [showBunkerInput, setShowBunkerInput] = useState(false);
-  const [bunkerUri, setBunkerUri] = useState('');
+  // Progress status for the nostrconnect handshake. `null` means the user
+  // hasn't launched the signer yet (or they canceled).
+  const [connectStatus, setConnectStatus] = useState<NostrConnectStatus | null>(null);
+  // Whether the user has launched the signer app. Until then we show the
+  // login form; once launched we swap in the progress view.
+  const [hasOpenedSigner, setHasOpenedSigner] = useState(false);
 
   const login = useLoginActions();
-  // Stable ref so the nostrconnect effect doesn't restart on every render.
+  // Stable refs so the nostrconnect listening effect below doesn't restart on
+  // every parent render. Parents typically pass inline arrow functions for
+  // onClose, and useLoginActions returns a fresh object each render — without
+  // stable refs, an effect depending on them would tear down the in-flight
+  // subscription on every render and cause approved logins to be swallowed.
   const loginRef = useRef(login);
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
     loginRef.current = login;
   }, [login]);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const { mutateAsync: publishEvent, isPending: isPublishing } = useNostrPublish();
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
+  const { user: currentUser } = useCurrentUser();
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const isMobile = useIsMobile();
-
-  const hasExtension = typeof window !== 'undefined' && 'nostr' in window;
 
   // Reset state when the dialog closes.
   // This is the "reset state when a prop changes" pattern; the usual
@@ -121,28 +137,26 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
       /* eslint-disable react-hooks/set-state-in-effect */
       setStep('welcome');
       setNsec('');
-      setLoginNsec('');
+      setLoginInput('');
       setShowKey(false);
       setIsGenerating(false);
       setIsLoggingIn(false);
       setLoginError('');
-      setShowMoreOptions(false);
       setProfileData({ name: '', about: '', picture: '' });
       setNostrConnectParams(null);
       setNostrConnectUri('');
-      setIsWaitingForConnect(false);
       setConnectError(null);
-      setUriCopied(false);
-      setShowBunkerInput(false);
-      setBunkerUri('');
+      setConnectStatus(null);
+      setHasOpenedSigner(false);
       /* eslint-enable react-hooks/set-state-in-effect */
       abortControllerRef.current?.abort();
       abortControllerRef.current = null;
     }
   }, [isOpen]);
 
-  // Generate a nostrconnect session (QR code data).
-  const generateConnectSession = useCallback(() => {
+  // Generate a nostrconnect session and return its URI. The listening effect
+  // (keyed on the params) handles the handshake once params are set.
+  const generateConnectSession = useCallback((): string => {
     const relayUrls = login.getRelayUrls();
     const params = generateNostrConnectParams(relayUrls);
     const uri = generateNostrConnectURI(params, {
@@ -151,80 +165,77 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
     setNostrConnectParams(params);
     setNostrConnectUri(uri);
     setConnectError(null);
+    return uri;
   }, [login]);
 
   // Start listening for a nostrconnect response once params are set.
+  //
+  // Deps are intentionally limited to `nostrConnectParams` so that parent
+  // re-renders (which produce fresh onClose closures and a fresh `login`
+  // object from useLoginActions) do NOT tear down an in-flight
+  // subscription. An earlier version used a `cancelled` flag flipped by
+  // the effect's cleanup, which caused a successful nostrconnect response
+  // to be silently swallowed after the signer approved — the subscription
+  // was re-created mid-handshake and the first instance's success branch
+  // saw `cancelled === true`.
+  //
+  // Cancellation is handled explicitly by the `isOpen` effect (on dialog
+  // close) and by handleConnectRetry() (on user cancel/retry).
   useEffect(() => {
-    if (!nostrConnectParams || isWaitingForConnect) return;
-
-    let cancelled = false;
+    if (!nostrConnectParams) return;
 
     const startListening = async () => {
-      setIsWaitingForConnect(true);
-      abortControllerRef.current = new AbortController();
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       try {
         await loginRef.current.nostrconnect(
           nostrConnectParams,
-          abortControllerRef.current.signal,
+          controller.signal,
+          (status) => {
+            if (controller.signal.aborted) return;
+            setConnectStatus(status);
+          },
         );
-        if (!cancelled) onClose();
+        // If the dialog was explicitly closed (handled by the isOpen
+        // effect, which aborts the controller), don't try to re-close it.
+        // Otherwise the user is logged in — close the dialog.
+        if (controller.signal.aborted) return;
+        onCloseRef.current();
       } catch (error) {
-        if (cancelled) return;
+        // AbortError means we intentionally aborted (dialog closed or retry)
         if (error instanceof Error && error.name === 'AbortError') return;
+        if (controller.signal.aborted) return;
         console.error('Nostrconnect failed:', error);
+        setConnectStatus(null);
         setConnectError(error instanceof Error ? error.message : String(error));
-        setIsWaitingForConnect(false);
       }
     };
 
     startListening();
 
-    return () => {
-      cancelled = true;
-    };
-    // NOTE: isWaitingForConnect is intentionally excluded from deps. Including
-    // it would cancel the first run the moment it sets the flag to true and
-    // spawn a duplicate listener.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nostrConnectParams, onClose]);
+    // No cleanup here: we do NOT want a re-render-triggered effect teardown
+    // to cancel the in-flight subscription.
+  }, [nostrConnectParams]);
 
   const handleConnectRetry = useCallback(() => {
+    abortControllerRef.current?.abort();
     setNostrConnectParams(null);
     setNostrConnectUri('');
-    setIsWaitingForConnect(false);
     setConnectError(null);
-    setTimeout(() => generateConnectSession(), 0);
-  }, [generateConnectSession]);
+    setConnectStatus(null);
+    setHasOpenedSigner(false);
+  }, []);
 
-  const handleCopyUri = async () => {
-    await navigator.clipboard.writeText(nostrConnectUri);
-    setUriCopied(true);
-    setTimeout(() => setUriCopied(false), 2000);
-  };
-
+  // Launch a remote signer app via nostrconnect. Generates the session (if
+  // needed) and navigates to the URI; the listening effect handles the
+  // handshake. No QR code is shown.
   const handleOpenSignerApp = () => {
-    if (!nostrConnectUri) return;
-    window.location.href = nostrConnectUri;
-  };
-
-  const handleBunkerLogin = async () => {
-    if (!bunkerUri.trim() || !validateBunkerUri(bunkerUri)) return;
-
-    setIsLoggingIn(true);
-    try {
-      await login.bunker(bunkerUri);
-      onClose();
-    } catch {
-      setConnectError('Failed to connect. Check the bunker URI.');
-      setIsLoggingIn(false);
-    }
-  };
-
-  const goToConnect = () => {
-    setStep('connect');
-    if (!nostrConnectParams && !connectError) {
-      generateConnectSession();
+    setLoginError('');
+    setHasOpenedSigner(true);
+    const uri = nostrConnectUri || generateConnectSession();
+    if (uri) {
+      window.location.href = uri;
     }
   };
 
@@ -254,14 +265,29 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  // Login: submit the entered nsec.
+  // Login: submit the entered value — either an nsec or a bunker:// URI.
   const handleLogin = () => {
-    if (!loginNsec.trim()) {
-      setLoginError('Enter your secret key.');
+    const value = loginInput.trim();
+    if (!value) {
+      setLoginError('Enter your secret key or bunker URI.');
       return;
     }
-    if (!validateNsec(loginNsec)) {
-      setLoginError('Invalid secret key. Must start with nsec1.');
+
+    if (validateBunkerUri(value)) {
+      setIsLoggingIn(true);
+      setLoginError('');
+      login
+        .bunker(value)
+        .then(() => onClose())
+        .catch(() => {
+          setLoginError('Failed to connect. Check the bunker URI.');
+          setIsLoggingIn(false);
+        });
+      return;
+    }
+
+    if (!validateNsec(value)) {
+      setLoginError('Enter a valid nsec1… key or bunker://… URI.');
       return;
     }
 
@@ -270,7 +296,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
     // Timeout gives the UI a chance to repaint before the synchronous login.
     setTimeout(() => {
       try {
-        login.nsec(loginNsec);
+        login.nsec(value);
         onClose();
       } catch {
         setLoginError("Couldn't log in with this key.");
@@ -282,30 +308,20 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
       if (content && validateNsec(content.trim())) {
-        setLoginNsec(content.trim());
+        setLoginInput(content.trim());
+        setLoginError('');
       } else {
         setLoginError('File does not contain a valid secret key.');
       }
     };
     reader.onerror = () => setLoginError('Failed to read file.');
     reader.readAsText(file);
-  };
-
-  const handleExtensionLogin = async () => {
-    if (!hasExtension) return;
-    setIsLoggingIn(true);
-    try {
-      await login.extension();
-      onClose();
-    } catch (e) {
-      setLoginError(e instanceof Error ? e.message : 'Extension login failed.');
-      setIsLoggingIn(false);
-    }
   };
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -334,6 +350,32 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
   const finishSignup = async (skipProfile = false) => {
     try {
       if (!skipProfile && (profileData.name || profileData.about || profileData.picture)) {
+        // Defensive guard: only publish kind 0 if the current signer is
+        // the freshly generated key. If the auto-switch ever fails (e.g.
+        // a regression in useLoginActions), publishing here would sign
+        // with the *previous* user's signer and overwrite their kind 0
+        // metadata — destroying their profile. Refuse rather than risk
+        // it.
+        let expectedPubkey: string | null = null;
+        try {
+          const decoded = nip19.decode(nsec);
+          if (decoded.type === 'nsec') {
+            expectedPubkey = getPublicKey(decoded.data);
+          }
+        } catch {
+          // fall through to the mismatch branch below
+        }
+
+        if (!expectedPubkey || currentUser?.pubkey !== expectedPubkey) {
+          toast({
+            title: 'Profile not saved',
+            description:
+              'The new account is not active yet, so your profile was not published (this prevents overwriting another account). Try again from your profile settings.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
         const metadata: Record<string, string> = {};
         if (profileData.name) metadata.name = profileData.name;
         if (profileData.about) metadata.about = profileData.about;
@@ -356,17 +398,19 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
       case 'welcome':
         return 'Welcome';
       case 'generate':
-        return 'Create account';
+        return 'Create a Nostr account';
       case 'secure':
         return 'Save your key';
       case 'profile':
         return 'Your profile';
       case 'login':
         return 'Log in';
-      case 'connect':
-        return 'Connect signer';
     }
   };
+
+  // Once the user launches the signer app we replace the login form with a
+  // progress view so they see feedback while the handshake completes.
+  const showProgressView = hasOpenedSigner;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -385,20 +429,16 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                 🔑
               </div>
 
-              <p className="text-sm text-muted-foreground">
-                Join with a new Nostr account, or log in with one you already have.
-              </p>
-
               <div className="space-y-2">
-                <Button onClick={() => setStep('generate')} className="w-full h-12">
-                  Create new account
+                <Button onClick={() => setStep('generate')} className="w-full h-12 rounded-full">
+                  Create a new Nostr account
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="link"
                   onClick={() => setStep('login')}
-                  className="w-full h-12"
+                  className="w-full text-muted-foreground"
                 >
-                  I already have an account
+                  Log in to an existing account
                 </Button>
               </div>
             </div>
@@ -431,7 +471,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
               </div>
 
               {!isGenerating && (
-                <Button onClick={generateKey} className="w-full h-12">
+                <Button onClick={generateKey} className="w-full h-12 rounded-full">
                   Generate key
                 </Button>
               )}
@@ -484,7 +524,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                 </p>
               </div>
 
-              <Button onClick={downloadAndProceed} className="w-full h-12">
+              <Button onClick={downloadAndProceed} className="w-full h-12 rounded-full">
                 <Download className="w-4 h-4 mr-2" />
                 Download &amp; continue
               </Button>
@@ -572,7 +612,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                 <Button
                   onClick={() => finishSignup(false)}
                   disabled={isPublishing}
-                  className="w-full h-12"
+                  className="w-full h-12 rounded-full"
                 >
                   {isPublishing ? 'Saving…' : 'Finish'}
                 </Button>
@@ -580,7 +620,7 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
                   variant="ghost"
                   onClick={() => finishSignup(true)}
                   disabled={isPublishing}
-                  className="w-full"
+                  className="w-full rounded-full"
                 >
                   Skip for now
                 </Button>
@@ -591,175 +631,49 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
           {/* Login step. */}
           {step === 'login' && (
             <div className="space-y-4">
-              {hasExtension ? (
-                <>
-                  <Button
-                    onClick={handleExtensionLogin}
-                    disabled={isLoggingIn}
-                    className="w-full h-12"
-                  >
-                    {isLoggingIn ? 'Logging in…' : 'Log in with extension'}
+              {connectError ? (
+                <div className="flex flex-col items-center space-y-3 py-4">
+                  <p className="text-sm text-destructive text-center">{connectError}</p>
+                  <Button variant="outline" onClick={handleConnectRetry} className="rounded-full">
+                    Try again
                   </Button>
-
-                  <Button
-                    variant="outline"
-                    onClick={goToConnect}
-                    className="w-full h-12"
+                </div>
+              ) : showProgressView ? (
+                <div className="flex flex-col items-center space-y-4 py-6 w-full">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground text-center min-h-[1.25rem]">
+                    {connectStatusLabel(connectStatus) || 'Waiting for your signer…'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleConnectRetry}
+                    className="text-sm text-primary hover:underline underline-offset-4 font-medium"
                   >
-                    Use remote signer
-                  </Button>
-
-                  <Collapsible open={showMoreOptions} onOpenChange={setShowMoreOptions}>
-                    <CollapsibleTrigger className="w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground py-2">
-                      <span>Use secret key</span>
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform ${
-                          showMoreOptions ? 'rotate-180' : ''
-                        }`}
-                      />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="space-y-3 pt-1">
-                      <NsecLoginForm
-                        loginNsec={loginNsec}
-                        setLoginNsec={setLoginNsec}
-                        loginError={loginError}
-                        setLoginError={setLoginError}
-                        isLoggingIn={isLoggingIn}
-                        onSubmit={handleLogin}
-                        onFileChange={handleFileUpload}
-                        fileInputRef={fileInputRef}
-                      />
-                    </CollapsibleContent>
-                  </Collapsible>
-                </>
+                    Cancel
+                  </button>
+                </div>
               ) : (
-                <>
-                  <NsecLoginForm
-                    loginNsec={loginNsec}
-                    setLoginNsec={setLoginNsec}
-                    loginError={loginError}
-                    setLoginError={setLoginError}
-                    isLoggingIn={isLoggingIn}
-                    onSubmit={handleLogin}
-                    onFileChange={handleFileUpload}
-                    fileInputRef={fileInputRef}
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={goToConnect}
-                    className="w-full"
-                  >
-                    Use remote signer
-                  </Button>
-                </>
+                <NsecLoginForm
+                  loginInput={loginInput}
+                  setLoginInput={setLoginInput}
+                  loginError={loginError}
+                  setLoginError={setLoginError}
+                  isLoggingIn={isLoggingIn}
+                  onSubmit={handleLogin}
+                  onFileChange={handleFileUpload}
+                  onOpenSignerApp={handleOpenSignerApp}
+                  fileInputRef={fileInputRef}
+                />
               )}
 
-              <button
-                onClick={() => setStep('welcome')}
-                className="w-full text-sm text-muted-foreground hover:text-foreground"
-              >
-                Back
-              </button>
-            </div>
-          )}
-
-          {/* Connect step — nostrconnect QR + bunker URI fallback. */}
-          {step === 'connect' && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground text-center">
-                {isMobile ? 'Open your signer app to connect.' : 'Scan with your signer app.'}
-              </p>
-
-              <div className="flex flex-col items-center space-y-4">
-                {connectError ? (
-                  <div className="flex flex-col items-center space-y-3 py-4">
-                    <p className="text-sm text-destructive text-center">{connectError}</p>
-                    <Button variant="outline" onClick={handleConnectRetry}>
-                      Try again
-                    </Button>
-                  </div>
-                ) : nostrConnectUri ? (
-                  <>
-                    {!isMobile && (
-                      <div className="p-4 bg-white rounded-xl">
-                        <QRCodeCanvas value={nostrConnectUri} size={180} level="M" />
-                      </div>
-                    )}
-
-                    {isMobile && (
-                      <Button onClick={handleOpenSignerApp} className="w-full h-12">
-                        <ExternalLink className="w-5 h-5 mr-2" />
-                        Open signer app
-                      </Button>
-                    )}
-
-                    <Button
-                      variant="outline"
-                      size={isMobile ? 'default' : 'sm'}
-                      className={isMobile ? 'w-full gap-2' : 'gap-2'}
-                      onClick={handleCopyUri}
-                    >
-                      {uriCopied ? (
-                        <>
-                          <Check className="w-4 h-4" />
-                          Copied
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4" />
-                          Copy URI
-                        </>
-                      )}
-                    </Button>
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center h-[100px]">
-                    <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-
-              {/* Manual bunker URI fallback. */}
-              <Collapsible open={showBunkerInput} onOpenChange={setShowBunkerInput}>
-                <CollapsibleTrigger className="w-full flex items-center justify-center gap-1 text-sm text-muted-foreground hover:text-foreground py-2">
-                  <span>Enter bunker URI manually</span>
-                  {showBunkerInput ? (
-                    <ChevronUp className="w-4 h-4" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4" />
-                  )}
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-3 pt-2">
-                  <Input
-                    value={bunkerUri}
-                    onChange={(e) => setBunkerUri(e.target.value)}
-                    placeholder="bunker://…"
-                    className="text-base md:text-sm"
-                  />
-                  {bunkerUri && !validateBunkerUri(bunkerUri) && (
-                    <Alert variant="destructive">
-                      <AlertDescription>Invalid bunker URI format.</AlertDescription>
-                    </Alert>
-                  )}
-                  <Button
-                    variant="outline"
-                    onClick={handleBunkerLogin}
-                    disabled={
-                      isLoggingIn || !bunkerUri.trim() || !validateBunkerUri(bunkerUri)
-                    }
-                    className="w-full"
-                  >
-                    {isLoggingIn ? 'Connecting…' : 'Connect'}
-                  </Button>
-                </CollapsibleContent>
-              </Collapsible>
-
-              <button
-                onClick={() => setStep('login')}
-                className="w-full text-sm text-muted-foreground hover:text-foreground"
-              >
-                Back
-              </button>
+              {!connectError && !showProgressView && (
+                <button
+                  onClick={() => setStep('welcome')}
+                  className="w-full text-sm text-muted-foreground hover:text-foreground"
+                >
+                  Back
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -768,26 +682,28 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
   );
 };
 
-/** Shared nsec input + submit + file-upload block used in the login step. */
+/** Shared login input (nsec or bunker URI) + submit + actions dropdown. */
 interface NsecLoginFormProps {
-  loginNsec: string;
-  setLoginNsec: (v: string) => void;
+  loginInput: string;
+  setLoginInput: (v: string) => void;
   loginError: string;
   setLoginError: (v: string) => void;
   isLoggingIn: boolean;
   onSubmit: () => void;
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenSignerApp: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
 const NsecLoginForm: React.FC<NsecLoginFormProps> = ({
-  loginNsec,
-  setLoginNsec,
+  loginInput,
+  setLoginInput,
   loginError,
   setLoginError,
   isLoggingIn,
   onSubmit,
   onFileChange,
+  onOpenSignerApp,
   fileInputRef,
 }) => (
   <form
@@ -797,27 +713,20 @@ const NsecLoginForm: React.FC<NsecLoginFormProps> = ({
     }}
     className="space-y-3"
   >
-    <Input
-      type="password"
-      value={loginNsec}
-      onChange={(e) => {
-        setLoginNsec(e.target.value);
-        if (loginError) setLoginError('');
-      }}
-      placeholder="nsec1…"
-      autoComplete="off"
-      className={loginError ? 'border-destructive focus-visible:ring-destructive' : ''}
-    />
-    {loginError && <p className="text-sm text-destructive">{loginError}</p>}
-
-    <div className="flex gap-2">
-      <Button
-        type="submit"
-        disabled={isLoggingIn || !loginNsec.trim()}
-        className="flex-1"
-      >
-        {isLoggingIn ? 'Logging in…' : 'Log in'}
-      </Button>
+    <div className="relative">
+      <Input
+        type="password"
+        value={loginInput}
+        onChange={(e) => {
+          setLoginInput(e.target.value);
+          if (loginError) setLoginError('');
+        }}
+        placeholder="nsec1… or bunker://…"
+        autoComplete="off"
+        className={`pr-10 ${
+          loginError ? 'border-destructive focus-visible:ring-destructive' : ''
+        }`}
+      />
       <input
         type="file"
         accept=".txt"
@@ -825,15 +734,39 @@ const NsecLoginForm: React.FC<NsecLoginFormProps> = ({
         ref={fileInputRef}
         onChange={onFileChange}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <Upload className="w-4 h-4" />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+            title="More login options"
+          >
+            <Upload className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+            <FileUp className="h-4 w-4" />
+            Select key file
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenSignerApp}>
+            <ExternalLink className="h-4 w-4" />
+            Open signer app
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
+    {loginError && <p className="text-sm text-destructive">{loginError}</p>}
+
+    <Button
+      type="submit"
+      disabled={isLoggingIn || !loginInput.trim()}
+      className="w-full rounded-full"
+    >
+      {isLoggingIn ? 'Logging in…' : 'Log in'}
+    </Button>
   </form>
 );
 
