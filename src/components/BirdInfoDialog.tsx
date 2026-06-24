@@ -27,7 +27,15 @@
 // `eventId`) and the parent supplies an `onDelete` callback, a destructive
 // action appears at the bottom of the dialog so the user can retract
 // their published sighting.
-import { HelpCircle, Loader2, Play, Sparkles, X } from 'lucide-react';
+import {
+  Check,
+  HelpCircle,
+  Loader2,
+  Play,
+  Plus,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import type { Detection } from '@/components/BirdCard';
 import type { BirdLabel } from '@/lib/birdnet/labels';
@@ -54,8 +62,11 @@ import { ObservationMap, MAP_ATTRIBUTION } from '@/components/ObservationMap';
 import { CommentsSection } from '@/components/comments/CommentsSection';
 import { SpeciesSightingsSection } from '@/components/SpeciesSightingsSection';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
+import { useBirdexMembership } from '@/hooks/useBirdexMembership';
 import { useBirdSound, type BirdSound } from '@/hooks/useBirdSound';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useInatTaxonId } from '@/hooks/useInatTaxonId';
+import { Button } from '@/components/ui/button';
 import {
   useBirdSoundboard,
   useIsSpeciesPlaying,
@@ -313,6 +324,21 @@ export function BirdInfoDialog({
                 </p>
               )}
 
+              {/* Add to / Remove from Birdex. The Birdex (kind 12473) is
+                  the user's curated cumulative species list. This button
+                  lets them manage membership directly, independent of
+                  whether they've published a detection for the species.
+                  Gated on a resolved Wikidata `entityUri` — the canonical
+                  species identity stored on the Birdex — so it only
+                  appears once we know what we'd be saving. Logged-out
+                  users see it too; tapping prompts them to log in. */}
+              {data?.entityUri ? (
+                <BirdexButton
+                  entityUri={data.entityUri}
+                  scientificName={scientificName}
+                />
+              ) : null}
+
               {/* Observation-density map. Shows iNat's heatmap of
                   where this species has actually been recorded,
                   centered on the user's region when available. Works
@@ -401,6 +427,78 @@ export function BirdInfoDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Add / remove this species to / from the user's Birdex.
+ *
+ * Renders a single full-width toggle button whose label and styling
+ * reflect current membership: an outlined "Add to Birdex" with a +
+ * glyph when the species is absent, a filled emerald "Remove from
+ * Birdex" with a checkmark when it's present. Membership and the
+ * publish flow are owned by `useBirdexMembership`, keyed on the
+ * species' canonical Wikidata entity URI.
+ *
+ * While the Birdex event is still loading we can't yet tell whether
+ * the species is a member, so the button renders disabled with a
+ * neutral "Birdex" label to avoid flashing the wrong state. During an
+ * in-flight publish it shows a spinner and disables to prevent a
+ * double-submit.
+ */
+function BirdexButton({
+  entityUri,
+  scientificName,
+}: {
+  entityUri: string;
+  scientificName: string | null;
+}) {
+  const { user } = useCurrentUser();
+  const { isOnBirdex, isLoading, toggle, isPending } = useBirdexMembership(
+    entityUri,
+    scientificName,
+  );
+
+  // Logged-out users can't have a Birdex; hide the control entirely
+  // rather than show a button that only leads to a "log in" toast. The
+  // login affordance lives elsewhere in the app chrome.
+  if (!user) return null;
+
+  const label = isLoading
+    ? 'Birdex'
+    : isOnBirdex
+      ? 'Remove from Birdex'
+      : 'Add to Birdex';
+
+  return (
+    <Button
+      type="button"
+      onClick={() => void toggle()}
+      disabled={isLoading || isPending}
+      aria-pressed={isOnBirdex}
+      variant={isOnBirdex ? 'default' : 'outline'}
+      className={cn(
+        'w-full gap-2',
+        isOnBirdex
+          ? cn(
+              'bg-emerald-600 text-white hover:bg-emerald-700',
+              'dark:bg-emerald-500 dark:text-emerald-950 dark:hover:bg-emerald-400',
+            )
+          : cn(
+              'border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800',
+              'dark:border-emerald-400/60 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200',
+            ),
+      )}
+    >
+      {isPending ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      ) : isOnBirdex ? (
+        <Check className="h-4 w-4" aria-hidden />
+      ) : (
+        <Plus className="h-4 w-4" aria-hidden />
+      )}
+      {label}
+    </Button>
   );
 }
 
