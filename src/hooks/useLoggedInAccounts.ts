@@ -25,7 +25,7 @@ export function useLoggedInAccounts() {
   const { store } = useNostrStorage();
   const { logins, setLogin, removeLogin } = useNostrLogin();
 
-  const { data: authors = [] } = useQuery({
+  const { data: authors = [], isLoading } = useQuery({
     queryKey: ['nostr', 'logins', logins.map((l) => l.id).join(';')],
     queryFn: async ({ signal }) => {
       const pubkeys = logins.map((l) => l.pubkey);
@@ -81,6 +81,7 @@ export function useLoggedInAccounts() {
     authors,
     currentUser,
     otherUsers,
+    isLoading,
     setLogin,
     removeLogin,
   };
