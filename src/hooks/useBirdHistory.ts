@@ -2,11 +2,12 @@
 // they persist across page refreshes. Returns a list of Detection-shaped
 // objects ready to render in the UI, plus the Set of Wikidata entity URIs
 // they cover — used elsewhere to dedupe auto-publishing.
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import type { NostrEvent } from '@nostrify/nostrify';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useNostrStorage } from '@/hooks/useNostrStorage';
 import type { Detection } from '@/components/BirdCard';
 
 const MAX_HISTORY = 200;
@@ -86,7 +87,33 @@ export interface HistoryResult {
 export function useBirdHistory(): HistoryResult {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+  const { store } = useNostrStorage();
+  const queryClient = useQueryClient();
   const pubkey = user?.pubkey;
+
+  // Seed the query from the local event store so a returning user's history
+  // renders instantly, before the network round-trip (and its 5s timeout)
+  // resolves. Unlike the Birdex this is a list of regular events, so we read
+  // the whole cached set rather than a single replaceable event and seed it as
+  // the query's data. The network query below stays authoritative and
+  // overwrites this when it lands; the seed never clobbers data that's already
+  // present (a network result that beat the cache read).
+  useEffect(() => {
+    if (!pubkey) return;
+    let cancelled = false;
+    void (async () => {
+      const cached = await store.query([
+        { kinds: [2473], authors: [pubkey], limit: MAX_HISTORY },
+      ]);
+      if (cancelled || cached.length === 0) return;
+      const key = ['bird-history', pubkey];
+      if (queryClient.getQueryData<NostrEvent[]>(key) !== undefined) return;
+      queryClient.setQueryData<NostrEvent[]>(key, cached);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [pubkey, store, queryClient]);
 
   const query = useQuery({
     // Keep history keyed on pubkey so switching accounts re-fetches.
@@ -140,7 +167,13 @@ export function useBirdHistory(): HistoryResult {
     return {
       detections,
       lastPublishedAt,
-      isLoading: Boolean(pubkey) && query.isLoading,
+      // "Loading" means "no value to render yet from ANY source", not "the
+      // network round-trip is still in flight". The cache-seed effect above
+      // populates `query.data` straight from IndexedDB, so a returning user
+      // clears this the moment the cache read lands — without waiting on the
+      // relay (or its 5s timeout). The background network query refines `data`
+      // when it resolves and never re-raises this flag.
+      isLoading: Boolean(pubkey) && query.data === undefined,
     };
-  }, [query.data, query.isLoading, pubkey]);
+  }, [query.data, pubkey]);
 }

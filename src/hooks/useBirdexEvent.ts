@@ -182,7 +182,13 @@ export function useBirdexEvent(): BirdexEventResult {
       event,
       entries,
       entityUriSet,
-      isLoading: Boolean(pubkey) && query.isLoading,
+      // "Loading" means "no value to render yet from ANY source", not "the
+      // network round-trip is still in flight". `useCacheFirstSeed` populates
+      // `query.data` straight from IndexedDB, so a returning user clears this
+      // the moment the cache read lands — without waiting on the relay (or its
+      // 5s timeout) to confirm. The background network query keeps running and
+      // refines `data` when it resolves; it never re-raises this flag.
+      isLoading: Boolean(pubkey) && query.data === undefined,
     };
-  }, [query.data, query.isLoading, pubkey]);
+  }, [query.data, pubkey]);
 }
