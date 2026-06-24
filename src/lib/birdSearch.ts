@@ -67,6 +67,27 @@ function tierFor(common: string, scientific: string, query: string): number {
 }
 
 /**
+ * Relevance score for an arbitrary (commonName, scientificName) pair
+ * against a raw query, using the same tiers as the BirdNET label scorer.
+ * Returns 0 for no match. Exposed so non-BirdNET sources (the local
+ * known-birds index) can be ranked consistently with BirdNET hits.
+ */
+export function scoreNamePair(
+  commonName: string,
+  scientificName: string,
+  rawQuery: string,
+): number {
+  const query = normalizeForSearch(rawQuery);
+  if (query.length < 2) return 0;
+  const common = normalizeForSearch(commonName);
+  const scientific = normalizeForSearch(scientificName);
+  const tier = tierFor(common, scientific, query);
+  if (tier === 0) return 0;
+  const lengthPenalty = Math.min(common.length, scientific.length) / 1000;
+  return tier - lengthPenalty;
+}
+
+/**
  * Search the BirdNET label set for species matching `rawQuery`,
  * ranked by relevance. Non-bird classes (noise, mammals, frogs) are
  * excluded. Returns at most `limit` matches.

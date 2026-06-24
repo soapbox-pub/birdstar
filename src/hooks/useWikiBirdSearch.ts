@@ -9,15 +9,15 @@ import {
 
 // Wikipedia search is a supplement to the instant local BirdNET scan, so
 // we only reach for the network once the query is substantial enough to
-// be worth two round-trips. Three chars filters out the noisiest, most
-// expensive broad searches ("ow", "te") while still catching short real
-// names ("owl", "jay", "tit").
+// be worth the round-trip. Three chars filters out the noisiest, broadest
+// searches ("ow", "te") while still catching short real names and
+// prefixes ("owl", "jay", "tit", "sec…" → Secretarybird).
 export const WIKI_SEARCH_MIN_LENGTH = 3;
 
 /**
- * Search Wikipedia (verified against Wikidata as bird taxa) for the
- * given query, cached in IndexedDB per normalized query so repeated
- * lookups cost zero network once warm.
+ * Search Wikipedia (filtered to articles Wikipedia categorizes as birds)
+ * for the given query, cached in IndexedDB per normalized query so
+ * repeated lookups cost zero network once warm.
  *
  * Returns confirmed bird species not necessarily present in BirdNET. The
  * caller (`useBirdSearch`) merges these with local matches, de-duplicates
@@ -48,7 +48,7 @@ export function useWikiBirdSearch(query: string | null) {
       const cached = await readWikiBirdSearch(trimmed);
       if (cached) return cached;
 
-      // 2. Live Wikipedia → Wikidata search, then persist for next time.
+      // 2. Live Wikipedia search, then persist for next time.
       const birds = await searchWikiBirds(trimmed, signal);
       // Only persist non-aborted, successful runs. `searchWikiBirds`
       // already degrades network failures to `[]`; caching an empty

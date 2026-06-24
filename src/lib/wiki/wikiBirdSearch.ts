@@ -1,100 +1,160 @@
-// Wikipedia/Wikidata-backed bird search.
+// Wikipedia-backed bird search.
 //
 // BirdNET's label set (~6,500 species) is the primary, instant search
 // corpus, but it's far from a complete list of the world's ~11,000 bird
-// species — and it carries none of the rarities, recent splits, or
-// regional specialties a curious birder might look up. This module
-// supplements the local BirdNET search with a live Wikipedia search,
-// keeping only results that Wikidata confirms are *bird taxa* so we
-// never surface a city, person, or album that happens to share a name.
+// species — it carries none of the rarities, recent splits, or regional
+// specialties a curious birder might look up (the Secretarybird, say).
+// This module supplements the local BirdNET search with a live Wikipedia
+// search, keeping only pages Wikipedia's own taxonomy categorizes as
+// birds so we never surface a city, person, racehorse, or album that
+// happens to share a name.
 //
-// The flow is two network hops, both batched:
+// Design notes — why NOT Wikidata SPARQL:
 //
-//   1. Wikipedia search (`generator=search` + `prop=pageprops`) returns
-//      candidate articles for the query along with each article's linked
-//      Wikidata Q-id (`wikibase_item`) in a single request.
-//   2. A single Wikidata SPARQL query takes all those Q-ids and, for the
-//      ones that are birds (instance-of taxon AND in class Aves), returns
-//      the canonical scientific name (`P225`) plus the English common
-//      name label. Non-birds simply don't come back, which is how we
-//      filter them out.
+//   The obvious "is this a bird" test is a Wikidata taxonomy walk
+//   (`?item wdt:P171* wd:Q5113` — ancestry reaches class Aves). It is
+//   authoritative but *pathologically slow*: the unbounded transitive
+//   property path routinely takes 10–70s on query.wikidata.org and often
+//   times out. That was the root cause of search "taking forever".
+//
+//   Instead we use a fast, CDN-cached signal that's already on every
+//   article: its Wikipedia categories. Real bird articles are reliably
+//   filed under categories containing the word "bird" — "Birds described
+//   in 1779", "Birds of prey", "Endemic birds of New Zealand",
+//   "Flightless birds", "Seabirds", etc. Checking for that token is a
+//   single sub-second request and needs no graph traversal.
+//
+// Matching strategy — why TWO searches:
+//
+//   Wikipedia full-text search (`generator=search`) ranks by article
+//   prominence, so a partial query like "secretar" buries the
+//   Secretarybird under politicians and racehorses, and a whole-word
+//   match is effectively required. Title prefix search
+//   (`generator=prefixsearch`) fixes incremental matching — "secretar"
+//   surfaces "Secretarybird" directly — but misses birds whose common
+//   name doesn't start with the query. We run BOTH in parallel and merge,
+//   so partial-word and full-text relevance both work.
 //
 // Results are cached per normalized query in IndexedDB (see
-// wikiBirdSearchStore.ts) so repeated searches — the same word typed,
-// cleared, and retyped, or revisited across sessions — cost zero network
-// once warm.
+// wikiBirdSearchStore.ts) so repeated searches cost zero network once
+// warm.
 //
 // Everything here is pure async data-fetching with no React; the
 // `useWikiBirdSearch` hook wraps it with TanStack Query + the cache.
 
-/** A bird species discovered via Wikipedia and confirmed via Wikidata. */
+/** A bird species discovered via Wikipedia. */
 export interface WikiBird {
-  /** Canonical scientific (binomial) name from Wikidata `P225`. Used as
-   *  the app's primary species key, slug source, and image lookup. */
+  /** Scientific (binomial) name when we can extract it from the page's
+   *  short description / title; otherwise falls back to the article
+   *  title. Used as the app's species key, slug source, and the primary
+   *  key for the Wikipedia image/sound lookups in SpeciesCell. */
   scientificName: string;
-  /** English common name (Wikidata label / Wikipedia title fallback). */
+  /** English common name — the (redirect-resolved) Wikipedia article
+   *  title. */
   commonName: string;
   /** Canonical Wikidata entity URI, e.g.
-   *  `https://www.wikidata.org/entity/Q12345`. */
-  entityUri: string;
+   *  `https://www.wikidata.org/entity/Q12345`, when the article has a
+   *  linked Wikidata item; null otherwise. */
+  entityUri: string | null;
 }
 
-// English Wikipedia API origin. We hit the action API (not the REST
-// summary endpoint) so we can both search AND pull each hit's Wikidata
-// Q-id in one request via `prop=pageprops`.
 const WIKIPEDIA_API = 'https://en.wikipedia.org/w/api.php';
-const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql';
 
-// How many Wikipedia candidates to consider per query. The Wikidata
-// verification step discards non-birds, so we over-fetch a little to
-// still surface a useful number of confirmed birds.
-const WIKIPEDIA_SEARCH_LIMIT = 20;
+// How many candidates to pull from EACH search generator. Kept modest so
+// the response stays small (categories balloon the payload) and parsing
+// is cheap; the bird-category filter then narrows to the real hits.
+const SEARCH_LIMIT = 20;
 
-interface WikipediaCandidate {
+interface WikipediaPage {
+  pageid: number;
   title: string;
-  qid: string;
-  /** Wikipedia's relevance rank for this hit (lower = more relevant).
-   *  Preserved so confirmed birds keep search-engine ordering, which
-   *  the page-id-keyed response object otherwise scrambles. */
-  order: number;
+  index: number;
+  qid: string | null;
+  categories: string[];
 }
 
 /**
- * Run the full Wikipedia → Wikidata bird search for a (already trimmed,
- * non-empty) query. Returns confirmed bird taxa only. Network or parse
- * failures degrade to an empty array rather than throwing, so a flaky
- * Wikipedia never breaks the local BirdNET search shown alongside it.
+ * Run the Wikipedia bird search for a (trimmed, non-empty) query.
+ * Returns confirmed-by-category bird articles only, de-duplicated and
+ * ranked. Network or parse failures degrade to an empty array rather
+ * than throwing, so a flaky Wikipedia never breaks the local BirdNET
+ * search shown alongside it.
  */
 export async function searchWikiBirds(
   query: string,
   signal?: AbortSignal,
 ): Promise<WikiBird[]> {
-  const candidates = await searchWikipediaCandidates(query, signal);
-  if (candidates.length === 0) return [];
-  return verifyBirdTaxa(candidates, signal);
+  // Prefix search (incremental / partial-word) and full-text search
+  // (relevance) in parallel; merge so both behaviours work.
+  const [prefixPages, fullTextPages] = await Promise.all([
+    fetchSearchPages('prefixsearch', query, signal),
+    fetchSearchPages('search', query, signal),
+  ]);
+
+  // Merge keeping the best (lowest) rank per page. Prefix hits are
+  // weighted slightly ahead of full-text hits at the same index because
+  // a title-prefix match is the stronger "you typed the start of this
+  // bird's name" signal.
+  const byId = new Map<number, { page: WikipediaPage; rank: number }>();
+  const consider = (page: WikipediaPage, rank: number) => {
+    const existing = byId.get(page.pageid);
+    if (!existing || rank < existing.rank) byId.set(page.pageid, { page, rank });
+  };
+  for (const p of prefixPages) consider(p, p.index);
+  for (const p of fullTextPages) consider(p, p.index + 0.5);
+
+  const ranked = [...byId.values()].sort((a, b) => a.rank - b.rank);
+
+  const birds: WikiBird[] = [];
+  const seenNames = new Set<string>();
+  for (const { page } of ranked) {
+    if (!isBirdByCategory(page.categories)) continue;
+    const commonName = page.title;
+    const scientificName = extractScientificName(page) ?? commonName;
+    const key = scientificName.toLowerCase();
+    if (seenNames.has(key)) continue;
+    seenNames.add(key);
+    birds.push({
+      scientificName,
+      commonName,
+      entityUri: page.qid
+        ? `https://www.wikidata.org/entity/${page.qid}`
+        : null,
+    });
+  }
+  return birds;
 }
 
 /**
- * Phase 1 — Wikipedia full-text search. Returns up to
- * WIKIPEDIA_SEARCH_LIMIT articles that have a linked Wikidata item,
- * each as `{ title, qid }`. Articles without a `wikibase_item` are
- * dropped because we can't verify them as birds.
+ * One Wikipedia action-API request driven by the given search generator
+ * (`prefixsearch` for title-prefix matching, `search` for full text).
+ * Pulls each hit's Wikidata Q-id (`pageprops`) and categories in the same
+ * request, and resolves redirects so a search hit like "Kakapo" lands on
+ * the real "Kākāpō" article (whose categories carry the bird signal).
  */
-async function searchWikipediaCandidates(
+async function fetchSearchPages(
+  generator: 'prefixsearch' | 'search',
   query: string,
   signal?: AbortSignal,
-): Promise<WikipediaCandidate[]> {
+): Promise<WikipediaPage[]> {
   const params = new URLSearchParams({
     action: 'query',
     format: 'json',
     origin: '*', // enable CORS for the public API
-    generator: 'search',
-    gsrsearch: query,
-    gsrnamespace: '0', // article namespace only
-    gsrlimit: String(WIKIPEDIA_SEARCH_LIMIT),
-    prop: 'pageprops',
+    redirects: '1',
+    generator,
+    prop: 'pageprops|categories',
     ppprop: 'wikibase_item',
+    cllimit: '500',
   });
+  if (generator === 'prefixsearch') {
+    params.set('gpssearch', query);
+    params.set('gpslimit', String(SEARCH_LIMIT));
+  } else {
+    params.set('gsrsearch', query);
+    params.set('gsrnamespace', '0'); // article namespace only
+    params.set('gsrlimit', String(SEARCH_LIMIT));
+  }
 
   let res: Response;
   try {
@@ -118,129 +178,155 @@ async function searchWikipediaCandidates(
     ?.query?.pages;
   if (!pages || typeof pages !== 'object') return [];
 
-  const candidates: WikipediaCandidate[] = [];
-  const seenQids = new Set<string>();
-  for (const page of Object.values(pages)) {
-    const p = page as {
+  const out: WikipediaPage[] = [];
+  for (const raw of Object.values(pages)) {
+    const p = raw as {
+      pageid?: unknown;
       title?: unknown;
       index?: unknown;
       pageprops?: { wikibase_item?: unknown };
+      categories?: Array<{ title?: unknown }>;
     };
+    const pageid = typeof p.pageid === 'number' ? p.pageid : null;
     const title = typeof p.title === 'string' ? p.title : null;
-    const qid = p.pageprops?.wikibase_item;
-    if (!title || typeof qid !== 'string' || !/^Q\d+$/.test(qid)) continue;
-    if (seenQids.has(qid)) continue;
-    seenQids.add(qid);
-    // `index` preserves Wikipedia's relevance ordering, which the pages
-    // map (keyed by page id) otherwise loses.
-    const order = typeof p.index === 'number' ? p.index : candidates.length;
-    candidates.push({ title, qid, order });
+    if (pageid === null || !title) continue;
+    const qidRaw = p.pageprops?.wikibase_item;
+    const qid =
+      typeof qidRaw === 'string' && /^Q\d+$/.test(qidRaw) ? qidRaw : null;
+    const categories = Array.isArray(p.categories)
+      ? p.categories
+          .map((c) => (typeof c.title === 'string' ? c.title : ''))
+          .filter(Boolean)
+      : [];
+    out.push({
+      pageid,
+      title,
+      index: typeof p.index === 'number' ? p.index : out.length,
+      qid,
+      categories,
+    });
   }
+  return out;
+}
 
-  candidates.sort((a, b) => a.order - b.order);
-  return candidates;
+// Category titles are namespaced ("Category:Birds of prey"). Determining
+// "is this article about a bird?" purely from categories — no slow
+// Wikidata taxonomy walk — needs two complementary signals, because
+// neither alone is reliable:
+//
+//   • Species/genus articles are filed under categories that literally
+//     contain the word "bird": "Birds described in 1766", "Birds of
+//     Canada", "Seabirds", "Flightless birds".
+//   • Higher taxa (family/order pages like "Kingfisher") often carry NO
+//     "bird" category at all — only the scientific clade names
+//     ("Alcedinidae", "Coraciiformes"). For those we match the bird
+//     ORDER name, since the ~44 extant bird orders are a small, stable,
+//     complete set and one of them reliably appears as a category on any
+//     bird taxon page.
+//
+// A false-positive guard excludes pop-culture categories ("Songs about
+// birds", "Hummingbirds in popular culture", "Fictional birds") that
+// contain "bird" but describe songs, comics, etc. — those are filtered
+// out unless the page ALSO looks like a real taxon (see isTaxonPage).
+
+// The word "bird" as a standalone-ish token in a category name.
+const BIRD_WORD_RE = /\bbirds?\b/i;
+
+// Pop-culture / non-taxonomic categories that mention birds but don't
+// make the article a bird. Checked to suppress false positives like the
+// song "Hummingbird Heartbeat" ("Songs about birds").
+const NON_TAXON_CATEGORY_RE =
+  /popular culture|fictional|songs about|albums|films|in art|mascots|sports|given names|surnames|video games|comics/i;
+
+// "Articles with 'species' microformats" / "Taxonbar…" / "Taxa named by…"
+// are emitted by Wikipedia's taxonomy infoboxes and reliably mark a page
+// as an actual taxon (present on every bird species AND family page,
+// absent from songs/comics/people/places).
+const TAXON_MARKER_RE = /species' microformats|taxonbar|taxa named by/i;
+
+// The 44 extant bird orders (Clements/IOC). A category equal to one of
+// these is a definitive "this is a bird taxon" signal — it catches
+// family/order pages that carry no "bird"-word category (e.g.
+// "Kingfisher" → "Coraciiformes").
+const BIRD_ORDERS = new Set(
+  [
+    'Struthioniformes',
+    'Rheiformes',
+    'Casuariiformes',
+    'Apterygiformes',
+    'Tinamiformes',
+    'Anseriformes',
+    'Galliformes',
+    'Phoenicopteriformes',
+    'Podicipediformes',
+    'Columbiformes',
+    'Mesitornithiformes',
+    'Pterocliformes',
+    'Otidiformes',
+    'Musophagiformes',
+    'Cuculiformes',
+    'Caprimulgiformes',
+    'Apodiformes',
+    'Opisthocomiformes',
+    'Gruiformes',
+    'Charadriiformes',
+    'Eurypygiformes',
+    'Phaethontiformes',
+    'Gaviiformes',
+    'Sphenisciformes',
+    'Procellariiformes',
+    'Ciconiiformes',
+    'Suliformes',
+    'Pelecaniformes',
+    'Cathartiformes',
+    'Accipitriformes',
+    'Strigiformes',
+    'Coliiformes',
+    'Leptosomiformes',
+    'Trogoniformes',
+    'Bucerotiformes',
+    'Coraciiformes',
+    'Piciformes',
+    'Cariamiformes',
+    'Falconiformes',
+    'Psittaciformes',
+    'Passeriformes',
+  ].map((o) => o.toLowerCase()),
+);
+
+/** True when the page's categories mark it as an actual taxon (vs. a
+ *  song/comic/person/place that merely mentions a bird). */
+function isTaxonPage(categories: string[]): boolean {
+  return categories.some((c) => TAXON_MARKER_RE.test(c));
+}
+
+function isBirdByCategory(categories: string[]): boolean {
+  const taxon = isTaxonPage(categories);
+  for (const raw of categories) {
+    const name = raw.replace(/^Category:/i, '');
+    // Bird order name (e.g. "Coraciiformes") — definitive for any taxon.
+    if (BIRD_ORDERS.has(name.toLowerCase())) return true;
+    // A "bird"-word category, unless it's a pop-culture mention on a
+    // non-taxon page (suppresses the song/comic false positives).
+    if (BIRD_WORD_RE.test(name)) {
+      if (taxon || !NON_TAXON_CATEGORY_RE.test(name)) return true;
+    }
+  }
+  return false;
 }
 
 /**
- * Phase 2 — Wikidata verification. Given Wikipedia candidates, returns
- * only those whose Wikidata item is a bird taxon, enriched with the
- * canonical scientific name (P225) and English common name.
- *
- * A single SPARQL query filters the candidate Q-ids to:
- *   - instance of (P31) taxon (Q16521), AND
- *   - in the bird class — we test `wdt:P171* wd:Q5113` (parent-taxon
- *     transitive closure reaches the class Aves, Q5113). This is the
- *     authoritative "is a bird" test and excludes mammals, plants,
- *     places, people, etc.
- *
- * Bird candidates that lack a P225 scientific name are dropped (we need
- * a binomial name as the species key); this is rare for real taxa.
+ * Best-effort scientific-name extraction without a second network hop.
+ * We detect when the article title IS already the binomial (e.g. someone
+ * searched "Sagittarius serpentarius"): a capitalized genus + lowercase
+ * species epithet, exactly two tokens. Returns null otherwise — callers
+ * fall back to the common-name title, and the per-cell Wikipedia lookups
+ * still resolve imagery from the common name.
  */
-async function verifyBirdTaxa(
-  candidates: WikipediaCandidate[],
-  signal?: AbortSignal,
-): Promise<WikiBird[]> {
-  const values = candidates.map((c) => `wd:${c.qid}`).join(' ');
-  // `?item` constrained to the candidate set; require taxon + Aves
-  // ancestry + a taxon name. We also grab the English label for a
-  // common-name fallback when P225 is the only name on the item.
-  const query = `SELECT ?item ?sci ?label WHERE {
-    VALUES ?item { ${values} }
-    ?item wdt:P31 wd:Q16521 .
-    ?item wdt:P171* wd:Q5113 .
-    ?item wdt:P225 ?sci .
-    OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) = "en") }
-  }`;
-
-  const url = `${WIKIDATA_SPARQL}?format=json&query=${encodeURIComponent(query)}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      headers: { accept: 'application/sparql-results+json' },
-      signal,
-    });
-  } catch {
-    return [];
-  }
-  if (!res.ok) return [];
-
-  let data: unknown;
-  try {
-    data = await res.json();
-  } catch {
-    return [];
-  }
-
-  const bindings = (
-    data as {
-      results?: { bindings?: Array<Record<string, { value?: unknown }>> };
-    }
-  )?.results?.bindings;
-  if (!Array.isArray(bindings)) return [];
-
-  // Map qid → its position in the original (relevance-ordered) candidate
-  // list so confirmed birds keep Wikipedia's ranking. Also map qid →
-  // article title for a final common-name fallback.
-  const orderByQid = new Map<string, number>();
-  const titleByQid = new Map<string, string>();
-  candidates.forEach((c, i) => {
-    orderByQid.set(c.qid, i);
-    titleByQid.set(c.qid, c.title);
-  });
-
-  const birds: Array<WikiBird & { order: number }> = [];
-  const seen = new Set<string>();
-  for (const row of bindings) {
-    const itemUri = row.item?.value;
-    const sci = row.sci?.value;
-    if (typeof itemUri !== 'string' || typeof sci !== 'string') continue;
-    const match = itemUri.match(/\/entity\/(Q\d+)$/);
-    const qid = match?.[1];
-    if (!qid || seen.has(qid)) continue;
-    seen.add(qid);
-
-    const scientificName = sci.trim();
-    if (!scientificName) continue;
-
-    // Prefer the English Wikidata label as the common name, but it's
-    // often the scientific name for taxa; fall back to the Wikipedia
-    // article title in that case (which is usually the common name).
-    const labelValue =
-      typeof row.label?.value === 'string' ? row.label.value.trim() : '';
-    const title = titleByQid.get(qid) ?? scientificName;
-    const commonName =
-      labelValue && labelValue.toLowerCase() !== scientificName.toLowerCase()
-        ? labelValue
-        : title;
-
-    birds.push({
-      scientificName,
-      commonName,
-      entityUri: `https://www.wikidata.org/entity/${qid}`,
-      order: orderByQid.get(qid) ?? birds.length,
-    });
-  }
-
-  birds.sort((a, b) => a.order - b.order);
-  return birds.map(({ order: _order, ...bird }) => bird);
+function extractScientificName(page: WikipediaPage): string | null {
+  // Title is itself a binomial: "Genus species" (genus capitalized,
+  // species epithet lowercase, exactly two tokens).
+  const titleBinomial = page.title.match(/^([A-Z][a-z]+)\s([a-z]+)$/);
+  if (titleBinomial) return page.title;
+  return null;
 }

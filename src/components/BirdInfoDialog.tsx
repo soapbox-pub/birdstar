@@ -35,7 +35,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { rememberKnownBirds } from '@/lib/wiki/knownBirdsStore';
 import type { Detection } from '@/components/BirdCard';
 import type { BirdLabel } from '@/lib/birdnet/labels';
 import {
@@ -145,6 +146,24 @@ export function BirdInfoDialog({
   // Passing null values keeps the query disabled until we have a real
   // subject, which avoids any spurious Wikipedia lookups.
   const { data, isLoading } = useBirdInfo(scientificName, commonName);
+
+  // Remember every bird the user opens in the local known-birds index so
+  // it stays instantly searchable (and works offline) afterwards — this
+  // is what lets a Wikipedia-discovered bird the user looked at once turn
+  // up in search later without re-hitting the network. Fire-and-forget;
+  // the store de-dupes by scientific name and swallows failures. We wait
+  // for `data?.entityUri` when available so the row carries the species'
+  // canonical Wikidata identity, but don't block on it.
+  useEffect(() => {
+    if (!scientificName && !commonName) return;
+    void rememberKnownBirds([
+      {
+        scientificName: scientificName ?? commonName ?? '',
+        commonName: commonName ?? scientificName ?? '',
+        entityUri: data?.entityUri ?? null,
+      },
+    ]);
+  }, [scientificName, commonName, data?.entityUri]);
 
   const detection = subject?.kind === 'detection' ? subject.detection : null;
   const isRare = subject?.kind === 'label' ? (subject.isRare ?? false) : false;
