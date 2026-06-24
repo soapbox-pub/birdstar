@@ -650,9 +650,14 @@ const IndexInner = () => {
   // Open the detail dialog for a bird AND reflect it in the URL as
   // `/bird/:slug` so the view is shareable / linkable. `selectedSubject`
   // stays the dialog's source of truth; the navigation is a side effect.
-  // Pending (player-bar, accumulating) subjects are intentionally
-  // state-only — they're transient and not yet a confirmed species, so
-  // there's nothing stable to share.
+  //
+  // Every subject kind navigates, including `pending` (a species the
+  // player bar is still accumulating toward confirmation): the species
+  // is real and the URL resolves to the same Wikipedia content, so the
+  // player-bar bird tap behaves like every other bird tap. The URL→
+  // dialog sync below treats a same-species slug as "already showing",
+  // so navigating here doesn't clobber the live `progress`/amber styling
+  // of an open pending dialog.
   const openSubject = useCallback(
     (subject: BirdSubject) => {
       setSelectedSubject(subject);
@@ -660,7 +665,7 @@ const IndexInner = () => {
         subject.kind === 'detection'
           ? subject.detection.scientificName
           : subject.label.scientificName;
-      if (subject.kind !== 'pending' && scientificName) {
+      if (scientificName) {
         navigate(`/bird/${birdSlug(scientificName)}`);
       }
     },
@@ -1169,9 +1174,9 @@ const IndexInner = () => {
       if (!labels) return;
       const label = labels.find((l) => l.scientificName === scientificName);
       if (!label) return;
-      setSelectedSubject({ kind: 'pending', label, progress });
+      openSubject({ kind: 'pending', label, progress });
     },
-    [labels],
+    [labels, openSubject],
   );
 
   const playerErrorMessage = useMemo(
