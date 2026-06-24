@@ -327,6 +327,19 @@ const IndexInner = () => {
 
   const history = useBirdHistory();
   const birdexEvent = useBirdexEvent();
+
+  // The grid lights up cells from `history`/`confirmedSightings` AND orders
+  // them by detection timestamp, but the durable kind 12473 Birdex is the
+  // cumulative authority that folds in older species (and re-ranks the
+  // confirmed cells) once it lands. Those two Nostr sources resolve on
+  // independent round-trips, so painting the grid the instant the first one
+  // arrives shows one ordering and then visibly re-sorts when the second
+  // lands. Hold the shimmer until BOTH have settled so the grid paints once,
+  // already in its final order. Both hooks report `isLoading` as
+  // `Boolean(pubkey) && query.isLoading`, so this is a no-op for logged-out
+  // visitors — their grid is the location-based starter set, with nothing to
+  // settle.
+  const birdexSettling = history.isLoading || birdexEvent.isLoading;
   // The "Recent sightings" feed under the birdex shows detections
   // from self + follows and is only meaningful for logged-in users;
   // we gate the whole section on `user` here so anonymous visitors
@@ -1260,7 +1273,7 @@ const IndexInner = () => {
         </div>
 
         <section className="mt-8 w-full">
-          {!labels ? (
+          {!labels || birdexSettling ? (
             <BirdexLoadingShimmer />
           ) : showRehomeGate ? (
             // Geo-fallback user asked to rehome: render the full
