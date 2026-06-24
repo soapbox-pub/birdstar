@@ -28,9 +28,9 @@
 // action appears at the bottom of the dialog so the user can retract
 // their published sighting.
 import {
-  Check,
   HelpCircle,
   Loader2,
+  Minus,
   Play,
   Plus,
   Sparkles,
@@ -476,14 +476,16 @@ function BirdexButton({
       onClick={() => void toggle()}
       disabled={isLoading || isPending}
       aria-pressed={isOnBirdex}
-      variant={isOnBirdex ? 'default' : 'outline'}
+      // Removal is destructive — it retracts the species from the user's
+      // curated list — so it wears the same red treatment as the dialog's
+      // Delete action. Adding is a positive, low-stakes action: an
+      // emerald outline matching the rest of the dialog's "confirmed"
+      // palette.
+      variant={isOnBirdex ? 'destructive' : 'outline'}
       className={cn(
         'w-full gap-2',
         isOnBirdex
-          ? cn(
-              'bg-emerald-600 text-white hover:bg-emerald-700',
-              'dark:bg-emerald-500 dark:text-emerald-950 dark:hover:bg-emerald-400',
-            )
+          ? undefined
           : cn(
               'border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800',
               'dark:border-emerald-400/60 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200',
@@ -493,7 +495,7 @@ function BirdexButton({
       {isPending ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
       ) : isOnBirdex ? (
-        <Check className="h-4 w-4" aria-hidden />
+        <Minus className="h-4 w-4" aria-hidden />
       ) : (
         <Plus className="h-4 w-4" aria-hidden />
       )}
