@@ -30,7 +30,6 @@
 import {
   HelpCircle,
   Loader2,
-  Minus,
   Play,
   Plus,
   Sparkles,
@@ -165,7 +164,40 @@ export function BirdInfoDialog({
   // the cumulative kind 12473 Birdex, the species' Wikidata `entityUri`.
   // The delete handler retracts every loaded 2473 event for the species
   // and prunes it from the Birdex.
-  const canDelete = Boolean(onDelete && (detection?.eventId || detection?.entityUri));
+  //
+  // A browsed species the user has *manually added* to the Birdex but
+  // never heard (a `label` subject with no detection) is also deletable:
+  // we synthesize a detection carrying just the species' `entityUri` so
+  // the same delete path can prune it from the Birdex. There's no 2473
+  // event to retract in that case — `useDeleteBirdDetection` handles the
+  // "Birdex-only, nothing to retract" branch and just republishes the
+  // pruned Birdex.
+  const { isOnBirdex } = useBirdexMembership(
+    data?.entityUri ?? null,
+    scientificName,
+  );
+
+  // For a Birdex-only species (on the Birdex, no detection subject),
+  // build a synthetic detection keyed on the entity URI so the Delete
+  // affordance shows and routes through the normal `onDelete` flow.
+  const birdexOnlyDetection: Detection | null =
+    !detection && isOnBirdex && data?.entityUri
+      ? {
+          id: `birdex:${data.entityUri}`,
+          commonName: commonName ?? '',
+          scientificName: scientificName ?? '',
+          timestamp: 0,
+          entityUri: data.entityUri,
+        }
+      : null;
+
+  // The detection the footer's Delete action operates on: the real one
+  // when present, else the synthetic Birdex-only one.
+  const deletableDetection = detection ?? birdexOnlyDetection;
+
+  const canDelete = Boolean(
+    onDelete && (deletableDetection?.eventId || deletableDetection?.entityUri),
+  );
 
   const song = useSongPlayer(
     sound,
@@ -366,7 +398,7 @@ export function BirdInfoDialog({
                   keeps the dialog focused on the bird, not on
                   metadata and chrome. */}
               <BirdInfoFooter
-                detection={detection}
+                detection={deletableDetection}
                 canDelete={canDelete}
                 isDeleting={isDeleting}
                 onDelete={onDelete}
@@ -431,19 +463,18 @@ export function BirdInfoDialog({
 }
 
 /**
- * Add / remove this species to / from the user's Birdex.
+ * "Add to Birdex" button for a species not yet on the user's Birdex.
  *
- * Renders a single full-width toggle button whose label and styling
- * reflect current membership: an outlined "Add to Birdex" with a +
- * glyph when the species is absent, a filled emerald "Remove from
- * Birdex" with a checkmark when it's present. Membership and the
- * publish flow are owned by `useBirdexMembership`, keyed on the
- * species' canonical Wikidata entity URI.
+ * Add-only by design: once a species is on the Birdex this returns null,
+ * because the dialog's existing Delete action already covers removal
+ * (deleting the sighting prunes the species from the Birdex too) and a
+ * second "remove" affordance would be redundant. Membership and the
+ * publish flow are owned by `useBirdexMembership`, keyed on the species'
+ * canonical Wikidata entity URI.
  *
- * While the Birdex event is still loading we can't yet tell whether
- * the species is a member, so the button renders disabled with a
- * neutral "Birdex" label to avoid flashing the wrong state. During an
- * in-flight publish it shows a spinner and disables to prevent a
+ * Hidden while the Birdex event is still loading (membership unknown),
+ * for logged-out users, and once the species is already a member. During
+ * an in-flight publish it shows a spinner and disables to prevent a
  * double-submit.
  */
 function BirdexButton({
@@ -454,7 +485,7 @@ function BirdexButton({
   scientificName: string | null;
 }) {
   const { user } = useCurrentUser();
-  const { isOnBirdex, isLoading, toggle, isPending } = useBirdexMembership(
+  const { isOnBirdex, isLoading, add, isPending } = useBirdexMembership(
     entityUri,
     scientificName,
   );
@@ -464,42 +495,29 @@ function BirdexButton({
   // login affordance lives elsewhere in the app chrome.
   if (!user) return null;
 
-  const label = isLoading
-    ? 'Birdex'
-    : isOnBirdex
-      ? 'Remove from Birdex'
-      : 'Add to Birdex';
+  // Don't render until we know membership (avoids flashing "Add" for a
+  // species that's already on the Birdex), and don't render at all once
+  // the species is a member — the Delete action below handles removal.
+  if (isLoading || isOnBirdex) return null;
 
   return (
     <Button
       type="button"
-      onClick={() => void toggle()}
-      disabled={isLoading || isPending}
-      aria-pressed={isOnBirdex}
-      // Removal is destructive — it retracts the species from the user's
-      // curated list — so it wears the same red treatment as the dialog's
-      // Delete action. Adding is a positive, low-stakes action: an
-      // emerald outline matching the rest of the dialog's "confirmed"
-      // palette.
-      variant={isOnBirdex ? 'destructive' : 'outline'}
+      onClick={() => void add()}
+      disabled={isPending}
+      variant="outline"
       className={cn(
         'w-full gap-2',
-        isOnBirdex
-          ? undefined
-          : cn(
-              'border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800',
-              'dark:border-emerald-400/60 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200',
-            ),
+        'border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800',
+        'dark:border-emerald-400/60 dark:text-emerald-300 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200',
       )}
     >
       {isPending ? (
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-      ) : isOnBirdex ? (
-        <Minus className="h-4 w-4" aria-hidden />
       ) : (
         <Plus className="h-4 w-4" aria-hidden />
       )}
-      {label}
+      Add to Birdex
     </Button>
   );
 }
@@ -717,6 +735,14 @@ function BirdInfoFooter({
 
   const showPublishedRow = canDelete && detection;
   const showPendingRow = pendingProgress !== null;
+  // A Birdex-only entry: a species the user manually added to their
+  // Birdex but never heard. It has the species' entity URI (so it's
+  // deletable → prunes the Birdex) but no underlying kind 2473 event and
+  // no real timestamp. Drives "Remove from Birdex" copy instead of the
+  // "Delete this sighting" copy used for actual detections.
+  const isBirdexOnly = Boolean(
+    detection && !detection.eventId && detection.timestamp === 0,
+  );
   // Sources are always shown when there's a scientific name, because
   // the observation map is always rendered and its CARTO/OSM credit
   // is required by ToS. wikiUrl and sound are optional additions to
@@ -763,7 +789,9 @@ function BirdInfoFooter({
           <span>
             {detection.eventId
               ? `Published to Nostr at ${formatTime(detection.timestamp)}`
-              : 'Recorded in your Birdex'}
+              : isBirdexOnly
+                ? 'In your Birdex'
+                : 'Recorded in your Birdex'}
           </span>
           <span className="text-stone-300 dark:text-stone-600" aria-hidden>
             ·
@@ -782,8 +810,10 @@ function BirdInfoFooter({
             {isDeleting ? (
               <>
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-                Deleting…
+                {isBirdexOnly ? 'Removing…' : 'Deleting…'}
               </>
+            ) : isBirdexOnly ? (
+              'Remove'
             ) : (
               'Delete'
             )}
@@ -808,15 +838,20 @@ function BirdInfoFooter({
         <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete this sighting?</AlertDialogTitle>
+              <AlertDialogTitle>
+                {isBirdexOnly ? 'Remove from your Birdex?' : 'Delete this sighting?'}
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 {detection.eventId
                   ? `This removes your published Nostr event and the species
                      from your Birdex. Deletion isn't guaranteed — some relays
                      may keep a copy indefinitely.`
-                  : `This removes the species from your Birdex and retracts any
-                     detections of it. Deletion isn't guaranteed — some relays
-                     may keep a copy indefinitely.`}
+                  : isBirdexOnly
+                    ? `This removes the species from your Birdex. Deletion isn't
+                       guaranteed — some relays may keep a copy indefinitely.`
+                    : `This removes the species from your Birdex and retracts any
+                       detections of it. Deletion isn't guaranteed — some relays
+                       may keep a copy indefinitely.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -831,7 +866,7 @@ function BirdInfoFooter({
                   'dark:bg-rose-600 dark:text-white dark:hover:bg-rose-700',
                 )}
               >
-                Delete
+                {isBirdexOnly ? 'Remove' : 'Delete'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

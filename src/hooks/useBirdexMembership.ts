@@ -1,22 +1,23 @@
-// Manual add/remove of a single species to/from the user's Birdex
-// (kind 12473). Complements the automatic, detection-coupled growth in
-// useAutoPublishDetection (lifer → append) and useDeleteBirdDetection
-// (delete → prune): this hook lets the user curate their Birdex
-// directly from the bird detail dialog, independent of whether they've
-// published a kind 2473 detection for the species.
+// Manual "add to Birdex" for a single species (kind 12473). Complements
+// the automatic, detection-coupled growth in useAutoPublishDetection
+// (lifer → append) and the pruning in useDeleteBirdDetection (delete →
+// prune): this hook lets the user add a species to their Birdex directly
+// from the bird detail dialog, independent of whether they've published a
+// kind 2473 detection for it.
+//
+// Removal is intentionally NOT offered here — the bird detail dialog's
+// existing Delete action already retracts a species (and prunes it from
+// the Birdex), so a second "remove" path would be redundant.
 //
 // A species is identified by its Wikidata entity URI — the canonical
 // identity used everywhere in the app (see NIP.md §"Kind 12473 —
 // Birdex"). Adding appends the species' `i`/`n` pair to the end of the
 // existing entry list, preserving the historical first-seen ordering of
-// everything already on the Birdex. Removing republishes the event with
-// that species' pair dropped.
-//
-// Both operations rebuild and republish the whole replaceable event,
-// reusing the current Birdex (loaded via useBirdexEvent) as the base.
-// Because kind 12473 is replaceable, the new event must carry a strictly
-// greater created_at than the prior one to win relay dedup, even across
-// clock skew between the user's devices.
+// everything already on the Birdex, then rebuilds and republishes the
+// whole replaceable event (reusing the current Birdex, loaded via
+// useBirdexEvent, as the base). Because kind 12473 is replaceable, the
+// new event must carry a strictly greater created_at than the prior one
+// to win relay dedup, even across clock skew between the user's devices.
 
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -39,11 +40,7 @@ export interface BirdexMembershipApi {
   isLoading: boolean;
   /** Add this species to the Birdex (no-op if already present). */
   add: () => Promise<void>;
-  /** Remove this species from the Birdex (no-op if absent). */
-  remove: () => Promise<void>;
-  /** Convenience: add if absent, remove if present. */
-  toggle: () => Promise<void>;
-  /** True while an add/remove publish is in flight. */
+  /** True while an add publish is in flight. */
   isPending: boolean;
 }
 
@@ -64,13 +61,13 @@ function buildBirdexTags(entries: BirdexSpeciesEntry[]): string[][] {
 }
 
 /**
- * Manual Birdex membership controls for a single species.
+ * Manual "add to Birdex" control for a single species.
  *
  * Pass the species' Wikidata `entityUri` (the canonical identity) and,
  * when known, its scientific name (stored alongside as the paired `n`
  * tag). When `entityUri` is null — e.g. Wikipedia exposed no
  * `wikibase_item` for the species — there's no stable identity to store,
- * so membership reads as false and the mutations no-op.
+ * so membership reads as false and `add` no-ops.
  */
 export function useBirdexMembership(
   entityUri: string | null,
@@ -87,31 +84,6 @@ export function useBirdexMembership(
   const hasValidUri =
     typeof entityUri === 'string' && WIKIDATA_ENTITY_URI_RE.test(entityUri);
   const isOnBirdex = hasValidUri && entityUriSet.has(entityUri);
-
-  const republish = useCallback(
-    async (nextEntries: BirdexSpeciesEntry[]) => {
-      // Replaceable events need a strictly-greater created_at to supersede
-      // the prior Birdex; max() guards against device clock skew.
-      const nowSec = Math.floor(Date.now() / 1000);
-      const createdAt = event
-        ? Math.max(nowSec, event.created_at + 1)
-        : nowSec;
-
-      await publish({
-        kind: BIRDEX_KIND,
-        content: '',
-        tags: buildBirdexTags(nextEntries),
-        created_at: createdAt,
-      });
-
-      if (user) {
-        queryClient.invalidateQueries({
-          queryKey: ['birdex-event', user.pubkey],
-        });
-      }
-    },
-    [event, publish, queryClient, user],
-  );
 
   const add = useCallback(async () => {
     if (!user) {
@@ -133,7 +105,23 @@ export function useBirdexMembership(
         ...entries,
         { entityUri, scientificName: scientificName ?? '' },
       ];
-      await republish(nextEntries);
+
+      // Replaceable events need a strictly-greater created_at to supersede
+      // the prior Birdex; max() guards against device clock skew.
+      const nowSec = Math.floor(Date.now() / 1000);
+      const createdAt = event
+        ? Math.max(nowSec, event.created_at + 1)
+        : nowSec;
+
+      await publish({
+        kind: BIRDEX_KIND,
+        content: '',
+        tags: buildBirdexTags(nextEntries),
+        created_at: createdAt,
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['birdex-event', user.pubkey],
+      });
       toast({ title: 'Added to your Birdex' });
     } catch (err) {
       console.error('Failed to add species to Birdex', err);
@@ -155,46 +143,16 @@ export function useBirdexMembership(
     entityUriSet,
     entries,
     scientificName,
-    republish,
+    event,
+    publish,
+    queryClient,
     toast,
   ]);
-
-  const remove = useCallback(async () => {
-    if (!user) return;
-    if (!hasValidUri || !entityUri) return;
-    if (!entityUriSet.has(entityUri)) return; // not there
-
-    setIsPending(true);
-    try {
-      const nextEntries = entries.filter((e) => e.entityUri !== entityUri);
-      await republish(nextEntries);
-      toast({ title: 'Removed from your Birdex' });
-    } catch (err) {
-      console.error('Failed to remove species from Birdex', err);
-      toast({
-        title: "Couldn't remove from Birdex",
-        description:
-          err instanceof Error
-            ? err.message
-            : 'The update could not be published.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsPending(false);
-    }
-  }, [user, hasValidUri, entityUri, entityUriSet, entries, republish, toast]);
-
-  const toggle = useCallback(
-    () => (isOnBirdex ? remove() : add()),
-    [isOnBirdex, remove, add],
-  );
 
   return {
     isOnBirdex,
     isLoading,
     add,
-    remove,
-    toggle,
     isPending,
   };
 }
