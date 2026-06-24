@@ -1,5 +1,5 @@
 import { memo, useCallback, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -21,13 +21,16 @@ interface BirdSearchProps {
 }
 
 /**
- * Search box over the full BirdNET species list (~6k birds), rendered
- * above the birdex grid. While the box is empty it's a no-op and the
- * normal `children` (the curated birdex grid) shows through; once the
- * user types a usable query the results grid takes over, reusing
- * `SpeciesCell` so hits look and behave exactly like birdex cells —
- * including the heard checkmark / glow / play button for species the
- * user has already logged.
+ * Search box over the full bird world, rendered above the birdex grid.
+ * Matches the local BirdNET species list (~6k birds) instantly, then
+ * supplements those with a live Wikipedia search (verified via Wikidata
+ * as bird taxa) so rarities, recent splits, and regional specialties
+ * BirdNET can't detect are still findable. While the box is empty it's a
+ * no-op and the normal `children` (the curated birdex grid) shows
+ * through; once the user types a usable query the results grid takes
+ * over, reusing `SpeciesCell` so hits look and behave exactly like
+ * birdex cells — including the heard checkmark / glow / play button for
+ * species the user has already logged.
  */
 export const BirdSearch = memo(function BirdSearch({
   visibleEntries,
@@ -35,7 +38,10 @@ export const BirdSearch = memo(function BirdSearch({
   children,
 }: BirdSearchProps) {
   const [query, setQuery] = useState('');
-  const { results, active } = useBirdSearch(query, visibleEntries);
+  const { results, active, isLoadingWikipedia } = useBirdSearch(
+    query,
+    visibleEntries,
+  );
 
   const clear = useCallback(() => setQuery(''), []);
 
@@ -51,7 +57,7 @@ export const BirdSearch = memo(function BirdSearch({
           inputMode="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search all bird species…"
+          placeholder="Search every bird species…"
           aria-label="Search bird species"
           className={cn(
             'h-11 rounded-full pl-10 pr-10 text-base',
@@ -80,7 +86,11 @@ export const BirdSearch = memo(function BirdSearch({
       </div>
 
       {active ? (
-        <BirdSearchResults results={results} onSelect={onSelect} />
+        <BirdSearchResults
+          results={results}
+          onSelect={onSelect}
+          isLoadingWikipedia={isLoadingWikipedia}
+        />
       ) : (
         children
       )}
@@ -91,33 +101,60 @@ export const BirdSearch = memo(function BirdSearch({
 const BirdSearchResults = memo(function BirdSearchResults({
   results,
   onSelect,
+  isLoadingWikipedia,
 }: {
   results: BirdexEntry[];
   onSelect: (entry: BirdexEntry) => void;
+  /** True while the supplemental Wikipedia search is still running.
+   *  Used to keep the empty state from claiming "no matches" prematurely
+   *  and to show an inline "still searching" hint below partial results. */
+  isLoadingWikipedia: boolean;
 }) {
   if (results.length === 0) {
     return (
       <Card className="mt-6 border-dashed bg-white/40 dark:bg-indigo-950/30">
         <CardContent className="py-12 text-center">
-          <p className="text-sm text-stone-500 dark:text-stone-400">
-            No species match your search. Try a common name (e.g. “robin”) or a
-            scientific name.
-          </p>
+          {isLoadingWikipedia ? (
+            <p className="flex items-center justify-center gap-2 text-sm text-stone-500 dark:text-stone-400">
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Searching Wikipedia for more species…
+            </p>
+          ) : (
+            <p className="text-sm text-stone-500 dark:text-stone-400">
+              No species match your search. Try a common name (e.g. “robin”) or
+              a scientific name.
+            </p>
+          )}
         </CardContent>
       </Card>
     );
   }
 
   return (
-    <div
-      className={cn(
-        'mt-6 grid gap-3 sm:gap-4',
-        'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
-      )}
-    >
-      {results.map((entry) => (
-        <SpeciesCell key={entry.label.index} entry={entry} onSelect={onSelect} />
-      ))}
-    </div>
+    <>
+      <div
+        className={cn(
+          'mt-6 grid gap-3 sm:gap-4',
+          'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6',
+        )}
+      >
+        {results.map((entry) => (
+          <SpeciesCell
+            key={entry.label.index}
+            entry={entry}
+            onSelect={onSelect}
+          />
+        ))}
+      </div>
+      {isLoadingWikipedia ? (
+        <p
+          className="mt-4 flex items-center justify-center gap-2 text-xs text-stone-500 dark:text-stone-400"
+          aria-live="polite"
+        >
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />
+          Checking Wikipedia for more birds…
+        </p>
+      ) : null}
+    </>
   );
 });
