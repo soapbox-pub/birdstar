@@ -113,12 +113,32 @@ interface BirdInfoDialogProps {
 }
 
 export function BirdInfoDialog({
-  subject,
+  subject: subjectProp,
   open,
   onOpenChange,
   onDelete,
   isDeleting,
 }: BirdInfoDialogProps) {
+  // Radix keeps `DialogContent` mounted through its close animation, but
+  // the parent clears `selectedSubject` to null synchronously on close.
+  // Rendering off the raw prop therefore flashed "No bird selected." for
+  // a frame or two during the exit animation. Latch the last non-null
+  // subject and keep rendering it until the dialog is fully closed, so
+  // the content fades out showing the bird the user was just looking at.
+  // (Adjusting state during render — React's recommended pattern for
+  // deriving state from props, see
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders.)
+  const [lastSubject, setLastSubject] = useState<BirdSubject | null>(subjectProp);
+  if (subjectProp && subjectProp !== lastSubject) {
+    setLastSubject(subjectProp);
+  }
+  // While `open` is true we always have a real subject; while it's
+  // animating closed (`open` false, prop already null) we fall back to
+  // the last one we saw. Only once fully closed does the fallback show —
+  // and by then it's off-screen.
+  const subject = subjectProp ?? (open ? lastSubject : null);
+
+
   const { commonName, scientificName } = getNames(subject);
 
   // Passing null values keeps the query disabled until we have a real
