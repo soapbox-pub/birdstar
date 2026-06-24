@@ -1626,7 +1626,7 @@ Cossypha humeralis_White-throated Robin-Chat
 Cossypha natalensis_Red-capped Robin-Chat
 Cossypha niveicapilla_Snowy-crowned Robin-Chat
 Cossypha polioptera_Gray-winged Robin-Chat
-Cossypha semirufa_R\u00fcppell's Robin-Chat
+Cossypha semirufa_Rüppell's Robin-Chat
 Coturnicops noveboracensis_Yellow Rail
 Coturnix coromandelica_Rain Quail
 Coturnix coturnix_Common Quail
@@ -3039,7 +3039,7 @@ Lamprotornis chloropterus_Lesser Blue-eared Starling
 Lamprotornis hildebrandti_Hildebrandt's Starling
 Lamprotornis mevesii_Meves's Starling
 Lamprotornis nitens_Cape Starling
-Lamprotornis purpuroptera_R\u00fcppell's Starling
+Lamprotornis purpuroptera_Rüppell's Starling
 Lamprotornis splendidus_Splendid Starling
 Lamprotornis superbus_Superb Starling
 Lamprotornis unicolor_Ashy Starling
@@ -3050,9 +3050,9 @@ Laniarius barbarus_Yellow-crowned Gonolek
 Laniarius bicolor_Gabon Boubou
 Laniarius erythrogaster_Black-headed Gonolek
 Laniarius ferrugineus_Southern Boubou
-Laniarius fuelleborni_F\u00fclleborn's Boubou
+Laniarius fuelleborni_Fülleborn's Boubou
 Laniarius funebris_Slate-colored Boubou
-Laniarius luehderi_L\u00fchder's Bushshrike
+Laniarius luehderi_Lühder's Bushshrike
 Laniarius major_Tropical Boubou
 Laniarius mufumbiri_Papyrus Gonolek
 Laniarius poensis_Western Boubou
@@ -3338,7 +3338,7 @@ Macronus ptilosus_Fluffy-backed Tit-Babbler
 Macronus striaticeps_Brown Tit-Babbler
 Macronyx capensis_Orange-throated Longclaw
 Macronyx croceus_Yellow-throated Longclaw
-Macronyx fuelleborni_F\u00fclleborn's Longclaw
+Macronyx fuelleborni_Fülleborn's Longclaw
 Macropygia amboinensis_Amboyna Cuckoo-Dove
 Macropygia doreya_Sultan's Cuckoo-Dove
 Macropygia mackinlayi_Mackinlay's Cuckoo-Dove
@@ -3481,7 +3481,7 @@ Melanodera xanthogramma_Yellow-bridled Finch
 Melanodryas cucullata_Hooded Robin
 Melanodryas vittata_Dusky Robin
 Melanopareia elegans_Elegant Crescentchest
-Melanopareia maranonica_Mara\u00f1on Crescentchest
+Melanopareia maranonica_Marañon Crescentchest
 Melanopareia maximiliani_Olive-crowned Crescentchest
 Melanopareia torquata_Collared Crescentchest
 Melanoptila glabrirostris_Black Catbird
@@ -4578,7 +4578,7 @@ Phylloscopus sarasinorum_Sulawesi Leaf Warbler
 Phylloscopus schwarzi_Radde's Warbler
 Phylloscopus sibilatrix_Wood Warbler
 Phylloscopus sindianus_Mountain Chiffchaff
-Phylloscopus soror_Alstr\u00f6m's Warbler
+Phylloscopus soror_Alström's Warbler
 Phylloscopus subaffinis_Buff-throated Warbler
 Phylloscopus subviridis_Brooks's Leaf Warbler
 Phylloscopus tenellipes_Pale-legged Leaf Warbler
@@ -4731,7 +4731,7 @@ Ploceus baglafecht_Baglafecht Weaver
 Ploceus bicolor_Forest Weaver
 Ploceus capensis_Cape Weaver
 Ploceus cucullatus_Village Weaver
-Ploceus galbula_R\u00fcppell's Weaver
+Ploceus galbula_Rüppell's Weaver
 Ploceus hypoxanthus_Asian Golden Weaver
 Ploceus intermedius_Lesser Masked-Weaver
 Ploceus jacksoni_Golden-backed Weaver
@@ -5470,7 +5470,7 @@ Scytalopus stilesi_Stiles's Tapaculo
 Scytalopus superciliaris_White-browed Tapaculo
 Scytalopus unicolor_Unicolored Tapaculo
 Scytalopus urubambae_Vilcabamba Tapaculo
-Scytalopus vicinior_Nari\u00f1o Tapaculo
+Scytalopus vicinior_Nariño Tapaculo
 Scytalopus zimmeri_Zimmer's Tapaculo
 Scythrops novaehollandiae_Channel-billed Cuckoo
 Seiurus aurocapilla_Ovenbird
@@ -5568,7 +5568,7 @@ Sitta cinnamoventris_Chestnut-bellied Nuthatch
 Sitta europaea_Eurasian Nuthatch
 Sitta frontalis_Velvet-fronted Nuthatch
 Sitta himalayensis_White-tailed Nuthatch
-Sitta krueperi_Kr\u00fcper's Nuthatch
+Sitta krueperi_Krüper's Nuthatch
 Sitta magna_Giant Nuthatch
 Sitta nagaensis_Chestnut-vented Nuthatch
 Sitta neumayer_Western Rock Nuthatch
@@ -5836,7 +5836,7 @@ Synallaxis hypospodia_Cinereous-breasted Spinetail
 Synallaxis infuscata_Pinto's Spinetail
 Synallaxis kollari_Hoary-throated Spinetail
 Synallaxis macconnelli_McConnell's Spinetail
-Synallaxis maranonica_Mara\u00f1on Spinetail
+Synallaxis maranonica_Marañon Spinetail
 Synallaxis moesta_Dusky Spinetail
 Synallaxis ruficapilla_Rufous-capped Spinetail
 Synallaxis rutilans_Ruddy Spinetail
@@ -6249,7 +6249,7 @@ Turdus leucops_Pale-eyed Thrush
 Turdus libonyana_Kurrichane Thrush
 Turdus maculirostris_Ecuadorian Thrush
 Turdus mandarinus_Chinese Blackbird
-Turdus maranonicus_Mara\u00f1on Thrush
+Turdus maranonicus_Marañon Thrush
 Turdus menachensis_Yemen Thrush
 Turdus merula_Eurasian Blackbird
 Turdus migratorius_American Robin
