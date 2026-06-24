@@ -12,29 +12,28 @@
 //   │                           heard an American Robin        │
 //   └──────────────────────────────────────────────────────────┘
 //
-// Tapping the bird thumbnail or the species line opens the shared
-// BirdInfoDialog for that species — the same dialog the birdex uses —
-// so the user can confirm, listen to the reference song, read the
-// Wikipedia summary, etc. The friend's portrait and name are not
-// interactive; Birdstar doesn't yet have a per-user profile page so
+// Tapping the bird thumbnail or the species line navigates to the
+// shareable `/bird/:slug` route and switches to Birds mode if needed
+// (the toaster runs in Stars mode too, but the bird detail dialog only
+// lives in Birds). BirdsIndex's URL → dialog sync then opens the shared
+// BirdInfoDialog for that species. The friend's portrait and name are
+// not interactive; Birdstar doesn't yet have a per-user profile page so
 // tapping them would have no destination.
 //
 // The toast is compact: a single row, ~44px portraits, tight
 // spacing. The "rich" part is the two overlapping portraits and the
 // Wikipedia thumbnail; the copy stays to two short lines.
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bird } from 'lucide-react';
 import type { NostrEvent, NostrMetadata } from '@nostrify/nostrify';
 
-import {
-  BirdInfoDialog,
-  type BirdSubject,
-} from '@/components/BirdInfoDialog';
-import type { Detection } from '@/components/BirdCard';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useFollowsBirdDetections } from '@/hooks/useFollowsBirdDetections';
+import { useMode } from '@/hooks/useMode';
 import { useToast } from '@/hooks/useToast';
+import { birdSlug } from '@/lib/birdSlug';
 import { cn } from '@/lib/utils';
 
 /** How long a friend-detection toast stays visible, in ms. */
@@ -87,30 +86,28 @@ function parseDetection(event: NostrEvent): ParsedDetection | null {
 
 export function FollowDetectionToaster() {
   const { toast } = useToast();
-  const [selectedSubject, setSelectedSubject] = useState<BirdSubject | null>(
-    null,
+  const navigate = useNavigate();
+  const { setMode } = useMode();
+
+  // Open the shared bird detail by routing to `/bird/:slug`. We force
+  // Birds mode first because this toaster also fires in Stars mode,
+  // where the dialog's host page (BirdsIndex) isn't mounted — the
+  // route change alone wouldn't surface anything. `modeFromPath` only
+  // forces mode on cold load, so an in-session switch has to be
+  // explicit here.
+  const openDetail = useCallback(
+    (scientificName: string) => {
+      if (!scientificName) return;
+      setMode('birds');
+      navigate(`/bird/${birdSlug(scientificName)}`);
+    },
+    [navigate, setMode],
   );
-
-  const openDialog = useCallback((detection: Detection) => {
-    setSelectedSubject({ kind: 'detection', detection });
-  }, []);
-
-  const handleDialogOpenChange = useCallback((open: boolean) => {
-    if (!open) setSelectedSubject(null);
-  }, []);
 
   const onDetection = useCallback(
     (event: NostrEvent) => {
       const parsed = parseDetection(event);
       if (!parsed) return;
-
-      const detection: Detection = {
-        id: parsed.eventId,
-        scientificName: parsed.scientificName,
-        commonName: parsed.commonName,
-        timestamp: parsed.timestamp,
-        eventId: parsed.eventId,
-      };
 
       toast({
         duration: TOAST_DURATION_MS,
@@ -122,38 +119,39 @@ export function FollowDetectionToaster() {
         // them.
         description: (
           <FollowDetectionToastBody
-            detection={detection}
+            scientificName={parsed.scientificName}
+            commonName={parsed.commonName}
             pubkey={parsed.pubkey}
-            onOpen={openDialog}
+            onOpen={openDetail}
           />
         ),
       });
     },
-    [toast, openDialog],
+    [toast, openDetail],
   );
 
   useFollowsBirdDetections({ onDetection });
 
-  return (
-    <BirdInfoDialog
-      subject={selectedSubject}
-      open={selectedSubject !== null}
-      onOpenChange={handleDialogOpenChange}
-    />
-  );
+  // No dialog mounted here anymore — the shared BirdInfoDialog lives in
+  // BirdsIndex and opens from the `/bird/:slug` route this toaster
+  // navigates to.
+  return null;
 }
 
 interface FollowDetectionToastBodyProps {
-  detection: Detection;
+  scientificName: string;
+  commonName: string;
   /** Pubkey of the friend who published the detection. Used to fetch
    *  their NIP-01 profile metadata (picture, name). */
   pubkey: string;
-  /** Called when the user taps the bird thumb or the species line. */
-  onOpen: (detection: Detection) => void;
+  /** Called with the species' scientific name when the user taps the
+   *  bird thumb or the species line. */
+  onOpen: (scientificName: string) => void;
 }
 
 function FollowDetectionToastBody({
-  detection,
+  scientificName,
+  commonName,
   pubkey,
   onOpen,
 }: FollowDetectionToastBodyProps) {
@@ -167,10 +165,7 @@ function FollowDetectionToastBody({
   // Shared with BirdCard / BirdInfoDialog — cached by React Query so
   // by the time the user taps through to the dialog the Wikipedia
   // lookup is already warm.
-  const { data: birdInfo } = useBirdInfo(
-    detection.scientificName,
-    detection.commonName,
-  );
+  const { data: birdInfo } = useBirdInfo(scientificName, commonName);
 
   return (
     <div className="flex items-center gap-3">
@@ -187,8 +182,8 @@ function FollowDetectionToastBody({
         />
         <button
           type="button"
-          onClick={() => onOpen(detection)}
-          aria-label={`Open info about ${detection.commonName}`}
+          onClick={() => onOpen(scientificName)}
+          aria-label={`Open info about ${commonName}`}
           className={cn(
             '-ml-3 inline-flex size-11 items-center justify-center overflow-hidden rounded-full',
             'ring-2 ring-background transition-transform',
@@ -201,7 +196,7 @@ function FollowDetectionToastBody({
           {birdInfo?.imageUrl ? (
             <img
               src={birdInfo.imageUrl}
-              alt={detection.commonName}
+              alt={commonName}
               className="size-full object-cover"
               loading="lazy"
             />
@@ -224,7 +219,7 @@ function FollowDetectionToastBody({
         </p>
         <button
           type="button"
-          onClick={() => onOpen(detection)}
+          onClick={() => onOpen(scientificName)}
           className={cn(
             'block max-w-full truncate text-left text-sm text-muted-foreground',
             'underline-offset-2 hover:underline focus:outline-none focus-visible:underline',
@@ -232,7 +227,7 @@ function FollowDetectionToastBody({
         >
           heard{' '}
           <span className="font-medium text-foreground">
-            {vowelArticle(detection.commonName)} {detection.commonName}
+            {vowelArticle(commonName)} {commonName}
           </span>
         </button>
       </div>

@@ -8,7 +8,12 @@
 //
 //   BirdFeed                — top-level section, handles gate states
 //   └── FeedRow             — one detection (friend pfp + bird thumb + copy)
-//       └── BirdInfoDialog  — opens on tap (shared with the birdex)
+//
+// Tapping a row navigates to `/bird/:slug` (the shareable bird-detail
+// deep link); BirdsIndex's URL → dialog sync then opens the shared
+// BirdInfoDialog. Keeping a single dialog instance in BirdsIndex (rather
+// than one per surface) means every entry point yields the same
+// shareable URL and the back button closes the dialog.
 //
 // There is no empty state and no loading skeleton by design —
 // whenever the feed has zero items for any reason (logged out, no
@@ -30,17 +35,13 @@
 // sentinel via `react-intersection-observer`, a matching skeleton
 // while the first page loads, a dashed empty-state card, and a tiny
 // loader at the bottom while the next page streams in.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { Bird, Loader2 } from 'lucide-react';
 import type { NostrMetadata } from '@nostrify/nostrify';
 
 import { Card } from '@/components/ui/card';
-import {
-  BirdInfoDialog,
-  type BirdSubject,
-} from '@/components/BirdInfoDialog';
-import type { Detection } from '@/components/BirdCard';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -48,6 +49,7 @@ import {
   useFollowsBirdFeed,
   type BirdFeedItem,
 } from '@/hooks/useFollowsBirdFeed';
+import { birdSlug } from '@/lib/birdSlug';
 import { cn } from '@/lib/utils';
 
 /** Render the feed when logged in. Hides itself entirely when logged
@@ -63,16 +65,20 @@ export function BirdFeed() {
     fetchNextPage,
   } = useFollowsBirdFeed();
 
-  // Shared dialog subject — lifted up here so opening one row's
-  // dialog doesn't retain the previous row's data after the dialog
-  // closes.
-  const [subject, setSubject] = useState<BirdSubject | null>(null);
-  const openDialog = useCallback((detection: Detection) => {
-    setSubject({ kind: 'detection', detection });
-  }, []);
-  const closeDialog = useCallback((open: boolean) => {
-    if (!open) setSubject(null);
-  }, []);
+  // Tapping a row navigates to the shareable bird-detail URL; the
+  // shared dialog (owned by BirdsIndex) opens from that route. We
+  // navigate by the detection's scientific name rather than passing a
+  // full Detection up — the URL is the single source of truth, and
+  // BirdsIndex resolves the species (including a richer detection
+  // subject when the species is in the viewer's own dex).
+  const navigate = useNavigate();
+  const openDetail = useCallback(
+    (scientificName: string) => {
+      if (!scientificName) return;
+      navigate(`/bird/${birdSlug(scientificName)}`);
+    },
+    [navigate],
+  );
 
   // Intersection sentinel for infinite scroll. `rootMargin: 400px`
   // means we start the next fetch while the user is still ~400px
@@ -98,17 +104,9 @@ export function BirdFeed() {
   // has no follows, or nobody on their list has ever published a
   // kind 2473 event. The birdex above already handles the "you
   // haven't heard anything yet" story; stacking a skeleton or empty
-  // card underneath it would be redundant noise. We still mount
-  // BirdInfoDialog here so a dialog that was open when the last row
-  // is retracted mid-session (e.g. via NIP-09) can close cleanly.
+  // card underneath it would be redundant noise.
   if (items.length === 0) {
-    return (
-      <BirdInfoDialog
-        subject={subject}
-        open={subject !== null}
-        onOpenChange={closeDialog}
-      />
-    );
+    return null;
   }
 
   return (
@@ -117,7 +115,7 @@ export function BirdFeed() {
       <ul className="flex flex-col gap-3">
         {items.map((item) => (
           <li key={item.id}>
-            <FeedRow item={item} onOpen={openDialog} />
+            <FeedRow item={item} onOpen={openDetail} />
           </li>
         ))}
         {hasNextPage ? (
@@ -137,11 +135,6 @@ export function BirdFeed() {
           </li>
         ) : null}
       </ul>
-      <BirdInfoDialog
-        subject={subject}
-        open={subject !== null}
-        onOpenChange={closeDialog}
-      />
     </>
   );
 }
@@ -158,7 +151,7 @@ function SectionHeader() {
 
 interface FeedRowProps {
   item: BirdFeedItem;
-  onOpen: (detection: Detection) => void;
+  onOpen: (scientificName: string) => void;
 }
 
 function FeedRow({ item, onOpen }: FeedRowProps) {
@@ -180,15 +173,7 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
   const { user } = useCurrentUser();
   const isSelf = user?.pubkey === item.pubkey;
 
-  const detection: Detection = {
-    id: item.id,
-    scientificName: item.scientificName,
-    commonName: item.commonName,
-    timestamp: item.timestamp,
-    eventId: item.id,
-  };
-
-  const handleOpen = () => onOpen(detection);
+  const handleOpen = () => onOpen(item.scientificName);
 
   return (
     <Card className="overflow-hidden border-stone-200/70 bg-white/80 shadow-sm shadow-stone-900/5 backdrop-blur-sm transition-colors dark:border-indigo-900/40 dark:bg-indigo-950/40">

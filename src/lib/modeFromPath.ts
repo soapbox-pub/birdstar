@@ -33,9 +33,13 @@ const STARS_OVERLAY_EXACT = new Set(["/sun", "/moon"]);
  * user's `birdstar:mode` localStorage value is untouched, so the next
  * cold-load of `/` still resumes their last explicit choice.
  *
- * Birds is never forced from the URL — `/` is the only Birds entry
- * point, and `/` defers to the stored mode (which already defaults to
- * Birds on a fresh install).
+ * `/bird/:slug` (the shareable bird-detail deep link) is forced to
+ * Birds — the bird dialog only mounts there, so cold-loading a shared
+ * bird URL in Stars would show nothing.
+ *
+ * Otherwise Birds is never forced from the URL — `/` is the only other
+ * Birds entry point, and `/` defers to the stored mode (which already
+ * defaults to Birds on a fresh install).
  *
  * The npub/nprofile case is intentionally left to the stored mode:
  * profile sheets exist in both Birds (via the LoginArea author menu)
@@ -51,6 +55,12 @@ export function modeFromPath(pathname: string): Mode | null {
     if (pathname.startsWith(prefix) && pathname.length > prefix.length) {
       return "stars";
     }
+  }
+
+  // `/bird/:slug` — shareable bird-detail deep link. Forced to Birds
+  // since the bird dialog only mounts there.
+  if (pathname.startsWith("/bird/") && pathname.length > "/bird/".length) {
+    return "birds";
   }
 
   // `/:nip19Id` — naddrs for custom constellations force Stars, and

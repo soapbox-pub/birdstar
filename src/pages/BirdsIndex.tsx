@@ -45,6 +45,7 @@ import {
 } from '@/lib/geo/continent';
 import { useBirdNet } from '@/hooks/useBirdNet';
 import { useBirdLabels } from '@/hooks/useBirdLabels';
+import { birdSlug, findLabelBySlug } from '@/lib/birdSlug';
 import { useBirdGlowPublisher } from '@/hooks/useBirdGlow';
 import { useAudioRecorder } from '@/hooks/useAudioRecorder';
 import { SongPlaybackProvider } from '@/components/SongPlaybackProvider';
@@ -340,7 +341,10 @@ const IndexInner = () => {
   // mirroring how Stars opens its constellation detail sheet from a
   // deep link.
   const navigate = useNavigate();
-  const { nip19Id } = useParams<{ nip19Id?: string }>();
+  const { nip19Id, bird: birdSlugParam } = useParams<{
+    nip19Id?: string;
+    bird?: string;
+  }>();
   const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
 
   const eventAddr = useMemo(() => {
@@ -642,9 +646,43 @@ const IndexInner = () => {
     null,
   );
 
-  const handleDialogOpenChange = useCallback((open: boolean) => {
-    if (!open) setSelectedSubject(null);
-  }, []);
+  // Open the detail dialog for a bird AND reflect it in the URL as
+  // `/bird/:slug` so the view is shareable / linkable. `selectedSubject`
+  // stays the dialog's source of truth; the navigation is a side effect.
+  // Pending (player-bar, accumulating) subjects are intentionally
+  // state-only — they're transient and not yet a confirmed species, so
+  // there's nothing stable to share.
+  const openSubject = useCallback(
+    (subject: BirdSubject) => {
+      setSelectedSubject(subject);
+      const scientificName =
+        subject.kind === 'detection'
+          ? subject.detection.scientificName
+          : subject.label.scientificName;
+      if (subject.kind !== 'pending' && scientificName) {
+        navigate(`/bird/${birdSlug(scientificName)}`);
+      }
+    },
+    [navigate],
+  );
+
+  const handleDialogOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setSelectedSubject(null);
+        // If the dialog was opened via a `/bird/:slug` deep link (or a
+        // selection that pushed one), return to the bare Birds page so
+        // the URL no longer points at a closed dialog. Guard on the
+        // prefix so closing a state-only (pending) dialog doesn't
+        // clobber some other route the user is on.
+        if (window.location.pathname.startsWith('/bird/')) {
+          navigate('/');
+        }
+      }
+    },
+    [navigate],
+  );
+
 
   // Keep a live `progress` value flowing into an open pending-subject
   // dialog while the same species keeps accumulating. The dialog
@@ -754,6 +792,61 @@ const IndexInner = () => {
     localSpeciesMap,
   });
 
+  // URL → dialog sync for the shareable `/bird/:slug` deep link.
+  //
+  // `selectedSubject` is the dialog's source of truth and `openSubject`
+  // already pushes the URL when the user taps a bird. This handles the
+  // reverse direction: a cold load / shared link / back-forward
+  // navigation that lands on a `/bird/:slug` the open dialog doesn't yet
+  // reflect. We resolve the slug to a BirdLabel (needs labels loaded)
+  // and, if that species has a confirmed detection, open it as a
+  // detection subject (richer footer); otherwise as a plain label.
+  //
+  // Done as an in-render state adjustment keyed on the slug param —
+  // matching the pendingLeader pattern above — so we avoid the
+  // set-state-in-effect lint and stay in sync within a single render.
+  // We only act when the param names a *different* species than the
+  // current subject, so `openSubject`'s own navigation doesn't clobber
+  // the richer state it just set (rare flag, detection, etc.).
+  const [prevBirdSlugParam, setPrevBirdSlugParam] = useState<
+    string | undefined
+  >(undefined);
+  if (prevBirdSlugParam !== birdSlugParam) {
+    setPrevBirdSlugParam(birdSlugParam);
+    if (birdSlugParam && labels) {
+      const currentSci =
+        selectedSubject?.kind === 'detection'
+          ? selectedSubject.detection.scientificName
+          : selectedSubject?.kind === 'label' ||
+              selectedSubject?.kind === 'pending'
+            ? selectedSubject.label.scientificName
+            : null;
+      const alreadyShowing =
+        currentSci !== null && birdSlug(currentSci) === birdSlugParam;
+      if (!alreadyShowing) {
+        const label = findLabelBySlug(labels, birdSlugParam);
+        if (label) {
+          const heard = mergedDetections.find(
+            (d) =>
+              d.scientificName.toLowerCase() ===
+              label.scientificName.toLowerCase(),
+          );
+          if (heard) {
+            const detection = heard.commonName
+              ? heard
+              : { ...heard, commonName: label.commonName };
+            setSelectedSubject({ kind: 'detection', detection });
+          } else {
+            setSelectedSubject({ kind: 'label', label });
+          }
+        }
+        // Unknown slug: leave the dialog closed. The page still renders
+        // (Birds mode), so a bad link degrades gracefully to the
+        // checklist rather than a hard 404.
+      }
+    }
+  }
+
   // Minimal (scientificName, commonName) projection of every heard
   // cell in the birdex, for the player bar's Play-all button. Rare
   // (out-of-region) birds are included — per the design, they join
@@ -786,9 +879,9 @@ const IndexInner = () => {
       const detection = entry.detection.commonName
         ? entry.detection
         : { ...entry.detection, commonName: entry.label.commonName };
-      setSelectedSubject({ kind: 'detection', detection });
+      openSubject({ kind: 'detection', detection });
     } else {
-      setSelectedSubject({
+      openSubject({
         kind: 'label',
         label: entry.label,
         isRare: entry.isRare || undefined,
@@ -799,7 +892,7 @@ const IndexInner = () => {
     // its unheard state, which is visually appropriate. If we ever
     // want dedicated copy for encountered-but-unconfirmed birds on
     // the dialog, this is the seam.
-  }, []);
+  }, [openSubject]);
 
   const handleDelete = useCallback(
     async (detection: Detection) => {
@@ -1057,9 +1150,9 @@ const IndexInner = () => {
     (d: Detection) => {
       const hydrated =
         mergedDetections.find((m) => speciesKey(m) === speciesKey(d)) ?? d;
-      setSelectedSubject({ kind: 'detection', detection: hydrated });
+      openSubject({ kind: 'detection', detection: hydrated });
     },
-    [mergedDetections],
+    [mergedDetections, openSubject],
   );
 
   // Opens the info dialog for a species currently accumulating toward

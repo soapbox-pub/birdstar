@@ -30,6 +30,11 @@ export function AppRouter() {
         <ScrollToTop />
         <Routes>
           <Route path="/" element={<Index />} />
+          {/* Birds overlay route: renders `Index`, which forces Birds
+              mode (see `modeFromPath`) and opens the bird detail dialog
+              for the slug. Mirrors how Stars opens its detail sheets
+              from a deep link, giving every bird a shareable URL. */}
+          <Route path="/bird/:bird" element={<Index />} />
           {/* Starpoint overlay routes: each renders `Index`; the detail
               sheet opens over the sky based on `useOpenedView()`. */}
           <Route path="/star/:hip" element={<Index />} />
