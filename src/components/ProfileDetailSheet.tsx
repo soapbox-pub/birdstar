@@ -15,7 +15,6 @@ import {
 } from "@/hooks/useCustomConstellations";
 import { useToast } from "@/hooks/useToast";
 import { ConstellationCard } from "@/components/ConstellationCard";
-import { genUserName } from "@/lib/genUserName";
 import {
   dispatchEditConstellation,
 } from "@/lib/editConstellationEvent";
@@ -70,7 +69,7 @@ function ProfileContent({
 
   const metadata = author.data?.metadata;
   const displayName =
-    metadata?.name ?? metadata?.display_name ?? genUserName(pubkey);
+    metadata?.name ?? metadata?.display_name ?? 'Anonymous';
   const picture = metadata?.picture;
   const banner = metadata?.banner;
   const about = metadata?.about;

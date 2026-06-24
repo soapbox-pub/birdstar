@@ -10,7 +10,6 @@ import { CommentsSection } from "@/components/comments/CommentsSection";
 import { ConstellationPreview } from "@/components/ConstellationPreview";
 import { ZapButton } from "@/components/ZapButton";
 import { useAuthor } from "@/hooks/useAuthor";
-import { genUserName } from "@/lib/genUserName";
 import { starByHip } from "@/lib/stars";
 import type { CustomConstellation } from "@/lib/customConstellations";
 import { cn } from "@/lib/utils";
@@ -62,7 +61,7 @@ export function ConstellationDetailSheet({
   const displayName =
     author.data?.metadata?.name ??
     author.data?.metadata?.display_name ??
-    (c ? genUserName(c.pubkey) : "");
+    (c ? "Anonymous" : "");
   const picture = author.data?.metadata?.picture;
 
   const authorNpub = useMemo(

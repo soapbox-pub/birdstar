@@ -13,7 +13,6 @@ import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 
 import { useAuthor } from '@/hooks/useAuthor';
-import { genUserName } from '@/lib/genUserName';
 import { cn } from '@/lib/utils';
 
 interface LinkifiedEventTextProps {
@@ -131,7 +130,7 @@ export function LinkifiedEventText({
 function NostrMention({ pubkey }: { pubkey: string }) {
   const author = useAuthor(pubkey);
   const npub = useMemo(() => nip19.npubEncode(pubkey), [pubkey]);
-  const displayName = author.data?.metadata?.name ?? genUserName(pubkey);
+  const displayName = author.data?.metadata?.name ?? 'Anonymous';
 
   return (
     <Link to={`/${npub}`} className={cn(LINK_CLASS, 'font-medium')}>

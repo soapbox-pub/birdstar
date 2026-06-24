@@ -48,7 +48,6 @@ import {
   useFollowsBirdFeed,
   type BirdFeedItem,
 } from '@/hooks/useFollowsBirdFeed';
-import { genUserName } from '@/lib/genUserName';
 import { cn } from '@/lib/utils';
 
 /** Render the feed when logged in. Hides itself entirely when logged
@@ -167,7 +166,7 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
   const metadata: NostrMetadata | undefined = author.data?.metadata;
 
   const displayName =
-    metadata?.name ?? metadata?.display_name ?? genUserName(item.pubkey);
+    metadata?.name ?? metadata?.display_name ?? 'Anonymous';
   const friendPicture = metadata?.picture ?? null;
 
   // Pre-fetched so tapping through to the dialog feels instant.

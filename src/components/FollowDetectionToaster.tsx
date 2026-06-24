@@ -35,7 +35,6 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useBirdInfo } from '@/hooks/useBirdInfo';
 import { useFollowsBirdDetections } from '@/hooks/useFollowsBirdDetections';
 import { useToast } from '@/hooks/useToast';
-import { genUserName } from '@/lib/genUserName';
 import { cn } from '@/lib/utils';
 
 /** How long a friend-detection toast stays visible, in ms. */
@@ -162,7 +161,7 @@ function FollowDetectionToastBody({
   const metadata: NostrMetadata | undefined = author.data?.metadata;
 
   const displayName =
-    metadata?.name ?? metadata?.display_name ?? genUserName(pubkey);
+    metadata?.name ?? metadata?.display_name ?? 'Anonymous';
   const friendPicture = metadata?.picture ?? null;
 
   // Shared with BirdCard / BirdInfoDialog — cached by React Query so

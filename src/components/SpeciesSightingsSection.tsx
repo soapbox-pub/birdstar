@@ -32,7 +32,6 @@ import { useMemo } from 'react';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSpeciesSightings } from '@/hooks/useSpeciesSightings';
-import { genUserName } from '@/lib/genUserName';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { NostrMetadata } from '@nostrify/nostrify';
@@ -187,7 +186,7 @@ function FriendAvatar({ pubkey, isSelf }: FriendAvatarProps) {
   const author = useAuthor(pubkey);
   const metadata: NostrMetadata | undefined = author.data?.metadata;
   const displayName =
-    metadata?.name ?? metadata?.display_name ?? genUserName(pubkey);
+    metadata?.name ?? metadata?.display_name ?? 'Anonymous';
   const picture = metadata?.picture ?? null;
 
   // `title` gives a hover tooltip on desktop; `aria-label` carries

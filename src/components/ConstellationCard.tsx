@@ -5,7 +5,6 @@ import { MoreHorizontal, Pencil, Trash2, ExternalLink } from "lucide-react";
 
 import { ConstellationPreview } from "@/components/ConstellationPreview";
 import { useAuthor } from "@/hooks/useAuthor";
-import { genUserName } from "@/lib/genUserName";
 import {
   CUSTOM_CONSTELLATION_KIND,
   type CustomConstellation,
@@ -62,7 +61,7 @@ export function ConstellationCard({
   const displayName =
     author.data?.metadata?.name ??
     author.data?.metadata?.display_name ??
-    genUserName(c.pubkey);
+    'Anonymous';
   const picture = author.data?.metadata?.picture;
 
   const naddr = useMemo(

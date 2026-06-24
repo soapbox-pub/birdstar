@@ -191,13 +191,12 @@ Fetch profile metadata (kind 0) for a pubkey:
 ```tsx
 import type { NostrEvent, NostrMetadata } from '@nostrify/nostrify';
 import { useAuthor } from '@/hooks/useAuthor';
-import { genUserName } from '@/lib/genUserName';
 
 function Post({ event }: { event: NostrEvent }) {
   const author = useAuthor(event.pubkey);
   const metadata: NostrMetadata | undefined = author.data?.metadata;
 
-  const displayName = metadata?.name ?? genUserName(event.pubkey);
+  const displayName = metadata?.name ?? 'Anonymous';
   const profileImage = metadata?.picture;
   // ...
 }
