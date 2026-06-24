@@ -9,6 +9,7 @@ import {
   type BirdSubject,
 } from '@/components/BirdInfoDialog';
 import { SpeciesCell } from '@/components/SpeciesCell';
+import { BirdSearch } from '@/components/BirdSearch';
 import { LoginArea as LoginAreaRaw } from '@/components/auth/LoginArea';
 import { LocationPickerMap } from '@/components/LocationPickerMap';
 import { useSharedLocation } from '@/hooks/useSharedLocation';
@@ -1293,10 +1294,19 @@ const IndexInner = () => {
                   default because the user denied or the browser is
                   unavailable. Self-hides when location is granted. */}
               <LocationDisabledIndicator variant="inline" className="mb-4" />
-              <BirdexGrid
-                visible={birdex.visible}
+              {/* Search box over the full species list. While empty it's
+                  a no-op and the curated birdex grid shows through; once
+                  the user types, matching species replace the grid,
+                  reusing SpeciesCell so heard birds keep their state. */}
+              <BirdSearch
+                visibleEntries={birdex.visible}
                 onSelect={handleSelectBirdex}
-              />
+              >
+                <BirdexGrid
+                  visible={birdex.visible}
+                  onSelect={handleSelectBirdex}
+                />
+              </BirdSearch>
             </>
           )}
         </section>
