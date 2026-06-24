@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ModeProvider } from "@/components/ModeProvider";
+import { FollowDetectionToaster } from "@/components/FollowDetectionToaster";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Privacy from "./pages/Privacy";
@@ -28,6 +29,14 @@ export function AppRouter() {
     <BrowserRouter>
       <ModeProvider>
         <ScrollToTop />
+        {/* Listens for kind 2473 bird-detection events from the logged-in
+            user's follows and raises a rich toast per event. Mounted here
+            (inside BrowserRouter + ModeProvider) rather than in App.tsx so
+            its toast taps can `useNavigate` to /bird/:slug and `useMode`
+            to force Birds mode. It's still under NostrProvider + Toaster
+            (which wrap AppRouter in App.tsx), and is otherwise
+            mode-agnostic — it fires in both Birds and Stars. */}
+        <FollowDetectionToaster />
         <Routes>
           <Route path="/" element={<Index />} />
           {/* Birds overlay route: renders `Index`, which forces Birds

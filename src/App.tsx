@@ -8,7 +8,6 @@ import { Suspense } from 'react';
 import NostrProvider from '@/components/NostrProvider';
 import { NostrSync } from '@/components/NostrSync';
 import { BirdNetProvider } from '@/components/BirdNetProvider';
-import { FollowDetectionToaster } from '@/components/FollowDetectionToaster';
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -63,13 +62,6 @@ export function App() {
                     is available; also registers the service worker for
                     offline support. */}
                 <PWAUpdatePrompt />
-                {/* Listens for kind 2473 bird-detection events from
-                    the logged-in user's follows and raises a rich
-                    toast per event. Needs to live inside
-                    NostrProvider (it calls `useNostr`) and under
-                    the Toaster (it calls `toast()`), but is
-                    otherwise mode-agnostic. */}
-                <FollowDetectionToaster />
                 <Suspense>
                   {/* BirdNetProvider owns the BirdNET worker + model for
                       the lifetime of the page, so flipping between Birds
