@@ -57,7 +57,7 @@ export function BirdProfileDialog({ pubkey, onClose }: BirdProfileDialogProps) {
         className={cn(
           'h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 p-0',
           'left-0 top-0 translate-x-0 translate-y-0',
-          'sm:left-[50%] sm:top-[calc(env(safe-area-inset-top)+(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))/2)] sm:h-auto sm:max-h-[88dvh] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
+          'sm:left-[50%] sm:safe-center-y sm:h-auto sm:max-h-[88dvh] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
         )}
         showCloseButton={false}
       >

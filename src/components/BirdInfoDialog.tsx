@@ -264,7 +264,7 @@ export function BirdInfoDialog({
         className={cn(
           'h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none border-0 p-0 sm:overflow-hidden',
           'left-0 top-0 translate-x-0 translate-y-0',
-          'sm:left-[50%] sm:top-[calc(env(safe-area-inset-top)+(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))/2)] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
+          'sm:left-[50%] sm:safe-center-y sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
           // Override shadcn's default `grid gap-4` — we need flex for
           // the pinned-banner + scrolling-body layout, and the gap
           // would add a 16px strip between them.
