@@ -15,7 +15,7 @@
 // location (a ~150 km cell plus its eight neighbors); it falls back to
 // World automatically when we don't yet know where the user is.
 import { useMemo, useState } from 'react';
-import { CalendarDays, Clock, Globe, Loader2, MapPin, X } from 'lucide-react';
+import { CalendarDays, Clock, Globe, Loader2, MapPin } from 'lucide-react';
 
 import {
   Sheet,
@@ -26,6 +26,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Card } from '@/components/ui/card';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import {
   formatEventWhen,
   sanitizeImageUrl,
@@ -67,16 +68,8 @@ export function EventsDrawer({
         className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
         showCloseButton={false}
       >
-        <SheetClose
-          aria-label="Close"
-          className={cn(
-            'absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full sm:right-4 sm:top-4',
-            'bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm',
-            'transition-colors hover:bg-black/70 hover:text-white',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',
-          )}
-        >
-          <X className="h-4 w-4" aria-hidden />
+        <SheetClose asChild>
+          <OverlayCloseButton />
         </SheetClose>
         <SheetHeader className="shrink-0 border-b border-stone-200/70 px-5 pb-4 pt-5 text-left dark:border-indigo-900/40">
           {/* Title row — the close button floats at the top-right, so keep

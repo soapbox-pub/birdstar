@@ -17,11 +17,11 @@ import {
   Loader2,
   MapPin,
   Share2,
-  X,
 } from 'lucide-react';
 
 import { Sheet, SheetClose, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import { LinkifiedEventText } from '@/components/EventDescription';
 import {
   formatEventWhen,
@@ -57,11 +57,8 @@ export function EventDetailSheet({
         className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
         showCloseButton={false}
       >
-        <SheetClose
-          aria-label="Close"
-          className="absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0 sm:right-4 sm:top-4"
-        >
-          <X className="h-4 w-4" aria-hidden />
+        <SheetClose asChild>
+          <OverlayCloseButton />
         </SheetClose>
         <EventDetailContent event={event} isLoading={isLoading} />
       </SheetContent>

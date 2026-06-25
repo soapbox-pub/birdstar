@@ -33,7 +33,6 @@ import {
   Play,
   Plus,
   Sparkles,
-  X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { rememberKnownBirds } from '@/lib/wiki/knownBirdsStore';
@@ -57,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ObservationMap, MAP_ATTRIBUTION } from '@/components/ObservationMap';
 import { CommentsSection } from '@/components/comments/CommentsSection';
@@ -272,16 +272,10 @@ export function BirdInfoDialog({
         )}
         showCloseButton={false}
       >
-        <DialogClose
-          aria-label="Close"
-          className={cn(
-            'fixed right-[calc(0.75rem+env(safe-area-inset-right))] top-[calc(0.75rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full sm:absolute sm:right-3 sm:top-3',
-            'bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm',
-            'transition-colors hover:bg-black/70 hover:text-white',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',
-          )}
-        >
-          <X className="h-4 w-4" aria-hidden />
+        <DialogClose asChild>
+          <OverlayCloseButton
+            className="fixed right-[calc(0.75rem+env(safe-area-inset-right))] top-[calc(0.75rem+env(safe-area-inset-top))] sm:absolute sm:right-3 sm:top-3"
+          />
         </DialogClose>
         {subject ? (
           <>

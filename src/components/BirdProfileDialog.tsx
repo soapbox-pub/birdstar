@@ -10,7 +10,7 @@
 // AccountSwitcher's "view profile" link, feed author taps, and pasted
 // profile URLs all resolve to *something* regardless of which world the
 // visitor is currently in.
-import { Bird, QrCode, X } from 'lucide-react';
+import { Bird, QrCode } from 'lucide-react';
 import { useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
 
@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -60,16 +61,8 @@ export function BirdProfileDialog({ pubkey, onClose }: BirdProfileDialogProps) {
         )}
         showCloseButton={false}
       >
-        <DialogClose
-          aria-label="Close"
-          className={cn(
-            'absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full sm:right-4 sm:top-4',
-            'bg-background/75 text-foreground shadow-sm ring-1 ring-border backdrop-blur-sm',
-            'transition-colors hover:bg-background',
-            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
-          )}
-        >
-          <X className="h-4 w-4" aria-hidden />
+        <DialogClose asChild>
+          <OverlayCloseButton variant="surface" />
         </DialogClose>
         {pubkey && <ProfileBody pubkey={pubkey} />}
       </DialogContent>
