@@ -137,7 +137,7 @@ const NotFound = () => {
         onClick={toggleAudio}
         aria-pressed={audioOn}
         aria-label={audioOn ? "Mute whale song" : "Play whale song"}
-        className="group fixed top-4 right-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-cyan-100 shadow-lg backdrop-blur-md transition hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 motion-safe:animate-[float-speaker_6s_ease-in-out_infinite]"
+        className="group fixed top-[calc(1rem+env(safe-area-inset-top))] right-[calc(1rem+env(safe-area-inset-right))] z-20 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-cyan-100 shadow-lg backdrop-blur-md transition hover:bg-white/20 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300 motion-safe:animate-[float-speaker_6s_ease-in-out_infinite]"
       >
         {audioOn ? (
           <Volume2 className="h-5 w-5" />

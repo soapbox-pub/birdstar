@@ -57,7 +57,7 @@ export function SkyStatusBanner({ messages }: { messages: SkyStatusBannerMessage
   if (visible.length === 0) return null;
 
   return (
-    <div className="pointer-events-none absolute top-20 left-1/2 -translate-x-1/2 w-[min(92vw,520px)] px-2 flex flex-col gap-2 z-10">
+    <div className="pointer-events-none absolute top-[calc(5rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 w-[min(92vw,520px)] px-2 flex flex-col gap-2 z-10">
       {visible.map((m) => (
         <BannerCard
           key={m.id}
