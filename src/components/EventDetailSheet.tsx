@@ -125,37 +125,19 @@ export function EventDetailContent({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto sm:overflow-hidden">
-      {/* Header bar: back arrow (when shown inside the events drawer) on
-          the left, Share on the right. The sheet's floating close (X) sits
-          further right, so we cap this row's right padding to clear it. */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200/70 px-5 pb-3 pt-5 pr-16 dark:border-indigo-900/40">
-        {onBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-stone-300 dark:hover:text-stone-50 dark:focus-visible:ring-amber-400/60"
-          >
-            <ArrowLeft className="size-4" aria-hidden />
-            Back to events
-          </button>
-        ) : (
-          <span aria-hidden />
-        )}
-
+      {/* Back arrow — floats top-left, mirroring the sheet's close (X)
+          button at top-right with identical formatting. Only shown when
+          there's a list to return to (i.e. inside the events drawer). */}
+      {onBack ? (
         <button
           type="button"
-          onClick={handleShare}
-          aria-label="Share this event"
-          className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:text-stone-300 dark:hover:text-stone-50 dark:focus-visible:ring-amber-400/60"
+          onClick={onBack}
+          aria-label="Back to events"
+          className="absolute left-[calc(1rem+env(safe-area-inset-left))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0 sm:left-4 sm:top-4"
         >
-          {copied ? (
-            <Check className="size-4" aria-hidden />
-          ) : (
-            <Share2 className="size-4" aria-hidden />
-          )}
-          {copied ? 'Copied' : 'Share'}
+          <ArrowLeft className="h-4 w-4" aria-hidden />
         </button>
-      </div>
+      ) : null}
 
       {/* Hero image (or gradient banner fallback). On mobile it keeps its
           natural full-width aspect ratio and scrolls away with the content;
@@ -182,6 +164,22 @@ export function EventDetailContent({
           independently below the fixed-height banner. */}
       <div className="sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain">
         <div className="space-y-5 p-5">
+          {/* Share — directly under the image. Native share where
+              available, clipboard copy as the fallback. */}
+          <button
+            type="button"
+            onClick={handleShare}
+            aria-label="Share this event"
+            className="inline-flex items-center gap-2 rounded-full border border-stone-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-stone-200 dark:hover:bg-indigo-950/80 dark:hover:text-stone-50 dark:focus-visible:ring-amber-400/60"
+          >
+            {copied ? (
+              <Check className="size-4" aria-hidden />
+            ) : (
+              <Share2 className="size-4" aria-hidden />
+            )}
+            {copied ? 'Copied' : 'Share'}
+          </button>
+
           <div>
             <h2 className="font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
               {event.title}

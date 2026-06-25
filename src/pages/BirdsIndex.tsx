@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import { useSeoMeta } from '@unhead/react';
 import { CalendarDays, MapPin, Settings2 } from 'lucide-react';
@@ -356,11 +356,20 @@ const IndexInner = () => {
   // view (with a back arrow returning to the list) — so a shared link
   // and an in-app tap land on the exact same surface.
   const navigate = useNavigate();
+  const location = useLocation();
   const { nip19Id, bird: birdSlugParam } = useParams<{
     nip19Id?: string;
     bird?: string;
   }>();
-  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
+  // Navigating between `/` and an event `/naddr…` swaps route elements, so
+  // BirdsIndex remounts and local state resets. The "Back to events" arrow
+  // therefore carries an `openEventsDrawer` flag via router location state,
+  // so the freshly-mounted page reopens the drawer on the list instead of
+  // closing it.
+  const locationState = location.state as { openEventsDrawer?: boolean } | null;
+  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(
+    () => locationState?.openEventsDrawer === true,
+  );
 
   const eventAddr = useMemo(() => {
     if (!nip19Id) return null;
@@ -401,12 +410,13 @@ const IndexInner = () => {
     useBirdstarEventByAddr(eventAddr?.kind, eventAddr?.identifier);
 
   // Back arrow inside the event detail: drop the event from the URL but
-  // keep the drawer open on the list. (Without forcing the drawer open
-  // here, a deep-link visit — where `eventsDrawerOpen` is still false —
-  // would close the whole drawer instead of revealing the list.)
+  // keep the drawer open on the list. Because navigating to `/` remounts
+  // this page (different route element), we carry the intent in router
+  // location state; the new instance initializes `eventsDrawerOpen` from
+  // it. (Setting state here too keeps things correct if no remount occurs.)
   const backToEventsList = useCallback(() => {
     setEventsDrawerOpen(true);
-    navigate('/');
+    navigate('/', { state: { openEventsDrawer: true } });
   }, [navigate]);
 
   // Dismiss the drawer entirely (the X). If an event naddr is in the URL,
