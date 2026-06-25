@@ -24,7 +24,7 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
   }
 
   // While the metadata query is in-flight and we don't yet have a name,
-  // we don't want to flash the "Anonymous" fallback / its first letter.
+  // we don't want to flash a generated animal name / its first letter.
   const isCurrentUserPending = isLoading && !currentUser.metadata.name;
 
   return (
