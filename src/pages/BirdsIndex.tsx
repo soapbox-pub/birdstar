@@ -476,6 +476,41 @@ const IndexInner = () => {
     [],
   );
 
+  // Because `openEvent` / `closeEvent` drive the URL with the History API
+  // directly (bypassing React Router to avoid remounting this page), React
+  // never hears about the browser/phone Back (or Forward) button. Without
+  // this listener, popping the history entry would revert the URL while the
+  // detail sheet stayed open — URL and UI desynced. So we mirror `popstate`
+  // back into local state: an event `naddr` in the path reopens the detail
+  // (and the drawer underneath it); anything else closes the detail.
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\//, '');
+      let isEventAddr = false;
+      if (path) {
+        try {
+          const decoded = nip19.decode(path);
+          isEventAddr =
+            decoded.type === 'naddr' &&
+            isCalendarEventKind(decoded.data.kind);
+        } catch {
+          isEventAddr = false;
+        }
+      }
+
+      if (isEventAddr) {
+        setDetailOpen(true);
+        setEventsDrawerOpen(true);
+      } else {
+        setDetailOpen(false);
+        setSelectedEvent(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // Settings: "Publish location" toggle (off by default). When on,
   // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
   // user's choice survives reloads; the `useAutoPublishDetection` hook
