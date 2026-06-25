@@ -15,6 +15,7 @@ import {
 } from "@/hooks/useCustomConstellations";
 import { useToast } from "@/hooks/useToast";
 import { ConstellationCard } from "@/components/ConstellationCard";
+import { FollowButton } from "@/components/FollowButton";
 import {
   dispatchEditConstellation,
 } from "@/lib/editConstellationEvent";
@@ -153,9 +154,12 @@ function ProfileContent({
                 <div className="h-20 w-20 rounded-full bg-white/10 ring-4 ring-slate-950 shadow-xl shrink-0" />
               )}
               <div className="min-w-0 flex-1 pt-1">
-                <h2 className="text-2xl font-semibold tracking-tight truncate">
-                  {displayName}
-                </h2>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="text-2xl font-semibold tracking-tight truncate">
+                    {displayName}
+                  </h2>
+                  <FollowButton pubkey={pubkey} className="mt-1 shrink-0" />
+                </div>
                 {metadata?.nip05 && (
                   <p className="text-xs text-sky-300/90 mt-0.5 truncate">
                     {metadata.nip05}

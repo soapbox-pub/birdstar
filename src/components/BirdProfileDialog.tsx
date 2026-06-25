@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FollowButton } from '@/components/FollowButton';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -112,10 +113,11 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
                 {initials(displayName)}
               </div>
             )}
-            <div className="min-w-0 flex-1 pt-1">
-              <h2 className="truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+            <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pt-1">
+              <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
                 {displayName}
               </h2>
+              <FollowButton pubkey={pubkey} className="mt-1 shrink-0" />
             </div>
           </div>
 

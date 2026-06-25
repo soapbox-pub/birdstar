@@ -233,38 +233,50 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
         </div>
       </button>
 
-      {/* Detection copy. Tapping opens the bird info dialog. */}
-      <button
-        type="button"
-        onClick={handleOpen}
-        aria-label={`Open info about ${item.commonName}`}
-        className={cn(
-          'flex min-w-0 flex-1 items-center py-3 pl-2 pr-3 text-left',
-          'transition-transform hover:-translate-y-px',
-          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
-          'dark:focus-visible:ring-amber-400/60',
-        )}
-      >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-1.5">
-            <span className="truncate text-sm font-semibold text-stone-900 dark:text-stone-50">
-              {isSelf ? 'You' : displayName}
-            </span>
-            <span className="shrink-0 text-xs text-stone-500 dark:text-stone-400">
-              · {timeAgo(item.timestamp)}
-            </span>
-          </div>
-          <p className="truncate text-sm text-stone-600 dark:text-stone-300">
+      {/* Right column: a name header (→ profile) stacked over the
+          detection copy (→ bird info). Two separate buttons so the two
+          destinations don't fight and we never nest interactive
+          elements. */}
+      <div className="flex min-w-0 flex-1 flex-col justify-center py-3 pl-2 pr-3">
+        <div className="flex items-baseline gap-1.5">
+          <button
+            type="button"
+            onClick={handleOpenProfile}
+            className={cn(
+              'truncate rounded-sm text-sm font-semibold text-stone-900 dark:text-stone-50',
+              'hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+              'dark:focus-visible:ring-amber-400/60',
+            )}
+          >
+            {isSelf ? 'You' : displayName}
+          </button>
+          <span className="shrink-0 text-xs text-stone-500 dark:text-stone-400">
+            · {timeAgo(item.timestamp)}
+          </span>
+        </div>
+
+        {/* Detection copy. Tapping opens the bird info dialog. */}
+        <button
+          type="button"
+          onClick={handleOpen}
+          aria-label={`Open info about ${item.commonName}`}
+          className={cn(
+            'mt-0.5 block min-w-0 rounded-sm text-left',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+            'dark:focus-visible:ring-amber-400/60',
+          )}
+        >
+          <span className="block truncate text-sm text-stone-600 dark:text-stone-300">
             heard{' '}
             <span className="font-medium text-stone-900 dark:text-stone-50">
               {vowelArticle(item.commonName)} {item.commonName}
             </span>
-          </p>
-          <p className="truncate text-xs italic text-stone-500 dark:text-stone-400">
+          </span>
+          <span className="block truncate text-xs italic text-stone-500 dark:text-stone-400">
             {item.scientificName}
-          </p>
-        </div>
-      </button>
+          </span>
+        </button>
+      </div>
     </Card>
   );
 }
