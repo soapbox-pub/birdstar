@@ -1,22 +1,27 @@
-// Individual calendar-event detail view. Rendered *in place* inside the
-// events drawer (`EventsDrawer`) — both when a card is tapped and when
-// the app is opened on an event deep link (`/naddr1…`) — with a back
-// arrow that returns to the list and a Share button for the deep link.
+// Individual calendar-event detail sheet. Opens as a second right-side
+// sheet stacked *on top* of the events drawer (`EventsDrawer`) — both
+// when a card is tapped and when the app is opened on an event deep link
+// (`/naddr1…`). Closing it (the X, Escape, or backdrop) just dismisses
+// this sheet and reveals the events list underneath exactly as it was
+// left (same Nearby/World toggle and scroll position).
 //
-// The event is resolved by the parent (BirdsIndex) from the URL via
-// `useBirdstarEventByAddr`; this component is purely presentational.
+// The event is supplied by the parent (BirdsIndex): the full object when
+// tapped in-app, or resolved from the URL via `useBirdstarEventByAddr`
+// for a cold deep link.
 import { useCallback, useMemo, useState } from 'react';
 import { nip19 } from 'nostr-tools';
 import {
-  ArrowLeft,
   CalendarDays,
   Check,
   Clock,
   Loader2,
   MapPin,
   Share2,
+  X,
 } from 'lucide-react';
 
+import { Sheet, SheetClose, SheetContent } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { LinkifiedEventText } from '@/components/EventDescription';
 import {
   formatEventWhen,
@@ -27,16 +32,51 @@ import { BIRDSTAR_PUBKEY } from '@/hooks/useBirdstarEvents';
 import { useToast } from '@/hooks/useToast';
 import { hapticTap } from '@/lib/haptics';
 
+interface EventDetailSheetProps {
+  /** The resolved event, or null when nothing is open. */
+  event: BirdstarCalendarEvent | null;
+  /** True while a cold deep-link is still resolving. */
+  isLoading: boolean;
+  /** True when the detail sheet should be open. */
+  open: boolean;
+  /** Called when the sheet is dismissed (X, Escape, or backdrop). */
+  onClose: () => void;
+}
+
+export function EventDetailSheet({
+  event,
+  isLoading,
+  open,
+  onClose,
+}: EventDetailSheetProps) {
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side="right"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
+        showCloseButton={false}
+      >
+        <SheetClose
+          aria-label="Close"
+          className="absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0 sm:right-4 sm:top-4"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </SheetClose>
+        <EventDetailContent event={event} isLoading={isLoading} />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 interface EventDetailContentProps {
   event: BirdstarCalendarEvent | null;
   isLoading: boolean;
-  onBack?: () => void;
 }
 
 export function EventDetailContent({
   event,
   isLoading,
-  onBack,
 }: EventDetailContentProps) {
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
@@ -125,20 +165,6 @@ export function EventDetailContent({
 
   return (
     <div className="flex h-full flex-col overflow-y-auto sm:overflow-hidden">
-      {/* Back arrow — floats top-left, mirroring the sheet's close (X)
-          button at top-right with identical formatting. Only shown when
-          there's a list to return to (i.e. inside the events drawer). */}
-      {onBack ? (
-        <button
-          type="button"
-          onClick={onBack}
-          aria-label="Back to events"
-          className="absolute left-[calc(1rem+env(safe-area-inset-left))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0 sm:left-4 sm:top-4"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden />
-        </button>
-      ) : null}
-
       {/* Hero image (or gradient banner fallback). On mobile it keeps its
           natural full-width aspect ratio and scrolls away with the content;
           from `sm` upward it returns to the fixed-height sheet treatment. */}
@@ -164,22 +190,6 @@ export function EventDetailContent({
           independently below the fixed-height banner. */}
       <div className="sm:min-h-0 sm:flex-1 sm:overflow-y-auto sm:overscroll-contain">
         <div className="space-y-5 p-5">
-          {/* Share — directly under the image. Native share where
-              available, clipboard copy as the fallback. */}
-          <button
-            type="button"
-            onClick={handleShare}
-            aria-label="Share this event"
-            className="inline-flex items-center gap-2 rounded-full border border-stone-200/80 bg-white/70 px-4 py-2 text-sm font-medium text-stone-700 transition-colors hover:bg-stone-50 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 dark:border-indigo-900/50 dark:bg-indigo-950/50 dark:text-stone-200 dark:hover:bg-indigo-950/80 dark:hover:text-stone-50 dark:focus-visible:ring-amber-400/60"
-          >
-            {copied ? (
-              <Check className="size-4" aria-hidden />
-            ) : (
-              <Share2 className="size-4" aria-hidden />
-            )}
-            {copied ? 'Copied' : 'Share'}
-          </button>
-
           <div>
             <h2 className="font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
               {event.title}
@@ -227,6 +237,26 @@ export function EventDetailContent({
             />
           ) : null}
         </div>
+      </div>
+
+      {/* Share — a full-width primary action pinned at the bottom of the
+          sheet. Native share where available, clipboard copy as the
+          fallback. */}
+      <div className="shrink-0 border-t border-stone-200/70 bg-white/80 p-5 backdrop-blur-sm dark:border-indigo-900/40 dark:bg-[#13112e]/80 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <Button
+          type="button"
+          size="lg"
+          onClick={handleShare}
+          aria-label="Share this event"
+          className="w-full gap-2 bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700 dark:bg-amber-400 dark:text-indigo-950 dark:hover:bg-amber-300"
+        >
+          {copied ? (
+            <Check className="size-5" aria-hidden />
+          ) : (
+            <Share2 className="size-5" aria-hidden />
+          )}
+          {copied ? 'Link copied' : 'Share event'}
+        </Button>
       </div>
     </div>
   );

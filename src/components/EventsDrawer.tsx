@@ -5,17 +5,16 @@
 //
 // Opened from a calendar icon button in the Birds-mode HUD (mirroring
 // the constellation/Sparkles button in Stars mode). Each card is a big
-// image with the event name, date, and city; tapping it swaps this sheet
-// into an in-place detail view with a back arrow, preserving the selected
-// Nearby / World list behind it.
+// image with the event name, date, and city; tapping it opens a second
+// detail sheet *on top* of this one (handled by the parent) — this
+// drawer stays mounted underneath with its scope and scroll position
+// intact, so closing the detail reveals the list exactly as it was left.
 //
 // A "Nearby / World" dropdown in the header scopes the list. Nearby
 // matches the curator's `g` (geohash) tags against the user's coarse
 // location (a ~150 km cell plus its eight neighbors); it falls back to
 // World automatically when we don't yet know where the user is.
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { nip19 } from 'nostr-tools';
 import { CalendarDays, Clock, Globe, Loader2, MapPin, X } from 'lucide-react';
 
 import {
@@ -33,30 +32,23 @@ import {
   type BirdstarCalendarEvent,
 } from '@/components/communityEventUtils';
 import {
-  BIRDSTAR_PUBKEY,
   useBirdstarEvents,
   type EventScope,
 } from '@/hooks/useBirdstarEvents';
-import { EventDetailContent } from '@/components/EventDetailSheet';
 import { useUserRegion } from '@/hooks/useUserRegion';
 import { cn } from '@/lib/utils';
 
 interface EventsDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  event: BirdstarCalendarEvent | null;
-  isEventLoading: boolean;
-  showEventDetail: boolean;
-  onBackFromEvent: () => void;
+  /** Called with the tapped event so the parent can open its detail sheet. */
+  onSelectEvent: (event: BirdstarCalendarEvent) => void;
 }
 
 export function EventsDrawer({
   open,
   onOpenChange,
-  event,
-  isEventLoading,
-  showEventDetail,
-  onBackFromEvent,
+  onSelectEvent,
 }: EventsDrawerProps) {
   // Default to "Nearby"; the hook falls back to World when there's no
   // usable location, and `effectiveScope` reflects what actually ran.
@@ -86,14 +78,6 @@ export function EventsDrawer({
         >
           <X className="h-4 w-4" aria-hidden />
         </SheetClose>
-        {showEventDetail ? (
-          <EventDetailContent
-            event={event}
-            isLoading={isEventLoading}
-            onBack={onBackFromEvent}
-          />
-        ) : (
-          <>
         <SheetHeader className="shrink-0 border-b border-stone-200/70 px-5 pb-4 pt-5 text-left dark:border-indigo-900/40">
           {/* Title row — the close button floats at the top-right, so keep
               this row to the title alone and put the scope dropdown on the
@@ -136,17 +120,13 @@ export function EventsDrawer({
               <ul className="flex flex-col gap-4">
                 {upcoming.map((event) => (
                   <li key={event.id}>
-                    <EventCard
-                      event={event}
-                    />
+                    <EventCard event={event} onSelect={onSelectEvent} />
                   </li>
                 ))}
               </ul>
             )}
           </div>
         </div>
-          </>
-        )}
       </SheetContent>
     </Sheet>
   );
@@ -233,35 +213,20 @@ function ScopeToggle({ value, onChange }: ScopeToggleProps) {
 
 interface EventCardProps {
   event: BirdstarCalendarEvent;
+  onSelect: (event: BirdstarCalendarEvent) => void;
 }
 
-function EventCard({ event }: EventCardProps) {
-  const navigate = useNavigate();
-
+function EventCard({ event, onSelect }: EventCardProps) {
   const imageUrl = useMemo(
     () => sanitizeImageUrl(event.image),
     [event.image],
   );
 
-  const naddr = useMemo(
-    () =>
-      nip19.naddrEncode({
-        kind: event.kind,
-        pubkey: BIRDSTAR_PUBKEY,
-        identifier: event.identifier,
-      }),
-    [event.kind, event.identifier],
-  );
-
-  const open = () => {
-    navigate(`/${naddr}`);
-  };
-
   return (
     <Card className="overflow-hidden border-stone-200/70 bg-white/80 p-0 shadow-sm shadow-stone-900/5 backdrop-blur-sm transition-colors dark:border-indigo-900/40 dark:bg-indigo-950/40">
       <button
         type="button"
-        onClick={open}
+        onClick={() => onSelect(event)}
         aria-label={`View details for ${event.title}`}
         className={cn(
           'group block w-full text-left',
