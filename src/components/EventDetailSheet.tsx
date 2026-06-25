@@ -6,10 +6,9 @@
 // The event is resolved by the parent (BirdsIndex) from the URL via
 // `useBirdstarEventByAddr`; this component is purely presentational.
 import { useMemo } from 'react';
-import { CalendarDays, Clock, Loader2, MapPin } from 'lucide-react';
+import { CalendarDays, Clock, Loader2, MapPin, X } from 'lucide-react';
 
-import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { Sheet, SheetClose, SheetContent } from '@/components/ui/sheet';
 import { LinkifiedEventText } from '@/components/EventDescription';
 import {
   formatEventWhen,
@@ -45,7 +44,14 @@ export function EventDetailSheet({
         side="right"
         onOpenAutoFocus={(e) => e.preventDefault()}
         className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
+        showCloseButton={false}
       >
+        <SheetClose
+          aria-label="Close"
+          className="absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm transition-colors hover:bg-black/70 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0 sm:right-4 sm:top-4"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </SheetClose>
         {isLoading && !event ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2
@@ -59,9 +65,6 @@ export function EventDetailSheet({
               This event couldn’t be found. It may have been removed or the
               link is invalid.
             </p>
-            <Button variant="outline" className="mt-2" onClick={onClose}>
-              Close
-            </Button>
           </div>
         ) : (
           <div className="flex h-full flex-col overflow-hidden">
@@ -134,16 +137,6 @@ export function EventDetailSheet({
                   />
                 ) : null}
               </div>
-            </div>
-
-            <div className="shrink-0 border-t border-stone-200/70 p-4 dark:border-indigo-900/40">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={onClose}
-              >
-                Close
-              </Button>
             </div>
           </div>
         )}

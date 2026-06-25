@@ -254,21 +254,22 @@ export function BirdInfoDialog({
           We replace it with a dedicated circular button below that
           carries its own background so it's always legible.
 
-          The dialog is capped at the visual viewport minus a 1rem
-          breathing margin on each side (`100dvh-2rem`). `dvh` tracks
-          the mobile browser's *dynamic* viewport so the cap shrinks
-          when the URL bar expands, preventing the delete/wiki row
-          from vanishing beneath it. The content is a flex column so
-          the banner can stay a fixed 192px and the scroll lives in
-          the inner content region — critical for finding-mode dialogs
-          that stack extract + habitat + audio player on short phones. */}
+          On mobile this presents as a full-screen dialog page rather than
+          a drawer, so scrolling the content can never accidentally dismiss
+          it. From `sm` upward it returns to the centered modal treatment.
+          The content is a flex column so the banner can stay fixed-height
+          and the scroll lives in the inner content region — critical for
+          finding-mode dialogs that stack extract + habitat + audio player
+          on short phones. */}
       <DialogContent
         className={cn(
-          'max-w-lg overflow-hidden p-0',
+          'h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-hidden rounded-none border-0 p-0',
+          'left-0 top-0 translate-x-0 translate-y-0',
+          'sm:left-[50%] sm:top-[calc(env(safe-area-inset-top)+(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))/2)] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
           // Override shadcn's default `grid gap-4` — we need flex for
           // the pinned-banner + scrolling-body layout, and the gap
           // would add a 16px strip between them.
-          'flex max-h-[calc(100dvh-2rem)] flex-col gap-0',
+          'flex flex-col gap-0',
         )}
         showCloseButton={false}
       >
@@ -312,7 +313,7 @@ export function BirdInfoDialog({
                   birds so the context from the birdex carries through
                   into the detail dialog. */}
               {isRare ? (
-                <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm">
+                <div className="absolute left-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] inline-flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm sm:left-3 sm:top-3">
                   <Sparkles className="h-3 w-3" aria-hidden />
                   Rare find
                 </div>
@@ -323,7 +324,7 @@ export function BirdInfoDialog({
                 className={cn(
                   // Circular backdrop keeps the X legible regardless of
                   // whatever species photo is behind it.
-                  'absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full',
+                  'absolute right-[calc(0.75rem+env(safe-area-inset-right))] top-[calc(0.75rem+env(safe-area-inset-top))] inline-flex h-9 w-9 items-center justify-center rounded-full sm:right-3 sm:top-3',
                   'bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm',
                   'transition-colors hover:bg-black/70 hover:text-white',
                   'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',

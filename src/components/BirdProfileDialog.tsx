@@ -10,12 +10,13 @@
 // AccountSwitcher's "view profile" link, feed author taps, and pasted
 // profile URLs all resolve to *something* regardless of which world the
 // visitor is currently in.
-import { Bird, QrCode } from 'lucide-react';
+import { Bird, QrCode, X } from 'lucide-react';
 import { useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
 
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -44,12 +45,32 @@ interface BirdProfileDialogProps {
 /**
  * Dialog shell. Mirrors the open/close contract of `BirdInfoDialog`
  * (driven by a nullable subject + an `onOpenChange` close handler) so
- * BirdsIndex can wire it the same way.
+ * BirdsIndex can wire it the same way. On mobile it fills the screen like
+ * a page with an explicit close button; from `sm` upward it returns to the
+ * centered modal treatment.
  */
 export function BirdProfileDialog({ pubkey, onClose }: BirdProfileDialogProps) {
   return (
     <Dialog open={!!pubkey} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[88dvh] gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent
+        className={cn(
+          'h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 p-0',
+          'left-0 top-0 translate-x-0 translate-y-0',
+          'sm:left-[50%] sm:top-[calc(env(safe-area-inset-top)+(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom))/2)] sm:h-auto sm:max-h-[88dvh] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
+        )}
+        showCloseButton={false}
+      >
+        <DialogClose
+          aria-label="Close"
+          className={cn(
+            'absolute right-[calc(1rem+env(safe-area-inset-right))] top-[calc(1rem+env(safe-area-inset-top))] z-10 inline-flex h-9 w-9 items-center justify-center rounded-full sm:right-4 sm:top-4',
+            'bg-background/75 text-foreground shadow-sm ring-1 ring-border backdrop-blur-sm',
+            'transition-colors hover:bg-background',
+            'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0',
+          )}
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </DialogClose>
         {pubkey && <ProfileBody pubkey={pubkey} />}
       </DialogContent>
     </Dialog>
@@ -80,7 +101,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
   const speciesCount = detections?.length ?? 0;
 
   return (
-    <div className="flex max-h-[88dvh] flex-col">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col sm:h-auto sm:max-h-[88dvh]">
       {/* Accessible title/description, visually replaced by the custom
           header below. */}
       <DialogHeader className="sr-only">
@@ -96,6 +117,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
         <ProfileShareView
           pubkey={pubkey}
           onBack={() => setShareOpen(false)}
+          className="pt-[calc(1.75rem+env(safe-area-inset-top))] sm:pt-7"
         />
       ) : (
         <>
@@ -114,7 +136,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
           <div className="absolute inset-0 -z-10 bg-linear-to-b from-emerald-100/70 via-sky-50/40 to-background dark:from-indigo-950/60 dark:via-indigo-950/30 dark:to-background" />
         )}
 
-        <div className="px-6 pb-5 pt-7">
+        <div className="px-6 pb-5 pt-[calc(1.75rem+env(safe-area-inset-top))] sm:pt-7">
           <div className="flex items-start gap-4">
             {picture ? (
               <img
