@@ -127,26 +127,33 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
                 {initials(displayName)}
               </div>
             )}
-            <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pt-1">
-              <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-                {displayName}
-              </h2>
+            <div className="min-w-0 flex-1 pt-1">
               {isOwnProfile ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setShareOpen(true)}
-                  className="mt-1 shrink-0 gap-1.5 rounded-full font-semibold"
-                >
-                  <QrCode className="h-4 w-4" />
-                  Share
-                </Button>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                    {displayName}
+                  </h2>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setShareOpen(true)}
+                    className="mt-1 shrink-0 gap-1.5 rounded-full font-semibold"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Share
+                  </Button>
+                </div>
               ) : (
-                <SmartFollowButton
-                  pubkey={pubkey}
-                  size="sm"
-                  className="mt-1 shrink-0"
-                />
+                <>
+                  <h2 className="truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                    {displayName}
+                  </h2>
+                  <SmartFollowButton
+                    pubkey={pubkey}
+                    size="sm"
+                    className="mt-2"
+                  />
+                </>
               )}
             </div>
           </div>
