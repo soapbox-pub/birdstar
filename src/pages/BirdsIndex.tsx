@@ -57,6 +57,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { BirdFeed } from '@/components/BirdFeed';
 import { EventsDrawer } from '@/components/EventsDrawer';
 import { EventDetailSheet } from '@/components/EventDetailSheet';
+import { BirdProfileDialog } from '@/components/BirdProfileDialog';
 import {
   isCalendarEventKind,
   useBirdstarEventByAddr,
@@ -372,6 +373,29 @@ const IndexInner = () => {
       return null;
     }
   }, [nip19Id]);
+
+  // Profile pubkey when the path is an `npub` / `nprofile`. Mirrors how
+  // Stars opens its `ProfileDetailSheet` over the sky from the same
+  // identifiers — here we open the bird-world `BirdProfileDialog` over
+  // the checklist instead, so a shared profile link resolves in
+  // whichever mode the visitor happens to be in.
+  const profilePubkey = useMemo(() => {
+    if (!nip19Id) return null;
+    try {
+      const decoded = nip19.decode(nip19Id);
+      if (decoded.type === 'npub') return decoded.data;
+      if (decoded.type === 'nprofile') return decoded.data.pubkey;
+      return null;
+    } catch {
+      return null;
+    }
+  }, [nip19Id]);
+
+  const closeProfile = useCallback(() => {
+    // Return to the bare Birds page; the dialog self-closes once the URL
+    // no longer carries a profile identifier.
+    navigate('/');
+  }, [navigate]);
 
   const { event: openedEvent, isLoading: openedEventLoading } =
     useBirdstarEventByAddr(eventAddr?.kind, eventAddr?.identifier);
@@ -1388,6 +1412,12 @@ const IndexInner = () => {
         open={eventAddr !== null}
         onClose={closeEvent}
       />
+
+      {/* Profile dialog — URL-driven. Open whenever the path is an
+          npub / nprofile; shows the author's profile and the bird
+          species they've published detections for. Closes by navigating
+          back to `/`. The Stars-mode analogue is `ProfileDetailSheet`. */}
+      <BirdProfileDialog pubkey={profilePubkey} onClose={closeProfile} />
     </div>
   );
 };
