@@ -10,9 +10,7 @@
 // AccountSwitcher's "view profile" link, feed author taps, and pasted
 // profile URLs all resolve to *something* regardless of which world the
 // visitor is currently in.
-import { useMemo } from 'react';
-import { nip19 } from 'nostr-tools';
-import { Bird, Check, Copy } from 'lucide-react';
+import { Bird } from 'lucide-react';
 import { useSeoMeta } from '@unhead/react';
 
 import {
@@ -26,7 +24,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useToast } from '@/hooks/useToast';
 import {
   useAuthorBirdDetections,
   type AuthorDetection,
@@ -57,7 +54,6 @@ export function BirdProfileDialog({ pubkey, onClose }: BirdProfileDialogProps) {
 
 function ProfileBody({ pubkey }: { pubkey: string }) {
   const { user } = useCurrentUser();
-  const { toast } = useToast();
   const author = useAuthor(pubkey);
   const { data: detections, isLoading } = useAuthorBirdDetections(pubkey);
 
@@ -67,7 +63,6 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
   const banner = metadata?.banner;
   const about = metadata?.about;
 
-  const npub = useMemo(() => nip19.npubEncode(pubkey), [pubkey]);
   const isOwnProfile = user?.pubkey === pubkey;
 
   useSeoMeta({
@@ -75,15 +70,6 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
     description:
       about ?? `Birds spotted by ${displayName} on Birdstar.`,
   });
-
-  const handleCopyNpub = async () => {
-    try {
-      await navigator.clipboard.writeText(npub);
-      toast({ title: 'Copied', description: 'Npub copied to clipboard.' });
-    } catch {
-      // Clipboard denied — the npub stays visible, so fail silently.
-    }
-  };
 
   const speciesCount = detections?.length ?? 0;
 
@@ -130,22 +116,6 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
               <h2 className="truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
                 {displayName}
               </h2>
-              {metadata?.nip05 && (
-                <p className="mt-0.5 truncate text-xs text-emerald-700 dark:text-emerald-300/90">
-                  {metadata.nip05}
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={handleCopyNpub}
-                className="mt-1 inline-flex items-center gap-1 font-mono text-[11px] text-stone-400 transition-colors hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
-                title="Copy npub"
-              >
-                <span className="max-w-48 truncate">
-                  {npub.slice(0, 16)}…{npub.slice(-8)}
-                </span>
-                <Copy className="size-3 shrink-0" />
-              </button>
             </div>
           </div>
 
@@ -153,13 +123,6 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
             <p className="mt-4 whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-stone-700 dark:text-stone-300/90">
               {about}
             </p>
-          )}
-
-          {isOwnProfile && (
-            <div className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] uppercase tracking-widest text-emerald-700 dark:border-emerald-300/20 dark:bg-emerald-300/5 dark:text-emerald-300/80">
-              <Check className="size-3" />
-              Your profile
-            </div>
           )}
         </div>
       </div>
