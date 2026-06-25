@@ -39,6 +39,7 @@ import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useInView } from 'react-intersection-observer';
 import { Bird, Loader2 } from 'lucide-react';
+import { nip19 } from 'nostr-tools';
 import type { NostrMetadata } from '@nostrify/nostrify';
 
 import { Card } from '@/components/ui/card';
@@ -173,16 +174,26 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
   const { user } = useCurrentUser();
   const isSelf = user?.pubkey === item.pubkey;
 
+  const navigate = useNavigate();
+
   const handleOpen = () => onOpen(item.scientificName);
 
+  const handleOpenProfile = () => {
+    navigate(`/${nip19.npubEncode(item.pubkey)}`);
+  };
+
   return (
-    <Card className="overflow-hidden border-stone-200/70 bg-white/80 shadow-sm shadow-stone-900/5 backdrop-blur-sm transition-colors dark:border-indigo-900/40 dark:bg-indigo-950/40">
+    <Card className="flex items-stretch overflow-hidden border-stone-200/70 bg-white/80 shadow-sm shadow-stone-900/5 backdrop-blur-sm transition-colors dark:border-indigo-900/40 dark:bg-indigo-950/40">
+      {/* Author portrait + bird thumbnail. Tapping navigates to the
+          author's profile (`/npub1…`). Kept as its own button —
+          separate from the bird-info trigger — so the two destinations
+          don't fight, and so we never nest interactive elements. */}
       <button
         type="button"
-        onClick={handleOpen}
-        aria-label={`Open info about ${item.commonName}`}
+        onClick={handleOpenProfile}
+        aria-label={`View ${isSelf ? 'your' : `${displayName}'s`} profile`}
         className={cn(
-          'flex w-full items-center gap-3 p-3 text-left',
+          'flex shrink-0 items-center py-3 pl-3 pr-1',
           'transition-transform hover:-translate-y-px',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
           'dark:focus-visible:ring-amber-400/60',
@@ -191,7 +202,7 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
         {/* Overlapping friend portrait + bird thumbnail. Same idiom
             as FollowDetectionToaster so the feed reads as a
             persisted log of the same events that trigger toasts. */}
-        <div className="relative flex shrink-0 items-center">
+        <div className="relative flex items-center">
           <Avatar
             src={friendPicture}
             alt={displayName}
@@ -220,7 +231,20 @@ function FeedRow({ item, onOpen }: FeedRowProps) {
             )}
           </span>
         </div>
+      </button>
 
+      {/* Detection copy. Tapping opens the bird info dialog. */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        aria-label={`Open info about ${item.commonName}`}
+        className={cn(
+          'flex min-w-0 flex-1 items-center py-3 pl-2 pr-3 text-left',
+          'transition-transform hover:-translate-y-px',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+          'dark:focus-visible:ring-amber-400/60',
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-1.5">
             <span className="truncate text-sm font-semibold text-stone-900 dark:text-stone-50">
