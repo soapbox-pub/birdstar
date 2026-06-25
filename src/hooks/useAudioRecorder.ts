@@ -146,6 +146,32 @@ export function useAudioRecorder({ onChunk, predictEveryMs = 2000 }: RecorderOpt
       }
     }
 
+    // Suspend the capture AudioContext entirely while a song
+    // plays. Disabling the track alone keeps this context's
+    // audio hardware clock running at our forced 48 kHz capture
+    // rate; on many platforms (notably macOS/iOS and some
+    // Android devices) a live capture context contending with
+    // the <audio> element's playback forces the OS audio engine
+    // to run two clocks / resample on the output path, which is
+    // audible as the "crunchy"/crackling distortion in the bird
+    // sound. Suspending releases that contention so playback is
+    // clean. resume() on un-mute reactivates the existing graph
+    // instantly -- no rebuild, no getUserMedia reprompt. The
+    // promises can reject if the context was closed out from
+    // under us (e.g. stop() raced the toggle); swallow those.
+    const ctx = ctxRef.current;
+    if (ctx) {
+      if (songPlaybackActive) {
+        if (ctx.state === 'running') {
+          void ctx.suspend().catch(() => {});
+        }
+      } else {
+        if (ctx.state === 'suspended') {
+          void ctx.resume().catch(() => {});
+        }
+      }
+    }
+
     // On un-mute: reset the ring-buffer state so we don't emit a
     // chunk built from stale pre-mute audio the moment playback
     // ends. Otherwise a user who toggles playback briefly would
@@ -326,6 +352,15 @@ export function useAudioRecorder({ onChunk, predictEveryMs = 2000 }: RecorderOpt
         source.connect(node);
         node.connect(ctx.destination);
         scriptNodeRef.current = node;
+      }
+
+      // If a reference song is already playing when capture
+      // starts, suspend the freshly-built context immediately so
+      // it doesn't contend with playback (same rationale as the
+      // mute effect above). The mute effect re-runs on the next
+      // toggle to resume it.
+      if (mutedRef.current && ctx.state === 'running') {
+        void ctx.suspend().catch(() => {});
       }
 
       setState({ isRecording: true, error: null, errorKind: null });
