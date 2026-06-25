@@ -16,7 +16,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { ConstellationCard } from "@/components/ConstellationCard";
 import { SmartFollowButton } from "@/components/SmartFollowButton";
-import { ProfileShareDialog } from "@/components/ProfileShareDialog";
+import { ProfileShareView } from "@/components/ProfileShareView";
 import {
   dispatchEditConstellation,
 } from "@/lib/editConstellationEvent";
@@ -128,6 +128,18 @@ function ProfileContent({
         <div className="h-1.5 w-10 rounded-full bg-white/20" />
       </div>
 
+      {shareOpen ? (
+        // Swap the QR share view in place of the profile body, rather than
+        // stacking a second dialog over this sheet.
+        <div className="flex-1 overflow-y-auto overscroll-contain">
+          <ProfileShareView
+            pubkey={pubkey}
+            onBack={() => setShareOpen(false)}
+            variant="dark"
+          />
+        </div>
+      ) : (
+        <>
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
         {/* Banner + header block */}
@@ -255,6 +267,8 @@ function ProfileContent({
           )}
         </div>
       </div>
+        </>
+      )}
 
       {/* Footer */}
       <div className="p-4 border-t border-white/10 shrink-0 bg-slate-950/80">
@@ -268,14 +282,6 @@ function ProfileContent({
           </Link>
         </Button>
       </div>
-
-      {isOwnProfile && (
-        <ProfileShareDialog
-          pubkey={pubkey}
-          open={shareOpen}
-          onOpenChange={setShareOpen}
-        />
-      )}
     </div>
   );
 }

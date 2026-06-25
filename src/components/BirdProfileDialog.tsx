@@ -25,7 +25,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { SmartFollowButton } from '@/components/SmartFollowButton';
-import { ProfileShareDialog } from '@/components/ProfileShareDialog';
+import { ProfileShareView } from '@/components/ProfileShareView';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -90,6 +90,15 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
         </DialogDescription>
       </DialogHeader>
 
+      {shareOpen ? (
+        // Swap the QR share view in place of the profile body, rather than
+        // stacking a second dialog over this one.
+        <ProfileShareView
+          pubkey={pubkey}
+          onBack={() => setShareOpen(false)}
+        />
+      ) : (
+        <>
       {/* Banner + identity block */}
       <div className="relative isolate shrink-0">
         {banner ? (
@@ -194,13 +203,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
           </div>
         )}
       </div>
-
-      {isOwnProfile && (
-        <ProfileShareDialog
-          pubkey={pubkey}
-          open={shareOpen}
-          onOpenChange={setShareOpen}
-        />
+        </>
       )}
     </div>
   );
