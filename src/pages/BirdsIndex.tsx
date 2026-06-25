@@ -56,7 +56,6 @@ import { useBirdHistory } from '@/hooks/useBirdHistory';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { BirdFeed } from '@/components/BirdFeed';
 import { EventsDrawer } from '@/components/EventsDrawer';
-import { EventDetailSheet } from '@/components/EventDetailSheet';
 import { BirdProfileDialog } from '@/components/BirdProfileDialog';
 import {
   isCalendarEventKind,
@@ -350,12 +349,12 @@ const IndexInner = () => {
 
   // Community birding events. The drawer (a right-side sheet listing
   // upcoming Birdstar-curated calendar events) is opened from a
-  // calendar button in the HUD; the individual event detail sheet is
-  // driven entirely by the URL. When the path is a calendar-event
+  // calendar button in the HUD, and is the single surface for both the
+  // list and an individual event. When the path is a calendar-event
   // `naddr` (forced into Birds mode by `modeFromPath`), we decode it,
-  // resolve the event, and mount `EventDetailSheet` over the page —
-  // mirroring how Stars opens its constellation detail sheet from a
-  // deep link.
+  // resolve the event, force the drawer open, and swap it into a detail
+  // view (with a back arrow returning to the list) — so a shared link
+  // and an in-app tap land on the exact same surface.
   const navigate = useNavigate();
   const { nip19Id, bird: birdSlugParam } = useParams<{
     nip19Id?: string;
@@ -401,11 +400,24 @@ const IndexInner = () => {
   const { event: openedEvent, isLoading: openedEventLoading } =
     useBirdstarEventByAddr(eventAddr?.kind, eventAddr?.identifier);
 
-  const closeEvent = useCallback(() => {
-    // Return to the bare Birds page; the event sheet self-closes once
-    // the URL no longer carries an event naddr.
+  // Back arrow inside the event detail: drop the event from the URL but
+  // keep the drawer open on the list. (Without forcing the drawer open
+  // here, a deep-link visit — where `eventsDrawerOpen` is still false —
+  // would close the whole drawer instead of revealing the list.)
+  const backToEventsList = useCallback(() => {
+    setEventsDrawerOpen(true);
     navigate('/');
   }, [navigate]);
+
+  // Dismiss the drawer entirely (the X). If an event naddr is in the URL,
+  // also clear it so the drawer doesn't immediately reopen on the detail.
+  const closeEventsDrawer = useCallback(
+    (nextOpen: boolean) => {
+      setEventsDrawerOpen(nextOpen);
+      if (!nextOpen && eventAddr !== null) navigate('/');
+    },
+    [eventAddr, navigate],
+  );
 
   // Settings: "Publish location" toggle (off by default). When on,
   // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
@@ -1404,20 +1416,18 @@ const IndexInner = () => {
       <LiferCelebration item={liferItem} onDismiss={dismissLifer} />
 
       {/* Curated birding-events drawer, opened from the HUD calendar
-          button. */}
+          button. It's the single surface for both the list and an
+          individual event: tapping a card swaps the drawer into a detail
+          view with a back arrow, and a shared deep-link (`/naddr…`) opens
+          the drawer straight into that detail view. The back arrow returns
+          to the list. */}
       <EventsDrawer
-        open={eventsDrawerOpen}
-        onOpenChange={setEventsDrawerOpen}
-      />
-
-      {/* Individual event detail — URL-driven. Open whenever the path
-          is a calendar-event naddr; resolves the event via
-          `useBirdstarEventByAddr` and closes by navigating back to `/`. */}
-      <EventDetailSheet
+        open={eventsDrawerOpen || eventAddr !== null}
+        onOpenChange={closeEventsDrawer}
         event={openedEvent}
-        isLoading={openedEventLoading}
-        open={eventAddr !== null}
-        onClose={closeEvent}
+        isEventLoading={openedEventLoading}
+        showEventDetail={eventAddr !== null}
+        onBackFromEvent={backToEventsList}
       />
 
       {/* Profile dialog — URL-driven. Open whenever the path is an

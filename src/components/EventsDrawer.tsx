@@ -5,9 +5,9 @@
 //
 // Opened from a calendar icon button in the Birds-mode HUD (mirroring
 // the constellation/Sparkles button in Stars mode). Each card is a big
-// image with the event name, date, and city; tapping navigates to the
-// event's `/{naddr}`, which BirdsIndex resolves into the
-// EventDetailSheet.
+// image with the event name, date, and city; tapping it swaps this sheet
+// into an in-place detail view with a back arrow, preserving the selected
+// Nearby / World list behind it.
 //
 // A "Nearby / World" dropdown in the header scopes the list. Nearby
 // matches the curator's `g` (geohash) tags against the user's coarse
@@ -37,15 +37,27 @@ import {
   useBirdstarEvents,
   type EventScope,
 } from '@/hooks/useBirdstarEvents';
+import { EventDetailContent } from '@/components/EventDetailSheet';
 import { useUserRegion } from '@/hooks/useUserRegion';
 import { cn } from '@/lib/utils';
 
 interface EventsDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  event: BirdstarCalendarEvent | null;
+  isEventLoading: boolean;
+  showEventDetail: boolean;
+  onBackFromEvent: () => void;
 }
 
-export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
+export function EventsDrawer({
+  open,
+  onOpenChange,
+  event,
+  isEventLoading,
+  showEventDetail,
+  onBackFromEvent,
+}: EventsDrawerProps) {
   // Default to "Nearby"; the hook falls back to World when there's no
   // usable location, and `effectiveScope` reflects what actually ran.
   const [scope, setScope] = useState<EventScope>('nearby');
@@ -74,6 +86,14 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
         >
           <X className="h-4 w-4" aria-hidden />
         </SheetClose>
+        {showEventDetail ? (
+          <EventDetailContent
+            event={event}
+            isLoading={isEventLoading}
+            onBack={onBackFromEvent}
+          />
+        ) : (
+          <>
         <SheetHeader className="shrink-0 border-b border-stone-200/70 px-5 pb-4 pt-5 text-left dark:border-indigo-900/40">
           {/* Title row — the close button floats at the top-right, so keep
               this row to the title alone and put the scope dropdown on the
@@ -125,6 +145,8 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
             )}
           </div>
         </div>
+          </>
+        )}
       </SheetContent>
     </Sheet>
   );
