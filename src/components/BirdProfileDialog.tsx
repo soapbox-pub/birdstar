@@ -10,7 +10,8 @@
 // AccountSwitcher's "view profile" link, feed author taps, and pasted
 // profile URLs all resolve to *something* regardless of which world the
 // visitor is currently in.
-import { Bird } from 'lucide-react';
+import { Bird, QrCode } from 'lucide-react';
+import { useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
 
 import {
@@ -22,7 +23,9 @@ import {
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FollowButton } from '@/components/FollowButton';
+import { Button } from '@/components/ui/button';
+import { SmartFollowButton } from '@/components/SmartFollowButton';
+import { ProfileShareDialog } from '@/components/ProfileShareDialog';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -57,6 +60,8 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
   const { user } = useCurrentUser();
   const author = useAuthor(pubkey);
   const { data: detections, isLoading } = useAuthorBirdDetections(pubkey);
+
+  const [shareOpen, setShareOpen] = useState(false);
 
   const metadata = author.data?.metadata;
   const displayName = metadata?.name ?? metadata?.display_name ?? 'Anonymous';
@@ -117,7 +122,23 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
               <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
                 {displayName}
               </h2>
-              <FollowButton pubkey={pubkey} className="mt-1 shrink-0" />
+              {isOwnProfile ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setShareOpen(true)}
+                  className="mt-1 shrink-0 gap-1.5 rounded-full font-semibold"
+                >
+                  <QrCode className="h-4 w-4" />
+                  Share
+                </Button>
+              ) : (
+                <SmartFollowButton
+                  pubkey={pubkey}
+                  size="sm"
+                  className="mt-1 shrink-0"
+                />
+              )}
             </div>
           </div>
 
@@ -173,6 +194,14 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
           </div>
         )}
       </div>
+
+      {isOwnProfile && (
+        <ProfileShareDialog
+          pubkey={pubkey}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
     </div>
   );
 }

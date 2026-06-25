@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { ModeProvider } from "@/components/ModeProvider";
 import { FollowDetectionToaster } from "@/components/FollowDetectionToaster";
+import { FollowIntentExecutor } from "@/components/FollowIntentExecutor";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Privacy from "./pages/Privacy";
@@ -37,6 +38,11 @@ export function AppRouter() {
             (which wrap AppRouter in App.tsx), and is otherwise
             mode-agnostic — it fires in both Birds and Stars. */}
         <FollowDetectionToaster />
+        {/* Completes a pending "scan to add me" follow once the visitor
+            finishes logging in / signing up. Sits here (under
+            NostrProvider, alongside FollowDetectionToaster) so it runs in
+            both Birds and Stars regardless of where auth dropped them. */}
+        <FollowIntentExecutor />
         <Routes>
           <Route path="/" element={<Index />} />
           {/* Birds overlay route: renders `Index`, which forces Birds

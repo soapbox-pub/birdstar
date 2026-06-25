@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { nip19 } from "nostr-tools";
-import { Sparkles, Loader2, Copy, Check } from "lucide-react";
+import { Sparkles, Loader2, Copy, Check, QrCode } from "lucide-react";
 import { useSeoMeta } from "@unhead/react";
 
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -15,7 +15,8 @@ import {
 } from "@/hooks/useCustomConstellations";
 import { useToast } from "@/hooks/useToast";
 import { ConstellationCard } from "@/components/ConstellationCard";
-import { FollowButton } from "@/components/FollowButton";
+import { SmartFollowButton } from "@/components/SmartFollowButton";
+import { ProfileShareDialog } from "@/components/ProfileShareDialog";
 import {
   dispatchEditConstellation,
 } from "@/lib/editConstellationEvent";
@@ -67,6 +68,8 @@ function ProfileContent({
   const author = useAuthor(pubkey);
   const { data: constellations, isLoading } = useConstellationsByAuthor(pubkey);
   const { mutate: remove, isPending: deleting } = useDeleteConstellation();
+
+  const [shareOpen, setShareOpen] = useState(false);
 
   const metadata = author.data?.metadata;
   const displayName =
@@ -158,7 +161,23 @@ function ProfileContent({
                   <h2 className="text-2xl font-semibold tracking-tight truncate">
                     {displayName}
                   </h2>
-                  <FollowButton pubkey={pubkey} className="mt-1 shrink-0" />
+                  {isOwnProfile ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setShareOpen(true)}
+                      className="mt-1 shrink-0 rounded-full font-semibold gap-1.5"
+                    >
+                      <QrCode className="h-4 w-4" />
+                      Share
+                    </Button>
+                  ) : (
+                    <SmartFollowButton
+                      pubkey={pubkey}
+                      size="sm"
+                      className="mt-1 shrink-0"
+                    />
+                  )}
                 </div>
                 {metadata?.nip05 && (
                   <p className="text-xs text-sky-300/90 mt-0.5 truncate">
@@ -249,6 +268,14 @@ function ProfileContent({
           </Link>
         </Button>
       </div>
+
+      {isOwnProfile && (
+        <ProfileShareDialog
+          pubkey={pubkey}
+          open={shareOpen}
+          onOpenChange={setShareOpen}
+        />
+      )}
     </div>
   );
 }
