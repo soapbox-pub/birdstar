@@ -118,7 +118,6 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
                   <li key={event.id}>
                     <EventCard
                       event={event}
-                      onNavigate={() => onOpenChange(false)}
                     />
                   </li>
                 ))}
@@ -212,11 +211,9 @@ function ScopeToggle({ value, onChange }: ScopeToggleProps) {
 
 interface EventCardProps {
   event: BirdstarCalendarEvent;
-  /** Called just before navigating, so the drawer can close itself. */
-  onNavigate: () => void;
 }
 
-function EventCard({ event, onNavigate }: EventCardProps) {
+function EventCard({ event }: EventCardProps) {
   const navigate = useNavigate();
 
   const imageUrl = useMemo(
@@ -235,7 +232,6 @@ function EventCard({ event, onNavigate }: EventCardProps) {
   );
 
   const open = () => {
-    onNavigate();
     navigate(`/${naddr}`);
   };
 
