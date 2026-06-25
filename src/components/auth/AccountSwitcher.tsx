@@ -72,7 +72,6 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
                 <p className='text-sm font-medium'>{getDisplayName(currentUser)}</p>
               )}
             </div>
-            <div className='w-2 h-2 rounded-full bg-primary'></div>
           </Link>
         </DropdownMenuItem>
         {otherUsers.map((user) => {
