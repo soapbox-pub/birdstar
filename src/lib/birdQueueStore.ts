@@ -1,10 +1,11 @@
 // Local-only IndexedDB queue of bird detections that still need to be
 // published to Nostr. A detection lands here when the kind 2473 publish
-// fails — most commonly because the device is offline — so the sighting
+// can't happen yet — most commonly because the device is offline, but also
+// when the user simply hasn't logged in (no signer) — so the sighting
 // isn't lost. The queue is drained (oldest-heard first) whenever the
-// connection comes back, and items are only removed once the publish
-// actually succeeds; a repeated failure leaves the item in place to be
-// retried again later.
+// connection comes back OR the user logs in, and items are only removed
+// once the publish actually succeeds; a repeated failure leaves the item
+// in place to be retried again later.
 //
 // We persist the *raw detection* (species + heard timestamp + an
 // optional location snapshot) rather than a fully-built or signed Nostr
@@ -85,6 +86,40 @@ function getDB(): Promise<IDBPDatabase> {
 }
 
 // ============================================================================
+// Change notification
+// ============================================================================
+
+// A minimal pub/sub so UI (e.g. a "N birds waiting to publish" indicator)
+// can react to the queue growing or draining without polling. The queue is
+// mutated imperatively from the publish pipeline, not through React state,
+// so this is how observers learn it changed. Best-effort and synchronous;
+// listeners must not throw.
+type QueueListener = () => void;
+const listeners = new Set<QueueListener>();
+
+function notifyQueueChanged(): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch (error) {
+      console.warn('[birdQueueStore] listener threw', error);
+    }
+  }
+}
+
+/**
+ * Subscribe to queue mutations (enqueue / remove / clear). Returns an
+ * unsubscribe function. Does not fire on subscribe — read the count once
+ * yourself if you need an initial value.
+ */
+export function subscribeQueueChanged(listener: QueueListener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -106,6 +141,7 @@ export async function enqueueDetection(
       attempts: detection.attempts ?? 0,
     };
     const key = await db.add(STORE_NAME, record);
+    notifyQueueChanged();
     return key as number;
   } catch (error) {
     console.warn('[birdQueueStore] enqueue failed', error);
@@ -137,6 +173,7 @@ export async function removeQueuedDetection(id: number): Promise<void> {
   try {
     const db = await getDB();
     await db.delete(STORE_NAME, id);
+    notifyQueueChanged();
   } catch (error) {
     console.warn('[birdQueueStore] remove failed', error);
   }
@@ -178,6 +215,7 @@ export async function clearQueue(): Promise<void> {
   try {
     const db = await getDB();
     await db.clear(STORE_NAME);
+    notifyQueueChanged();
   } catch (error) {
     console.warn('[birdQueueStore] clear failed', error);
   }

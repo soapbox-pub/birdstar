@@ -12,7 +12,8 @@
 // ## Offline durability
 //
 // A detection must never be lost just because the network was down when
-// the bird was heard. When a publish fails (offline, relay timeout, etc.)
+// the bird was heard — or because the user hadn't logged in yet. When a
+// publish fails (offline, relay timeout, etc.) OR the user is logged out,
 // the raw detection is persisted to an IndexedDB queue (see
 // birdQueueStore). `flushQueue()` replays queued detections through the
 // same publish path — oldest heard-time first — and only removes an item
@@ -20,7 +21,9 @@
 // leaves it queued for the next attempt. Because the detection carries
 // its original heard timestamp, the eventual event's `created_at` reflects
 // when the bird was heard, not when the queue drained. Callers wire
-// `flushQueue` to the browser coming back online (see useOnlineStatus).
+// `flushQueue` to the browser coming back online AND to the user logging
+// in (see useOnlineStatus + the flush effect in BirdsIndex), so a backlog
+// captured while logged out publishes automatically on sign-in.
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -107,10 +110,12 @@ export interface UseAutoPublishDetectionOptions {
 
 export interface AutoPublishApi {
   /**
-   * Submit a detection for possible auto-publishing. No-op if the user is
-   * logged out, or the species has been published within the recent
-   * cooldown window (either in this session or historically). On a publish
-   * failure the detection is queued to IndexedDB and retried via
+   * Submit a detection for possible auto-publishing. When logged out, the
+   * raw detection is persisted to the offline queue (once per species per
+   * session) so it can be published the moment the user logs in — nothing
+   * is lost. When logged in, no-op if the species has been published within
+   * the recent cooldown window (either in this session or historically). On
+   * a publish failure the detection is queued to IndexedDB and retried via
    * `flushQueue`.
    */
   consider: (detection: Detection) => void;
@@ -201,10 +206,27 @@ export function useAutoPublishDetection({
   // instead and resolved at flush time). Cleared on page reload so a
   // transient outage doesn't permanently hide a species.
   const unresolvableSpeciesKeys = useRef<Set<string>>(new Set());
+  // Species we've already queued WHILE LOGGED OUT this session. A
+  // logged-out user has no signer, so we can't publish — but we also
+  // can't just drop the sighting (the old behavior, which lost every
+  // logged-out capture). Instead we persist the raw detection to the
+  // same offline queue and let it flush once the user logs in. We dedup
+  // by species here so a five-minute logged-out session doesn't write
+  // hundreds of rows for the same bird chirping repeatedly; the real
+  // per-encounter cooldown + history dedup is applied at flush time,
+  // where the user (and their publish history) finally exist. Cleared on
+  // reload — the persisted queue is the durable record, this is just a
+  // per-session "don't re-enqueue" guard.
+  const queuedWhileLoggedOutKeys = useRef<Set<string>>(new Set());
 
   const userRef = useRef(user);
   useEffect(() => {
     userRef.current = user;
+    // Once a user is present the logged-out enqueue path is inactive, and
+    // its per-session dedup set is stale. Clear it so that if this user
+    // later logs out, fresh sightings re-enqueue correctly rather than
+    // being suppressed by keys left over from before they signed in.
+    if (user) queuedWhileLoggedOutKeys.current.clear();
   }, [user]);
 
   // `publish` from useNostrPublish is itself a stable mutateAsync, but
@@ -376,18 +398,37 @@ export function useAutoPublishDetection({
 
   const consider = useCallback(
     (detection: Detection) => {
-      if (!userRef.current) return; // logged-out: nothing to do
-
       const speciesKey = `${detection.scientificName}|${detection.commonName}`;
+
+      // Snapshot the geohash NOW (at the heard moment) so that if the
+      // detection is queued — whether because we're offline, the publish
+      // fails, or we're not logged in yet — it keeps the location where
+      // the bird was actually heard rather than wherever the user happens
+      // to be when the queue later drains. Respects the current "Publish
+      // location" toggle exactly like the live path.
+      const geohash = deriveLiveGeohash();
+
+      // Logged out: we have no signer, so publishing is impossible right
+      // now — but the sighting must not be lost. Persist the raw detection
+      // to the offline queue (deduped once per species per session) and
+      // let the login-triggered flush publish it once the user signs in.
+      // Resolution of the Wikidata QID, the per-encounter cooldown, and
+      // history dedup all happen at flush time, where the user exists.
+      if (!userRef.current) {
+        if (queuedWhileLoggedOutKeys.current.has(speciesKey)) return;
+        queuedWhileLoggedOutKeys.current.add(speciesKey);
+        void enqueueDetection({
+          scientificName: detection.scientificName,
+          commonName: detection.commonName,
+          timestamp: detection.timestamp,
+          geohash,
+        });
+        return;
+      }
+
       if (inFlightSpeciesKeys.current.has(speciesKey)) return;
       if (unresolvableSpeciesKeys.current.has(speciesKey)) return;
       inFlightSpeciesKeys.current.add(speciesKey);
-
-      // Snapshot the geohash NOW (at the heard moment) so that if the
-      // publish fails and the detection is queued, it keeps the location
-      // where the bird was actually heard rather than wherever the user
-      // happens to be when the queue later drains.
-      const geohash = deriveLiveGeohash();
 
       (async () => {
         try {

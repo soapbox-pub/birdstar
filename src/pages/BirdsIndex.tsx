@@ -63,6 +63,7 @@ import {
   useBirdstarEventByAddr,
 } from '@/hooks/useBirdstarEvents';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
+import { PendingPublishNudge } from '@/components/PendingPublishNudge';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
 import { useDeleteBirdDetection } from '@/hooks/useDeleteBirdDetection';
 import {
@@ -1295,6 +1296,12 @@ const IndexInner = () => {
         <div className="mt-6 sm:mt-8">
           <Header />
         </div>
+
+        {/* Logged-out users still capture birds — those sightings are
+            saved to the offline queue and publish automatically on login.
+            This nudge surfaces the backlog + a one-tap login. Self-hides
+            when logged in or when nothing is queued. */}
+        <PendingPublishNudge className="mt-6" />
 
         <section className="mt-8 w-full">
           {!labels || birdexSettling ? (
