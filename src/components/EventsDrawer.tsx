@@ -5,34 +5,34 @@
 //
 // Opened from a calendar icon button in the Birds-mode HUD (mirroring
 // the constellation/Sparkles button in Stars mode). Each card is a big
-// image with the event name, date, and city; tapping navigates to the
-// event's `/{naddr}`, which BirdsIndex resolves into the
-// EventDetailSheet.
+// image with the event name, date, and city; tapping it opens a second
+// detail sheet *on top* of this one (handled by the parent) — this
+// drawer stays mounted underneath with its scope and scroll position
+// intact, so closing the detail reveals the list exactly as it was left.
 //
 // A "Nearby / World" dropdown in the header scopes the list. Nearby
 // matches the curator's `g` (geohash) tags against the user's coarse
 // location (a ~150 km cell plus its eight neighbors); it falls back to
 // World automatically when we don't yet know where the user is.
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { nip19 } from 'nostr-tools';
 import { CalendarDays, Clock, Globe, Loader2, MapPin } from 'lucide-react';
 
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Card } from '@/components/ui/card';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import {
   formatEventWhen,
   sanitizeImageUrl,
   type BirdstarCalendarEvent,
 } from '@/components/communityEventUtils';
 import {
-  BIRDSTAR_PUBKEY,
   useBirdstarEvents,
   type EventScope,
 } from '@/hooks/useBirdstarEvents';
@@ -42,9 +42,15 @@ import { cn } from '@/lib/utils';
 interface EventsDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Called with the tapped event so the parent can open its detail sheet. */
+  onSelectEvent: (event: BirdstarCalendarEvent) => void;
 }
 
-export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
+export function EventsDrawer({
+  open,
+  onOpenChange,
+  onSelectEvent,
+}: EventsDrawerProps) {
   // Default to "Nearby"; the hook falls back to World when there's no
   // usable location, and `effectiveScope` reflects what actually ran.
   const [scope, setScope] = useState<EventScope>('nearby');
@@ -60,12 +66,15 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
       <SheetContent
         side="right"
         className="flex w-full flex-col gap-0 border-stone-200/70 bg-white p-0 text-stone-900 sm:max-w-md dark:border-indigo-900/40 dark:bg-[#13112e] dark:text-stone-100"
+        showCloseButton={false}
       >
+        <SheetClose asChild>
+          <OverlayCloseButton />
+        </SheetClose>
         <SheetHeader className="shrink-0 border-b border-stone-200/70 px-5 pb-4 pt-5 text-left dark:border-indigo-900/40">
-          {/* Title row — the Sheet's close (X) button floats at the
-              top-right of the content, so keep this row to the title
-              alone and put the scope dropdown on the line below where
-              the description used to sit, clear of the X. */}
+          {/* Title row — the close button floats at the top-right, so keep
+              this row to the title alone and put the scope dropdown on the
+              line below where the description used to sit, clear of the X. */}
           <SheetTitle className="flex items-center gap-2 font-serif text-xl font-semibold text-stone-900 dark:text-stone-50">
             <CalendarDays
               className="size-5 text-emerald-600 dark:text-amber-300"
@@ -104,10 +113,7 @@ export function EventsDrawer({ open, onOpenChange }: EventsDrawerProps) {
               <ul className="flex flex-col gap-4">
                 {upcoming.map((event) => (
                   <li key={event.id}>
-                    <EventCard
-                      event={event}
-                      onNavigate={() => onOpenChange(false)}
-                    />
+                    <EventCard event={event} onSelect={onSelectEvent} />
                   </li>
                 ))}
               </ul>
@@ -200,38 +206,20 @@ function ScopeToggle({ value, onChange }: ScopeToggleProps) {
 
 interface EventCardProps {
   event: BirdstarCalendarEvent;
-  /** Called just before navigating, so the drawer can close itself. */
-  onNavigate: () => void;
+  onSelect: (event: BirdstarCalendarEvent) => void;
 }
 
-function EventCard({ event, onNavigate }: EventCardProps) {
-  const navigate = useNavigate();
-
+function EventCard({ event, onSelect }: EventCardProps) {
   const imageUrl = useMemo(
     () => sanitizeImageUrl(event.image),
     [event.image],
   );
 
-  const naddr = useMemo(
-    () =>
-      nip19.naddrEncode({
-        kind: event.kind,
-        pubkey: BIRDSTAR_PUBKEY,
-        identifier: event.identifier,
-      }),
-    [event.kind, event.identifier],
-  );
-
-  const open = () => {
-    onNavigate();
-    navigate(`/${naddr}`);
-  };
-
   return (
     <Card className="overflow-hidden border-stone-200/70 bg-white/80 p-0 shadow-sm shadow-stone-900/5 backdrop-blur-sm transition-colors dark:border-indigo-900/40 dark:bg-indigo-950/40">
       <button
         type="button"
-        onClick={open}
+        onClick={() => onSelect(event)}
         aria-label={`View details for ${event.title}`}
         className={cn(
           'group block w-full text-left',

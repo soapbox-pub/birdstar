@@ -16,11 +16,13 @@ import { useSeoMeta } from '@unhead/react';
 
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -44,12 +46,24 @@ interface BirdProfileDialogProps {
 /**
  * Dialog shell. Mirrors the open/close contract of `BirdInfoDialog`
  * (driven by a nullable subject + an `onOpenChange` close handler) so
- * BirdsIndex can wire it the same way.
+ * BirdsIndex can wire it the same way. On mobile it fills the screen like
+ * a page with an explicit close button; from `sm` upward it returns to the
+ * centered modal treatment.
  */
 export function BirdProfileDialog({ pubkey, onClose }: BirdProfileDialogProps) {
   return (
     <Dialog open={!!pubkey} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[88dvh] gap-0 overflow-hidden p-0 sm:max-w-lg">
+      <DialogContent
+        className={cn(
+          'h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 p-0',
+          'left-0 top-0 translate-x-0 translate-y-0',
+          'sm:left-[50%] sm:safe-center-y sm:h-auto sm:max-h-[88dvh] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
+        )}
+        showCloseButton={false}
+      >
+        <DialogClose asChild>
+          <OverlayCloseButton variant="surface" />
+        </DialogClose>
         {pubkey && <ProfileBody pubkey={pubkey} />}
       </DialogContent>
     </Dialog>
@@ -80,7 +94,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
   const speciesCount = detections?.length ?? 0;
 
   return (
-    <div className="flex max-h-[88dvh] flex-col">
+    <div className="flex h-[100dvh] max-h-[100dvh] flex-col sm:h-auto sm:max-h-[88dvh]">
       {/* Accessible title/description, visually replaced by the custom
           header below. */}
       <DialogHeader className="sr-only">
@@ -96,6 +110,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
         <ProfileShareView
           pubkey={pubkey}
           onBack={() => setShareOpen(false)}
+          className="pt-[calc(1.75rem+env(safe-area-inset-top))] sm:pt-7"
         />
       ) : (
         <>
@@ -114,7 +129,7 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
           <div className="absolute inset-0 -z-10 bg-linear-to-b from-emerald-100/70 via-sky-50/40 to-background dark:from-indigo-950/60 dark:via-indigo-950/30 dark:to-background" />
         )}
 
-        <div className="px-6 pb-5 pt-7">
+        <div className="px-6 pb-5 pt-[calc(1.75rem+env(safe-area-inset-top))] sm:pt-7">
           <div className="flex items-start gap-4">
             {picture ? (
               <img
@@ -127,26 +142,33 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
                 {initials(displayName)}
               </div>
             )}
-            <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pt-1">
-              <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
-                {displayName}
-              </h2>
+            <div className="min-w-0 flex-1 pt-1">
               {isOwnProfile ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setShareOpen(true)}
-                  className="mt-1 shrink-0 gap-1.5 rounded-full font-semibold"
-                >
-                  <QrCode className="h-4 w-4" />
-                  Share
-                </Button>
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                    {displayName}
+                  </h2>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setShareOpen(true)}
+                    className="mt-1 shrink-0 gap-1.5 rounded-full font-semibold"
+                  >
+                    <QrCode className="h-4 w-4" />
+                    Share
+                  </Button>
+                </div>
               ) : (
-                <SmartFollowButton
-                  pubkey={pubkey}
-                  size="sm"
-                  className="mt-1 shrink-0"
-                />
+                <>
+                  <h2 className="truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
+                    {displayName}
+                  </h2>
+                  <SmartFollowButton
+                    pubkey={pubkey}
+                    size="sm"
+                    className="mt-2"
+                  />
+                </>
               )}
             </div>
           </div>

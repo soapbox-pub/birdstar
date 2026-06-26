@@ -62,7 +62,7 @@ export function PWAUpdatePrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 md:top-4 md:right-4 md:bottom-auto md:left-auto md:translate-x-0 z-50 motion-safe:animate-in motion-safe:slide-in-from-bottom-4 md:motion-safe:slide-in-from-top-4 duration-500 max-w-full">
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 md:top-[calc(1rem+env(safe-area-inset-top))] md:right-[calc(1rem+env(safe-area-inset-right))] md:bottom-auto md:left-auto md:translate-x-0 z-50 motion-safe:animate-in motion-safe:slide-in-from-bottom-4 md:motion-safe:slide-in-from-top-4 duration-500 max-w-full">
       <div className="relative group">
         <button
           onClick={handleUpdate}
