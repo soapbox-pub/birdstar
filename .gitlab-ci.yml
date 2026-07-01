@@ -33,11 +33,10 @@ deploy:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_SSH_KEY && $DEPLOY_TARGET
 
-# Build an (unsigned) release APK for Android. No signing keys or store
-# credentials are required — the artifact is a debuggable/sideloadable APK,
-# not a Play Store upload. To publish later, add a keystore + key.properties
-# and switch `assembleRelease` signing on (see Ditto's build-apk job for the
-# keytool / key.properties pattern).
+# Build a release APK for Android. Signs with the release keystore when the
+# ANDROID_KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_PASSWORD CI/CD variables
+# are set (key alias "upload"); otherwise produces an unsigned APK. Store
+# publishing (Play/App Store) is intentionally not wired up.
 #
 # Runs automatically on semver tags (v1.2.3) and can be started manually on
 # any branch pipeline.
@@ -72,6 +71,34 @@ build-apk:
     - printf 'y\ny\ny\ny\ny\ny\ny\n' | sdkmanager --licenses > /dev/null 2>&1 || true
     - sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null
     - echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+    # Decode the signing keystore and migrate JKS -> PKCS12 for Gradle
+    # compatibility, then write key.properties. Requires the CI/CD variables
+    # ANDROID_KEYSTORE_BASE64 (file), KEYSTORE_PASSWORD, KEY_PASSWORD, with
+    # key alias "upload". Absent these, build.gradle emits an unsigned APK.
+    - |
+      if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+        echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/my-upload-key.jks
+        keytool -importkeystore \
+          -srckeystore android/app/my-upload-key.jks \
+          -destkeystore android/app/my-upload-key.keystore \
+          -deststoretype pkcs12 \
+          -srcstorepass "$KEYSTORE_PASSWORD" \
+          -deststorepass "$KEYSTORE_PASSWORD" \
+          -srcalias upload \
+          -destalias upload \
+          -noprompt
+        rm android/app/my-upload-key.jks
+        cat > android/key.properties << EOF
+      storePassword=$KEYSTORE_PASSWORD
+      keyPassword=$KEY_PASSWORD
+      keyAlias=upload
+      storeFile=my-upload-key.keystore
+      EOF
+        echo "Release keystore configured — APK will be signed."
+      else
+        echo "No ANDROID_KEYSTORE_BASE64 set — building an unsigned APK."
+      fi
   script:
     # Stamp version from the git tag when present (v2.1.0 -> 2.1.0); otherwise
     # keep the build.gradle defaults for manual branch runs. versionCode uses
@@ -98,12 +125,20 @@ build-apk:
     - npx cap sync android
     - npm run generate:icons
 
-    # Build the unsigned release APK.
+    # Build the release APK.
     - cd android && chmod +x gradlew && ./gradlew assembleRelease && cd ..
 
-    # Collect the APK under a predictable artifact path.
+    # Collect the APK under a predictable artifact path. The filename differs
+    # depending on whether the build was signed (app-release.apk) or not
+    # (app-release-unsigned.apk).
     - mkdir -p artifacts
-    - cp android/app/build/outputs/apk/release/app-release-unsigned.apk "artifacts/Birdstar.apk"
+    - |
+      OUT=android/app/build/outputs/apk/release
+      if [ -f "$OUT/app-release.apk" ]; then
+        cp "$OUT/app-release.apk" artifacts/Birdstar.apk
+      else
+        cp "$OUT/app-release-unsigned.apk" artifacts/Birdstar.apk
+      fi
     - ls -lh artifacts/
   artifacts:
     paths:
