@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { DeepLinkHandler } from "@/components/DeepLinkHandler";
 import { ModeProvider } from "@/components/ModeProvider";
 import { FollowDetectionToaster } from "@/components/FollowDetectionToaster";
 import { FollowIntentExecutor } from "@/components/FollowIntentExecutor";
@@ -30,6 +31,10 @@ export function AppRouter() {
     <BrowserRouter>
       <ModeProvider>
         <ScrollToTop />
+        {/* Forwards OS-level deep-link opens (universal links / birdstar://)
+            into React Router. Must sit inside BrowserRouter so useNavigate
+            works. No-op on web. */}
+        <DeepLinkHandler />
         {/* Listens for kind 2473 bird-detection events from the logged-in
             user's follows and raises a rich toast per event. Mounted here
             (inside BrowserRouter + ModeProvider) rather than in App.tsx so

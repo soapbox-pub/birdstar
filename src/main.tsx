@@ -12,8 +12,13 @@ import '@fontsource/fraunces/600.css';
 import '@fontsource/fraunces/700.css';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { bootstrapNative } from '@/lib/nativeBootstrap';
 import App from './App.tsx';
 import './index.css';
+
+// Configure native system chrome (status-bar icons, iOS keyboard bar) before
+// React mounts so the bars are themed at first paint. No-op on web.
+bootstrapNative();
 
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
