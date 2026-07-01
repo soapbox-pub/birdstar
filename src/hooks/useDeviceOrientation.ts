@@ -290,16 +290,25 @@ export function useDeviceOrientation(options?: {
     return () => window.removeEventListener(eventName, handler as EventListener, true);
   }, []);
 
+  // Guard against overlapping permission requests (e.g. one fired on
+  // pan-start and another on pan-end of the same gesture) producing two
+  // system prompts back to back.
+  const permissionInFlightRef = useRef(false);
+
   /**
-   * Request iOS motion permission. On iOS 13+ this MUST be called from a
-   * user gesture handler. On other platforms this is a no-op that starts
-   * the probe if we haven't already (we auto-probe on mount there anyway).
+   * Request iOS motion permission. On iOS 13+ this MUST be called with
+   * transient user activation — WebKit only grants that for events like
+   * `pointerup` / `touchend` / `mousedown` / `keydown` (NOT `pointermove`
+   * or `touchstart`). On other platforms this is a no-op that starts the
+   * probe if we haven't already (we auto-probe on mount there anyway).
    */
   const requestPermission = useCallback(async (): Promise<boolean> => {
     const DOE = (window as unknown as { DeviceOrientationEvent?: DeviceOrientationEventIOS })
       .DeviceOrientationEvent;
 
     if (DOE && typeof DOE.requestPermission === "function") {
+      if (permissionInFlightRef.current) return false;
+      permissionInFlightRef.current = true;
       try {
         const result = await DOE.requestPermission();
         if (result === "granted") {
@@ -307,12 +316,21 @@ export function useDeviceOrientation(options?: {
           setStatus((s) => (s === "active" ? "active" : "probing"));
           return true;
         } else {
+          // The user saw the prompt and explicitly said no.
           setStatus("denied");
           return false;
         }
       } catch {
-        setStatus("denied");
+        // A rejection here is NOT a user denial — WebKit throws when the
+        // call lacks transient user activation (or the context is
+        // insecure). No prompt was ever shown, so leave the status alone
+        // (normally "idle") so a later call from a gesture-qualified
+        // event (pointerup etc.) can still succeed. Marking this "denied"
+        // would strand the user behind a "turn it on in settings" banner
+        // for a setting iOS 13+ no longer has.
         return false;
+      } finally {
+        permissionInFlightRef.current = false;
       }
     }
     // Non-iOS: nothing to grant. If we're still idle for some reason, move

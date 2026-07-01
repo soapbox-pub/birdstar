@@ -56,10 +56,12 @@ export function EnableSensorsDialog({
               ]}
               footnote={
                 <>
-                  Using Chrome or Firefox on iOS? Open <Setting>iOS
-                  Settings → Safari</Setting> and enable{" "}
-                  <Setting>Motion &amp; Orientation Access</Setting> there,
-                  then reload.
+                  Using Chrome, Firefox, or another browser on iOS? Look for{" "}
+                  <Setting>Motion &amp; Orientation</Setting> in that browser's
+                  site or content settings — or quit and reopen the browser to
+                  be asked again. (Older iOS versions had a global{" "}
+                  <Setting>Settings → Safari</Setting> switch, but it was
+                  removed in iOS 13 in favor of the per-site prompt.)
                 </>
               }
             />

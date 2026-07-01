@@ -437,16 +437,23 @@ const Index = () => {
   // If the user denies we fall through to the banner below; if they allow,
   // the sensor will take over once the user lifts their finger.
   //
+  // NOTE: pan-start is detected inside a `pointermove` handler (drag
+  // threshold), and WebKit does NOT consider pointermove a user-activation
+  // event — on iOS Safari this first attempt is rejected without ever
+  // showing a prompt. The hook keeps the status at "idle" in that case so
+  // the retry in `handlePanEnd` (a `pointerup`, which DOES carry user
+  // activation) can actually surface the prompt. We keep the pan-start
+  // attempt because it works in environments with laxer activation rules
+  // (e.g. the Capacitor WKWebView shell, where the native layer
+  // auto-grants) and gets sensors flowing before the finger even lifts.
+  //
   // We also flip `isPanningRef` on so the sensor-sync effect stops
   // fighting the user for the duration of the drag, and cancel any
   // in-flight snap-back animation from a previous gesture.
-  const permissionRequestedRef = useRef(false);
   const handlePanStart = useCallback(() => {
     isPanningRef.current = true;
     cancelSnapBack();
-    if (permissionRequestedRef.current) return;
     if (orientationStatus === "idle") {
-      permissionRequestedRef.current = true;
       // Fire and forget — we don't need to await. The hook updates its
       // status synchronously from the event, and the mount-time probe
       // effect handles attaching the listener.
@@ -470,6 +477,13 @@ const Index = () => {
   const handlePanEnd = useCallback(
     (opts?: { canceled?: boolean }) => {
       isPanningRef.current = false;
+      // Still "idle" after the pan-start attempt? That means iOS rejected
+      // the permission call for lack of user activation (pointermove
+      // doesn't count). This handler runs from `pointerup`, which DOES
+      // grant activation, so the prompt can actually appear now.
+      if (orientationStatus === "idle") {
+        void requestPermission();
+      }
       if (opts?.canceled) return;
       if (sensorRef.current.available) {
         startSnapBack();
@@ -477,7 +491,7 @@ const Index = () => {
         userHoldUntilRef.current = Date.now() + USER_HOLD_MS;
       }
     },
-    [startSnapBack],
+    [startSnapBack, orientationStatus, requestPermission],
   );
 
   // Build the list of status banners to show over the sky.
