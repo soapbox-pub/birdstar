@@ -816,7 +816,7 @@ function DrawingModeBanner({
   onCancel: () => void;
 }) {
   return (
-    <div className="pointer-events-none absolute top-20 left-1/2 -translate-x-1/2 w-[min(92vw,480px)] px-2">
+    <div className="pointer-events-none absolute top-[calc(5rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 w-[min(92vw,480px)] px-2">
       <div className="pointer-events-auto rounded-2xl border border-amber-200/40 bg-amber-300/10 backdrop-blur-md px-4 py-2.5 shadow-lg flex items-center gap-3">
         <div className="h-8 w-8 rounded-xl bg-amber-300 text-slate-900 flex items-center justify-center shrink-0">
           <Pencil className="h-4 w-4" />

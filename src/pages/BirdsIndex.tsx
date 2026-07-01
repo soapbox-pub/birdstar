@@ -59,9 +59,11 @@ import { EventsDrawer } from '@/components/EventsDrawer';
 import { EventDetailSheet } from '@/components/EventDetailSheet';
 import { BirdProfileDialog } from '@/components/BirdProfileDialog';
 import {
+  BIRDSTAR_PUBKEY,
   isCalendarEventKind,
   useBirdstarEventByAddr,
 } from '@/hooks/useBirdstarEvents';
+import type { BirdstarCalendarEvent } from '@/components/communityEventUtils';
 import { useAutoPublishDetection } from '@/hooks/useAutoPublishDetection';
 import { PendingPublishNudge } from '@/components/PendingPublishNudge';
 import { useBirdexEvent } from '@/hooks/useBirdexEvent';
@@ -348,20 +350,18 @@ const IndexInner = () => {
   // don't see an empty promise.
   const { user } = useCurrentUser();
 
-  // Community birding events. The drawer (a right-side sheet listing
-  // upcoming Birdstar-curated calendar events) is opened from a
-  // calendar button in the HUD; the individual event detail sheet is
-  // driven entirely by the URL. When the path is a calendar-event
-  // `naddr` (forced into Birds mode by `modeFromPath`), we decode it,
-  // resolve the event, and mount `EventDetailSheet` over the page —
-  // mirroring how Stars opens its constellation detail sheet from a
-  // deep link.
+  // Community birding events. A list drawer (right-side sheet of
+  // upcoming Birdstar-curated calendar events) opens from a calendar
+  // button in the HUD; tapping a card opens a per-event detail sheet
+  // stacked on top, so closing it reveals the list as it was left. A
+  // calendar-event `naddr` deep link (forced into Birds mode by
+  // `modeFromPath`) opens both — the list underneath and the detail on
+  // top — so a shared link and an in-app tap land on the same surface.
   const navigate = useNavigate();
   const { nip19Id, bird: birdSlugParam } = useParams<{
     nip19Id?: string;
     bird?: string;
   }>();
-  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(false);
 
   const eventAddr = useMemo(() => {
     if (!nip19Id) return null;
@@ -374,6 +374,29 @@ const IndexInner = () => {
       return null;
     }
   }, [nip19Id]);
+
+  // The events list drawer and the per-event detail are two stacked
+  // sheets driven by local state, so the list stays mounted (keeping its
+  // Nearby/World toggle and scroll position) while the detail opens on
+  // top — closing the detail simply reveals the list exactly as it was
+  // left. A cold deep link (`/naddr…`) opens both: the list underneath
+  // plus the detail on top.
+  //
+  // We seed both open-states from the URL *once* at mount. After that,
+  // local state governs everything and the URL is kept in sync via the
+  // History API directly (see `openEvent` / `closeEvent`) — going through
+  // React Router would swap route elements (`/` vs `/:nip19Id`), remount
+  // this page, and wipe the list's toggle/scroll state.
+  const [eventsDrawerOpen, setEventsDrawerOpen] = useState(
+    () => eventAddr !== null,
+  );
+  const [detailOpen, setDetailOpen] = useState(() => eventAddr !== null);
+  // The event tapped in-app. For a cold deep link this stays null and we
+  // fall back to the URL-resolved event below.
+  const [selectedEvent, setSelectedEvent] =
+    useState<BirdstarCalendarEvent | null>(null);
+  // The naddr captured at mount, used only to resolve a cold deep link.
+  const [deepLinkAddr] = useState(() => eventAddr);
 
   // Profile pubkey when the path is an `npub` / `nprofile`. Mirrors how
   // Stars opens its `ProfileDetailSheet` over the sky from the same
@@ -398,14 +421,95 @@ const IndexInner = () => {
     navigate('/');
   }, [navigate]);
 
-  const { event: openedEvent, isLoading: openedEventLoading } =
-    useBirdstarEventByAddr(eventAddr?.kind, eventAddr?.identifier);
+  // Resolve the deep-linked event (only queries for a cold deep link,
+  // i.e. when we don't already have the tapped object).
+  const { event: resolvedEvent, isLoading: resolvedEventLoading } =
+    useBirdstarEventByAddr(deepLinkAddr?.kind, deepLinkAddr?.identifier);
 
+  // The event shown in the detail sheet: the in-app tap wins; otherwise
+  // the deep-link-resolved one.
+  const detailEvent = selectedEvent ?? resolvedEvent;
+  const detailEventLoading =
+    selectedEvent === null && deepLinkAddr !== null && resolvedEventLoading;
+
+  // Open an event from a list card. We update the URL with the History API
+  // directly (not React Router navigation — see the note above).
+  const openEvent = useCallback((event: BirdstarCalendarEvent) => {
+    setSelectedEvent(event);
+    setDetailOpen(true);
+    try {
+      const naddr = nip19.naddrEncode({
+        kind: event.kind,
+        pubkey: BIRDSTAR_PUBKEY,
+        identifier: event.identifier,
+      });
+      window.history.pushState(null, '', `/${naddr}`);
+    } catch {
+      // If encoding somehow fails, still show the detail — just without a
+      // shareable URL update.
+    }
+  }, []);
+
+  // Close the detail sheet, revealing the list underneath. Restore the URL
+  // to `/` (again via History so the page doesn't remount).
   const closeEvent = useCallback(() => {
-    // Return to the bare Birds page; the event sheet self-closes once
-    // the URL no longer carries an event naddr.
-    navigate('/');
-  }, [navigate]);
+    setDetailOpen(false);
+    setSelectedEvent(null);
+    if (window.location.pathname !== '/') {
+      window.history.pushState(null, '', '/');
+    }
+  }, []);
+
+  // Dismiss the whole events drawer (its X). Also closes any open detail
+  // and clears the URL.
+  const closeEventsDrawer = useCallback(
+    (nextOpen: boolean) => {
+      setEventsDrawerOpen(nextOpen);
+      if (!nextOpen) {
+        setDetailOpen(false);
+        setSelectedEvent(null);
+        if (window.location.pathname !== '/') {
+          window.history.pushState(null, '', '/');
+        }
+      }
+    },
+    [],
+  );
+
+  // Because `openEvent` / `closeEvent` drive the URL with the History API
+  // directly (bypassing React Router to avoid remounting this page), React
+  // never hears about the browser/phone Back (or Forward) button. Without
+  // this listener, popping the history entry would revert the URL while the
+  // detail sheet stayed open — URL and UI desynced. So we mirror `popstate`
+  // back into local state: an event `naddr` in the path reopens the detail
+  // (and the drawer underneath it); anything else closes the detail.
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname.replace(/^\//, '');
+      let isEventAddr = false;
+      if (path) {
+        try {
+          const decoded = nip19.decode(path);
+          isEventAddr =
+            decoded.type === 'naddr' &&
+            isCalendarEventKind(decoded.data.kind);
+        } catch {
+          isEventAddr = false;
+        }
+      }
+
+      if (isEventAddr) {
+        setDetailOpen(true);
+        setEventsDrawerOpen(true);
+      } else {
+        setDetailOpen(false);
+        setSelectedEvent(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Settings: "Publish location" toggle (off by default). When on,
   // kind 2473 detections get a coarse NIP-52 `g` tag. Persisted so the
@@ -1404,19 +1508,23 @@ const IndexInner = () => {
       <LiferCelebration item={liferItem} onDismiss={dismissLifer} />
 
       {/* Curated birding-events drawer, opened from the HUD calendar
-          button. */}
+          button. It lists events and stays mounted (keeping its
+          Nearby/World toggle and scroll position) while the detail sheet
+          opens on top. */}
       <EventsDrawer
         open={eventsDrawerOpen}
-        onOpenChange={setEventsDrawerOpen}
+        onOpenChange={closeEventsDrawer}
+        onSelectEvent={openEvent}
       />
 
-      {/* Individual event detail — URL-driven. Open whenever the path
-          is a calendar-event naddr; resolves the event via
-          `useBirdstarEventByAddr` and closes by navigating back to `/`. */}
+      {/* Individual event detail — a second sheet stacked on top of the
+          drawer. Opens when a card is tapped (full object) or on a cold
+          deep link (`/naddr…`, resolved from the URL). Closing it reveals
+          the list underneath exactly as it was left. */}
       <EventDetailSheet
-        event={openedEvent}
-        isLoading={openedEventLoading}
-        open={eventAddr !== null}
+        event={detailEvent}
+        isLoading={detailEventLoading}
+        open={detailOpen}
         onClose={closeEvent}
       />
 

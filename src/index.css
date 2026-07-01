@@ -209,6 +209,19 @@
   }
 }
 
+/* Vertically centers a `translate-y-[-50%]` overlay within the *safe*
+   viewport — the dynamic viewport minus the top/bottom safe-area insets —
+   so centered dialogs clear the iOS notch / home indicator instead of
+   centering on the raw screen. Pair with `left-[50%] translate-x-[-50%]
+   translate-y-[-50%]`. Works under variants too (e.g. `sm:safe-center-y`
+   on the mobile-fullscreen bird dialogs). */
+@utility safe-center-y {
+  top: calc(
+    env(safe-area-inset-top) +
+      (100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / 2
+  );
+}
+
 :root {
   --radius: 0.75rem;
 

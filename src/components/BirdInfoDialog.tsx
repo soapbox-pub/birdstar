@@ -33,7 +33,6 @@ import {
   Play,
   Plus,
   Sparkles,
-  X,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { rememberKnownBirds } from '@/lib/wiki/knownBirdsStore';
@@ -57,6 +56,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { OverlayCloseButton } from '@/components/OverlayCloseButton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ObservationMap, MAP_ATTRIBUTION } from '@/components/ObservationMap';
 import { CommentsSection } from '@/components/comments/CommentsSection';
@@ -254,33 +254,39 @@ export function BirdInfoDialog({
           We replace it with a dedicated circular button below that
           carries its own background so it's always legible.
 
-          The dialog is capped at the visual viewport minus a 1rem
-          breathing margin on each side (`100dvh-2rem`). `dvh` tracks
-          the mobile browser's *dynamic* viewport so the cap shrinks
-          when the URL bar expands, preventing the delete/wiki row
-          from vanishing beneath it. The content is a flex column so
-          the banner can stay a fixed 192px and the scroll lives in
-          the inner content region — critical for finding-mode dialogs
-          that stack extract + habitat + audio player on short phones. */}
+          On mobile this presents as a full-screen dialog page rather than
+          a drawer, so scrolling the content can never accidentally dismiss
+          it. From `sm` upward it returns to the centered modal treatment.
+          Mobile scrolls the whole page so the natural-ratio hero image moves
+          away with the content; desktop keeps the fixed-height hero with an
+          independently scrolling body. */}
       <DialogContent
         className={cn(
-          'max-w-lg overflow-hidden p-0',
+          'h-[100dvh] max-h-[100dvh] w-screen max-w-none overflow-y-auto rounded-none border-0 p-0 sm:overflow-hidden',
+          'left-0 top-0 translate-x-0 translate-y-0',
+          'sm:left-[50%] sm:safe-center-y sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
           // Override shadcn's default `grid gap-4` — we need flex for
           // the pinned-banner + scrolling-body layout, and the gap
           // would add a 16px strip between them.
-          'flex max-h-[calc(100dvh-2rem)] flex-col gap-0',
+          'flex flex-col gap-0',
         )}
         showCloseButton={false}
       >
+        <DialogClose asChild>
+          <OverlayCloseButton
+            className="fixed right-[calc(0.75rem+env(safe-area-inset-right))] top-[calc(0.75rem+env(safe-area-inset-top))] sm:absolute sm:right-3 sm:top-3"
+          />
+        </DialogClose>
         {subject ? (
           <>
             {/* Banner image. Use the Wikipedia image if we have one, else a
                 tinted gradient so the dialog never looks broken.
-                `shrink-0` pins the banner at 192px so the flex parent
-                gives the remaining height to the scrolling body. */}
-            <div className="relative h-48 w-full shrink-0 overflow-hidden bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60">
+                On mobile the real image keeps its natural aspect ratio and
+                scrolls away with the page. At `sm` and up it returns to the
+                fixed-height modal banner treatment. */}
+            <div className="relative w-full shrink-0 overflow-hidden bg-linear-to-br from-emerald-100 via-sky-100 to-amber-100 dark:from-indigo-900 dark:via-indigo-800 dark:to-amber-900/60 sm:h-48">
               {isLoading ? (
-                <Skeleton className="h-full w-full" />
+                <Skeleton className="h-64 w-full sm:h-full" />
               ) : data?.imageUrl ? (
                 <img
                   src={data.imageUrl}
@@ -297,7 +303,7 @@ export function BirdInfoDialog({
                   // intentional. 33% leaves that headroom while still
                   // keeping the head safely in view.
                   className={cn(
-                    'h-full w-full object-cover object-[50%_25%]',
+                    'h-auto w-full object-cover object-[50%_25%] sm:h-full',
                     // Black-and-white treatment for unheard birds, matching
                     // the grayscale birdex cells. Confirmed (heard)
                     // detections render in full color.
@@ -305,40 +311,26 @@ export function BirdInfoDialog({
                   )}
                   loading="lazy"
                 />
-              ) : null}
+              ) : (
+                <div className="aspect-[4/3] w-full sm:h-full sm:aspect-auto" />
+              )}
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-linear-to-t from-black/60 to-transparent" />
 
               {/* "Rare find" chip overlay — shown for out-of-region heard
                   birds so the context from the birdex carries through
                   into the detail dialog. */}
               {isRare ? (
-                <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm">
+                <div className="absolute left-[calc(0.75rem+env(safe-area-inset-left))] top-[calc(0.75rem+env(safe-area-inset-top))] inline-flex items-center gap-1.5 rounded-full bg-amber-500/90 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white shadow-md ring-1 ring-white/20 backdrop-blur-sm sm:left-3 sm:top-3">
                   <Sparkles className="h-3 w-3" aria-hidden />
                   Rare find
                 </div>
               ) : null}
-
-              <DialogClose
-                aria-label="Close"
-                className={cn(
-                  // Circular backdrop keeps the X legible regardless of
-                  // whatever species photo is behind it.
-                  'absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full',
-                  'bg-black/50 text-white shadow-md ring-1 ring-white/10 backdrop-blur-sm',
-                  'transition-colors hover:bg-black/70 hover:text-white',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-0',
-                )}
-              >
-                <X className="h-4 w-4" aria-hidden />
-              </DialogClose>
             </div>
 
-            {/* Body — scrolls independently of the banner when the
-                combined content overflows the viewport. `min-h-0` is
-                the escape hatch flex needs to actually honor
-                `overflow-y-auto` on this child (without it, the child
-                would size to content and push past the parent cap). */}
-            <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-6 pt-4 min-h-0">
+            {/* Body scrolls with the hero on mobile. At `sm` and up it
+                scrolls independently below the fixed-height banner;
+                `min-h-0` is the flex escape hatch needed for that. */}
+            <div className="space-y-4 px-6 pb-6 pt-4 sm:min-h-0 sm:flex-1 sm:overflow-y-auto">
               {/* Header row. Title + scientific name stack on the
                   left; the song play button sits on the right,
                   vertically centered across the two lines. Keeping
