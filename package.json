@@ -17,6 +17,7 @@
     "build": "npm i --silent && npm run fetch:birdnet-model && vite build -l error && cp dist/index.html dist/404.html && echo 'Project built successfully!'",
     "test": "npm i --silent && npm run fetch:birdnet-model && tsc --noEmit && eslint --cache && vitest run --reporter=dot --silent && vite build -l error && cp dist/index.html dist/404.html && echo 'All tests passed!'",
     "fetch:birdnet-model": "tsx scripts/download-birdnet-model.ts",
+    "generate:icons": "bash scripts/generate-icons.sh",
     "generate:wikidata-map": "tsx scripts/generate-wikidata-map.ts"
   },
   "dependencies": {

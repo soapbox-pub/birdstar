@@ -38,3 +38,19 @@ deploy.sh
 .env
 .env.*
 !.env.example
+
+# Native app icons — generated from public/birdstar.png by
+# `npm run generate:icons` (see scripts/generate-icons.sh), not committed.
+android/app/src/main/res/mipmap-*/ic_launcher.png
+android/app/src/main/res/mipmap-*/ic_launcher_round.png
+android/app/src/main/res/mipmap-*/ic_launcher_foreground.png
+ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png
+
+# Android build outputs & signing material (never commit secrets/keystores)
+*.apk
+*.aab
+android/app/my-upload-key.keystore
+android/app/my-upload-key.jks
+android/key.properties
+android/local.properties
+android/downloads/

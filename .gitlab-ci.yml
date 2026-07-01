@@ -7,6 +7,7 @@ default:
 stages:
   - test
   - deploy
+  - build
 
 test:
   stage: test
@@ -31,3 +32,85 @@ deploy:
     - rsync -av -e "ssh -i ~/.ssh/id_ed25519" dist/sw.js dist/index.html "${DEPLOY_TARGET}:/"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_SSH_KEY && $DEPLOY_TARGET
+
+# Build an (unsigned) release APK for Android. No signing keys or store
+# credentials are required — the artifact is a debuggable/sideloadable APK,
+# not a Play Store upload. To publish later, add a keystore + key.properties
+# and switch `assembleRelease` signing on (see Ditto's build-apk job for the
+# keytool / key.properties pattern).
+#
+# Runs automatically on semver tags (v1.2.3) and can be started manually on
+# any branch pipeline.
+build-apk:
+  stage: build
+  image: eclipse-temurin:21-jdk
+  timeout: 30 minutes
+  needs: []
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+      allow_failure: true
+  variables:
+    ANDROID_SDK_ROOT: /opt/android-sdk
+    ANDROID_HOME: /opt/android-sdk
+  before_script:
+    # System dependencies: Node, ImageMagick (icon generation), unzip.
+    - apt-get update -qq
+    - apt-get install -y -qq curl unzip imagemagick > /dev/null
+    - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    - apt-get install -y -qq nodejs > /dev/null
+    - node --version
+    - npm --version
+
+    # Android SDK command-line tools.
+    - mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+    - curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip
+    - unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+    - mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+    - export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+    - printf 'y\ny\ny\ny\ny\ny\ny\n' | sdkmanager --licenses > /dev/null 2>&1 || true
+    - sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null
+    - echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+  script:
+    # Stamp version from the git tag when present (v2.1.0 -> 2.1.0); otherwise
+    # keep the build.gradle defaults for manual branch runs. versionCode uses
+    # the pipeline IID so it monotonically increases.
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        VERSION_NAME="${CI_COMMIT_TAG#v}"
+        VERSION_CODE="${CI_PIPELINE_IID}"
+        echo "Building version $VERSION_NAME (code $VERSION_CODE) from tag $CI_COMMIT_TAG"
+        sed -i "s/versionCode [0-9]*/versionCode ${VERSION_CODE}/" android/app/build.gradle
+        sed -i "s/versionName \"[^\"]*\"/versionName \"${VERSION_NAME}\"/" android/app/build.gradle
+      else
+        echo "Manual branch build — using build.gradle version defaults"
+      fi
+
+    # Web assets. `npm run build` also fetches the BirdNET model into
+    # public/ so the packaged app can run Birds mode offline; a plain
+    # `vite build` would ship an APK with no model.
+    - npm ci
+    - npm run build
+
+    # Sync web assets into the Capacitor Android project, then generate the
+    # launcher icons (gitignored build artifacts) into the mipmap dirs.
+    - npx cap sync android
+    - npm run generate:icons
+
+    # Build the unsigned release APK.
+    - cd android && chmod +x gradlew && ./gradlew assembleRelease && cd ..
+
+    # Collect the APK under a predictable artifact path.
+    - mkdir -p artifacts
+    - cp android/app/build/outputs/apk/release/app-release-unsigned.apk "artifacts/Birdstar.apk"
+    - ls -lh artifacts/
+  artifacts:
+    paths:
+      - artifacts/Birdstar.apk
+    expire_in: 30 days
+  cache:
+    key: android-gradle
+    paths:
+      - android/.gradle/
+      - .gradle/
