@@ -6,7 +6,6 @@ default:
 
 stages:
   - test
-  - deploy
   - build
 
 test:
@@ -17,21 +16,11 @@ test:
   rules:
     - if: $CI_COMMIT_BRANCH
 
-deploy:
-  stage: deploy
-  script:
-    - npm ci
-    - npm run build
-    - apt-get update -qq && apt-get install -y --no-install-recommends rsync openssh-client >/dev/null
-    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
-    - echo "$DEPLOY_SSH_KEY" | tr -d '\r' > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-    - ssh-keyscan -H "${DEPLOY_TARGET##*@}" >> ~/.ssh/known_hosts 2>/dev/null
-    # Upload hashed assets first, then sw.js + index.html last so the entry
-    # point and service worker never reference chunks that aren't deployed yet.
-    - rsync -av --exclude=/sw.js --exclude=/index.html -e "ssh -i ~/.ssh/id_ed25519" dist/ "${DEPLOY_TARGET}:/"
-    - rsync -av -e "ssh -i ~/.ssh/id_ed25519" dist/sw.js dist/index.html "${DEPLOY_TARGET}:/"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $DEPLOY_SSH_KEY && $DEPLOY_TARGET
+# NOTE: there is no deploy job here any more. GitLab is a mirror of the nostr
+# repo; it runs tests (and the Android build below) on its own runner. The
+# site deploy lives in .ngit/act/workflows/deploy-nsite.yml and runs on the
+# ngit-ci coordinator, publishing birdstar.app as an nsite served by npanel.
+# Nothing is rsynced to venus any more.
 
 # Build a release APK for Android. Signs with the release keystore when the
 # ANDROID_KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_PASSWORD CI/CD variables
