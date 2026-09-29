@@ -27,6 +27,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { SmartFollowButton } from '@/components/SmartFollowButton';
+import { ProfileInviteCard } from '@/components/ProfileInviteCard';
 import { ProfileShareView } from '@/components/ProfileShareView';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -163,11 +164,14 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
                   <h2 className="truncate font-serif text-2xl font-semibold tracking-tight text-stone-900 dark:text-stone-50">
                     {displayName}
                   </h2>
-                  <SmartFollowButton
-                    pubkey={pubkey}
-                    size="sm"
-                    className="mt-2"
-                  />
+                  {/* Logged-out visitors get the invite card below instead. */}
+                  {user && (
+                    <SmartFollowButton
+                      pubkey={pubkey}
+                      size="sm"
+                      className="mt-2"
+                    />
+                  )}
                 </>
               )}
             </div>
@@ -177,6 +181,14 @@ function ProfileBody({ pubkey }: { pubkey: string }) {
             <p className="mt-4 whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-stone-700 dark:text-stone-300/90">
               {about}
             </p>
+          )}
+
+          {!user && (
+            <ProfileInviteCard
+              pubkey={pubkey}
+              displayName={displayName}
+              className="mt-5"
+            />
           )}
         </div>
       </div>

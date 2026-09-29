@@ -35,6 +35,8 @@ import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 interface AuthDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Open straight to the login form instead of the welcome screen. */
+  initialStep?: 'welcome' | 'login';
 }
 
 type Step = 'welcome' | 'generate' | 'secure' | 'profile' | 'login';
@@ -79,8 +81,8 @@ function downloadNsecFile(nsec: string) {
   document.body.removeChild(a);
 }
 
-const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
-  const [step, setStep] = useState<Step>('welcome');
+const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose, initialStep = 'welcome' }) => {
+  const [step, setStep] = useState<Step>(initialStep);
 
   // Signup state
   const [nsec, setNsec] = useState('');
@@ -153,6 +155,12 @@ const AuthDialog: React.FC<AuthDialogProps> = ({ isOpen, onClose }) => {
       abortControllerRef.current = null;
     }
   }, [isOpen]);
+
+  // Start on the requested step each time the dialog opens.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (isOpen) setStep(initialStep);
+  }, [isOpen, initialStep]);
 
   // Generate a nostrconnect session and return its URI. The listening effect
   // (keyed on the params) handles the handshake once params are set.

@@ -16,6 +16,7 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { ConstellationCard } from "@/components/ConstellationCard";
 import { SmartFollowButton } from "@/components/SmartFollowButton";
+import { ProfileInviteCard } from "@/components/ProfileInviteCard";
 import { ProfileShareView } from "@/components/ProfileShareView";
 import {
   dispatchEditConstellation,
@@ -183,13 +184,13 @@ function ProfileContent({
                       <QrCode className="h-4 w-4" />
                       Share
                     </Button>
-                  ) : (
+                  ) : user ? (
                     <SmartFollowButton
                       pubkey={pubkey}
                       size="sm"
                       className="mt-1 shrink-0"
                     />
-                  )}
+                  ) : null}
                 </div>
                 {metadata?.nip05 && (
                   <p className="text-xs text-sky-300/90 mt-0.5 truncate">
@@ -214,6 +215,17 @@ function ProfileContent({
               <p className="mt-4 text-sm leading-relaxed text-white/80 whitespace-pre-wrap wrap-break-word">
                 {about}
               </p>
+            )}
+
+            {/* Logged-out visitors (e.g. arriving on an invite link) get a
+                join-and-follow card in place of the Follow button. */}
+            {!user && (
+              <ProfileInviteCard
+                pubkey={pubkey}
+                displayName={displayName}
+                variant="dark"
+                className="mt-5"
+              />
             )}
 
             {isOwnProfile && (

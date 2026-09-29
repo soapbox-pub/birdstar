@@ -14,3 +14,12 @@ export const APP_RELAYS: RelayMetadata = {
   ],
   updatedAt: 0,
 };
+
+/**
+ * Relay used for account search. It supports NIP-50 `search` on kind 0,
+ * plus Ditto's `autocomplete:` / `sort:` extensions for typeahead. Queried
+ * directly rather than through the pool, because most pool relays either
+ * ignore `search` or treat it as a plain filter and return arbitrary
+ * profiles.
+ */
+export const PROFILE_SEARCH_RELAY = 'wss://relay.ditto.pub/';

@@ -7,6 +7,7 @@ import { QRCodeCanvas } from '@/components/ui/qrcode';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useToast } from '@/hooks/useToast';
 import { hapticTap } from '@/lib/haptics';
+import { shareOrigin } from '@/lib/shareOrigin';
 import { cn } from '@/lib/utils';
 
 interface ProfileShareViewProps {
@@ -51,11 +52,7 @@ export function ProfileShareView({
   const npub = useMemo(() => nip19.npubEncode(pubkey), [pubkey]);
 
   // Absolute URL so the QR works when scanned by any camera, off-device.
-  const shareUrl = useMemo(() => {
-    const origin =
-      typeof window !== 'undefined' ? window.location.origin : '';
-    return `${origin}/${npub}`;
-  }, [npub]);
+  const shareUrl = useMemo(() => `${shareOrigin()}/${npub}`, [npub]);
 
   const handleCopy = useCallback(async () => {
     try {

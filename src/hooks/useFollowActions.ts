@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNostrPublish } from '@/hooks/useNostrPublish';
 import { useNostrStorage } from '@/hooks/useNostrStorage';
+import { contactListPubkeys } from '@/hooks/useFollowList';
 import { fetchFreshEvent } from '@/lib/fetchFreshEvent';
 
 export interface UseFollowActionsReturn {
@@ -14,6 +15,22 @@ export interface UseFollowActionsReturn {
   follow: (pubkey: string) => Promise<void>;
   /** Unfollow a pubkey. Fetches the freshest kind 3 first, then publishes. */
   unfollow: (pubkey: string) => Promise<void>;
+}
+
+/**
+ * All kind-3 writes run one at a time, app-wide. Two concurrent
+ * read-modify-writes (e.g. adding several friends in quick succession)
+ * would read the same list, and the later publish would drop the
+ * earlier one's change.
+ */
+let followListWriteChain: Promise<unknown> = Promise.resolve();
+
+function serializeFollowListWrite<T>(write: () => Promise<T>): Promise<T> {
+  const run = followListWriteChain.then(write, write);
+  // Swallow on the chain so one failure doesn't wedge the queue; the
+  // caller still sees the rejection.
+  followListWriteChain = run.then(() => undefined, () => undefined);
+  return run;
 }
 
 /**
@@ -37,6 +54,9 @@ export interface UseFollowActionsReturn {
  * 3. **Preserve everything.** All non-`p` tags (relay hints, petnames,
  *    etc.) and the `content` field are carried over untouched — we only
  *    add or remove the single target `p` tag.
+ * 4. **One write at a time.** Writes are queued so back-to-back edits
+ *    each build on the previous one, and each gets a strictly later
+ *    `created_at` so relays can't order two same-second edits backwards.
  */
 export function useFollowActions(): UseFollowActionsReturn {
   const { nostr } = useNostr();
@@ -53,41 +73,52 @@ export function useFollowActions(): UseFollowActionsReturn {
       setIsPending(true);
 
       try {
-        // ① Fetch the freshest kind 3 via the pool, falling back to the
-        //    locally cached copy so a relay miss can't wipe the list.
-        const prev = await fetchFreshEvent(
-          nostr,
-          { kinds: [3], authors: [user.pubkey] },
-          { store },
-        );
+        await serializeFollowListWrite(async () => {
+          // ① Fetch the freshest kind 3 via the pool, falling back to the
+          //    locally cached copy so a relay miss can't wipe the list.
+          const prev = await fetchFreshEvent(
+            nostr,
+            { kinds: [3], authors: [user.pubkey] },
+            { store },
+          );
 
-        // ② Split existing tags into `p` tags (follows) and everything
-        //    else (relay hints, petnames, etc. — preserved verbatim).
-        const existingTags = prev?.tags ?? [];
-        const pTags = existingTags.filter(([name]) => name === 'p');
-        const nonPTags = existingTags.filter(([name]) => name !== 'p');
+          // ② Split existing tags into `p` tags (follows) and everything
+          //    else (relay hints, petnames, etc. — preserved verbatim).
+          const existingTags = prev?.tags ?? [];
+          const pTags = existingTags.filter(([name]) => name === 'p');
+          const nonPTags = existingTags.filter(([name]) => name !== 'p');
 
-        // ③ Compute the new `p` tag set.
-        let newPTags: string[][];
-        if (action === 'follow') {
-          const alreadyFollowed = pTags.some(([, pk]) => pk === targetPubkey);
-          newPTags = alreadyFollowed
-            ? pTags
-            : [...pTags, ['p', targetPubkey]];
-        } else {
-          newPTags = pTags.filter(([, pk]) => pk !== targetPubkey);
-        }
+          // ③ Compute the new `p` tag set.
+          let newPTags: string[][];
+          if (action === 'follow') {
+            const alreadyFollowed = pTags.some(([, pk]) => pk === targetPubkey);
+            newPTags = alreadyFollowed
+              ? pTags
+              : [...pTags, ['p', targetPubkey]];
+          } else {
+            newPTags = pTags.filter(([, pk]) => pk !== targetPubkey);
+          }
 
-        // ④ Rebuild: non-p tags first, then p tags. Preserve content
-        //    (some clients store relay hints there).
-        await publishEvent({
-          kind: 3,
-          content: prev?.content ?? '',
-          tags: [...nonPTags, ...newPTags],
+          // ④ Rebuild: non-p tags first, then p tags. Preserve content
+          //    (some clients store relay hints there).
+          const now = Math.floor(Date.now() / 1000);
+          const published = await publishEvent({
+            kind: 3,
+            content: prev?.content ?? '',
+            tags: [...nonPTags, ...newPTags],
+            created_at: prev ? Math.max(now, prev.created_at + 1) : now,
+          });
+
+          // ⑤ Store what we published before releasing the queue, so the
+          //    next queued write reads it as its floor even if relays
+          //    haven't indexed it yet. Then show it in the UI right away.
+          await store.event(published);
+          queryClient.setQueryData<Set<string>>(
+            ['follow-list', user.pubkey],
+            contactListPubkeys(published),
+          );
+          queryClient.invalidateQueries({ queryKey: ['follow-list'] });
         });
-
-        // ⑤ Invalidate cached follow-list reads so the UI updates.
-        queryClient.invalidateQueries({ queryKey: ['follow-list'] });
       } finally {
         setIsPending(false);
       }

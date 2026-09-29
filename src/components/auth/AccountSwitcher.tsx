@@ -1,4 +1,5 @@
-import { ChevronDown, LogOut, UserIcon, UserPlus } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, LogOut, UserIcon, UserPlus, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar.tsx';
 import { Skeleton } from '@/components/ui/skeleton.tsx';
+import { FriendsDialog } from '@/components/FriendsDialog';
 import { useLoggedInAccounts, type Account } from '@/hooks/useLoggedInAccounts';
 
 interface AccountSwitcherProps {
@@ -18,6 +20,7 @@ interface AccountSwitcherProps {
 
 export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
   const { currentUser, otherUsers, isLoading, setLogin, removeLogin } = useLoggedInAccounts();
+  const [friendsOpen, setFriendsOpen] = useState(false);
 
   if (!currentUser) return null;
 
@@ -30,6 +33,7 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
   const isCurrentUserPending = isLoading && !currentUser.metadata.name;
 
   return (
+    <>
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button className='flex items-center gap-2 h-10 p-1 pr-2.5 rounded-full hover:bg-accent transition-all text-foreground'>
@@ -107,6 +111,13 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
         })}
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          onClick={() => setFriendsOpen(true)}
+          className='flex items-center gap-2 cursor-pointer p-2 rounded-md'
+        >
+          <Users className='w-4 h-4' />
+          <span>Friends</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
           onClick={onAddAccountClick}
           className='flex items-center gap-2 cursor-pointer p-2 rounded-md'
         >
@@ -122,5 +133,7 @@ export function AccountSwitcher({ onAddAccountClick }: AccountSwitcherProps) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <FriendsDialog open={friendsOpen} onOpenChange={setFriendsOpen} />
+    </>
   );
 }
