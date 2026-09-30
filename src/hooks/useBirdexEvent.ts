@@ -76,7 +76,7 @@ export interface BirdexEventResult {
  * is preserved even if a malformed event somehow contains duplicate
  * Wikidata URIs.
  */
-function parseBirdexEvent(event: NostrEvent): BirdexSpeciesEntry[] {
+export function parseBirdexEvent(event: NostrEvent): BirdexSpeciesEntry[] {
   const seen = new Set<string>();
   const entries: BirdexSpeciesEntry[] = [];
   const tags = event.tags;

@@ -22,6 +22,7 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFollowActions } from '@/hooks/useFollowActions';
 import { useFollowList } from '@/hooks/useFollowList';
+import { useFollowsBirdexSizes } from '@/hooks/useFollowsBirdexSizes';
 import { useVerifiedNip05 } from '@/hooks/useNip05Resolve';
 import { useToast } from '@/hooks/useToast';
 import { hapticTap } from '@/lib/haptics';
@@ -81,8 +82,24 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
   const [inviting, setInviting] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
 
-  // Most recently added first.
-  const following = useMemo(() => [...(follows ?? [])].reverse(), [follows]);
+  const birdexSizes = useFollowsBirdexSizes();
+
+  // A leaderboard: biggest Birdex first. Ties, including everyone with
+  // no Birdex yet, fall back to most recently added first.
+  // Tied counts share a rank (1, 2, 2, 4), and accounts with no species
+  // aren't ranked at all.
+  const following = useMemo(() => {
+    const rows = [...(follows ?? [])]
+      .reverse()
+      .map((pubkey) => ({ pubkey, species: birdexSizes?.get(pubkey) ?? 0, rank: 0 }))
+      .sort((a, b) => b.species - a.species);
+    rows.forEach((row, i) => {
+      if (row.species === 0) return;
+      row.rank = i > 0 && rows[i - 1].species === row.species ? rows[i - 1].rank : i + 1;
+    });
+    return rows;
+  }, [follows, birdexSizes]);
+  const ranked = following.some((row) => row.rank > 0);
 
   if (!user) return null;
 
@@ -180,8 +197,14 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
         ) : (
           <>
             <ul className="-mx-2">
-              {following.slice(0, shown).map((pubkey) => (
-                <FriendRow key={pubkey} pubkey={pubkey} onNavigate={onClose} />
+              {following.slice(0, shown).map(({ pubkey, species, rank }) => (
+                <FriendRow
+                  key={pubkey}
+                  pubkey={pubkey}
+                  species={species}
+                  rank={ranked ? rank : undefined}
+                  onNavigate={onClose}
+                />
               ))}
             </ul>
             {following.length > shown && (
@@ -200,7 +223,16 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-function FriendRow({ pubkey, onNavigate }: { pubkey: string; onNavigate: () => void }) {
+interface FriendRowProps {
+  pubkey: string;
+  /** Species on their Birdex. */
+  species: number;
+  /** Leaderboard position; 0 when unranked, undefined when nobody is. */
+  rank?: number;
+  onNavigate: () => void;
+}
+
+function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
   const author = useAuthor(pubkey);
   const { isPending, unfollow } = useFollowActions();
   const { toast } = useToast();
@@ -232,6 +264,17 @@ function FriendRow({ pubkey, onNavigate }: { pubkey: string; onNavigate: () => v
         onClick={onNavigate}
         className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
+        {rank !== undefined && (
+          <span
+            className={cn(
+              'w-6 shrink-0 text-center text-sm font-semibold tabular-nums',
+              rank === 1 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground',
+            )}
+            aria-label={rank > 0 ? `Rank ${rank}` : undefined}
+          >
+            {rank > 0 ? rank : ''}
+          </span>
+        )}
         <Avatar className="size-10">
           {picture && <AvatarImage src={picture} alt="" className="object-cover" />}
           <AvatarFallback>{(name ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
@@ -246,6 +289,12 @@ function FriendRow({ pubkey, onNavigate }: { pubkey: string; onNavigate: () => v
             {nip05 ?? `${npub.slice(0, 12)}…${npub.slice(-6)}`}
           </p>
         </div>
+        {species > 0 && (
+          <div className="shrink-0 text-right leading-tight">
+            <p className="text-sm font-semibold tabular-nums">{species.toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">species</p>
+          </div>
+        )}
       </Link>
       <Button
         type="button"
