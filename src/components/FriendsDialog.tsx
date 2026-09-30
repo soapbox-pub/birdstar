@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
-import { Send, Users } from 'lucide-react';
+import { Crown, Send, Users } from 'lucide-react';
 
 import {
   Dialog,
@@ -40,8 +40,9 @@ const PAGE_SIZE = 30;
 /**
  * Manage who you follow: search for accounts to add (NIP-50 typeahead,
  * or paste an npub / NIP-05), invite people who aren't on Nostr yet with
- * your profile link, and review or remove the people you follow. Every
- * change is a kind 3 follow-list update.
+ * your profile link, and see the people you follow ranked by Birdex size.
+ * Adding a friend is a kind 3 follow-list update; unfollowing happens
+ * from their profile.
  *
  * Full-screen on mobile, a centered modal from `sm` up, like
  * {@link BirdProfileDialog}.
@@ -51,7 +52,10 @@ export function FriendsDialog({ open, onOpenChange }: FriendsDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          'h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 rounded-none border-0 p-0',
+          // A single grid row capped at the dialog's height, so the
+          // Following list below scrolls inside itself. Left `auto`, the
+          // row grows to fit the whole list and nothing scrolls.
+          'h-[100dvh] max-h-[100dvh] w-screen max-w-none grid-rows-[minmax(0,1fr)] gap-0 overflow-hidden rounded-none border-0 p-0',
           'left-0 top-0 translate-x-0 translate-y-0',
           'sm:left-[50%] sm:safe-center-y sm:h-[min(44rem,88dvh)] sm:w-full sm:max-w-lg sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg sm:border',
         )}
@@ -234,8 +238,6 @@ interface FriendRowProps {
 
 function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
   const author = useAuthor(pubkey);
-  const { isPending, unfollow } = useFollowActions();
-  const { toast } = useToast();
 
   const metadata = author.data?.metadata;
   const name = metadata?.name || metadata?.display_name;
@@ -243,26 +245,12 @@ function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
   const npub = useMemo(() => nip19.npubEncode(pubkey), [pubkey]);
   const nip05 = useVerifiedNip05(metadata?.nip05, pubkey);
 
-  const handleUnfollow = async () => {
-    try {
-      await unfollow(pubkey);
-      hapticTap();
-      toast({ title: 'Unfollowed', description: name ? `You're no longer following ${name}.` : undefined });
-    } catch (err) {
-      toast({
-        title: "Couldn't unfollow",
-        description: err instanceof Error ? err.message : 'Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
   return (
-    <li className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50">
+    <li>
       <Link
         to={`/${npub}`}
         onClick={onNavigate}
-        className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {rank !== undefined && (
           <span
@@ -275,10 +263,18 @@ function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
             {rank > 0 ? rank : ''}
           </span>
         )}
-        <Avatar className="size-10">
-          {picture && <AvatarImage src={picture} alt="" className="object-cover" />}
-          <AvatarFallback>{(name ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <div className="relative shrink-0">
+          <Avatar className="size-10">
+            {picture && <AvatarImage src={picture} alt="" className="object-cover" />}
+            <AvatarFallback>{(name ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          {rank === 1 && (
+            <Crown
+              className="absolute -top-2.5 left-1/2 size-5 -translate-x-1/2 rotate-[-12deg] fill-amber-400 text-amber-600 drop-shadow-sm dark:text-amber-300"
+              aria-hidden
+            />
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           {author.isLoading && !name ? (
             <Skeleton className="h-4 w-24" />
@@ -296,17 +292,6 @@ function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
           </div>
         )}
       </Link>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={isPending}
-        onClick={handleUnfollow}
-        className="shrink-0 rounded-full"
-        aria-label={name ? `Unfollow ${name}` : 'Unfollow'}
-      >
-        {isPending ? '…' : 'Unfollow'}
-      </Button>
     </li>
   );
 }
