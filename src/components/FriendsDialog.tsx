@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { nip19 } from 'nostr-tools';
-import { Crown, Send, Users } from 'lucide-react';
+import { Send, Users } from 'lucide-react';
 
 import {
   Dialog,
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { OverlayCloseButton } from '@/components/OverlayCloseButton';
+import { FriendsLeaderboard, FriendsLeaderboardSkeleton, type LeaderboardEntry } from '@/components/FriendsLeaderboard';
 import { ProfileSearchInput } from '@/components/ProfileSearchInput';
 import { ProfileShareView } from '@/components/ProfileShareView';
 import { useAuthor } from '@/hooks/useAuthor';
@@ -40,7 +41,8 @@ const PAGE_SIZE = 30;
 /**
  * Manage who you follow: search for accounts to add (NIP-50 typeahead,
  * or paste an npub / NIP-05), invite people who aren't on Nostr yet with
- * your profile link, and see the people you follow ranked by Birdex size.
+ * your profile link, and see how you and the people you follow rank by
+ * Birdex size.
  * Adding a friend is a kind 3 follow-list update; unfollowing happens
  * from their profile.
  *
@@ -86,24 +88,27 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
   const [inviting, setInviting] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
 
-  const birdexSizes = useFollowsBirdexSizes();
+  const { sizes, isLoading: sizesLoading } = useFollowsBirdexSizes();
+  const selfPubkey = user?.pubkey;
 
-  // A leaderboard: biggest Birdex first. Ties, including everyone with
-  // no Birdex yet, fall back to most recently added first.
-  // Tied counts share a rank (1, 2, 2, 4), and accounts with no species
-  // aren't ranked at all.
-  const following = useMemo(() => {
-    const rows = [...(follows ?? [])]
-      .reverse()
-      .map((pubkey) => ({ pubkey, species: birdexSizes?.get(pubkey) ?? 0, rank: 0 }))
+  // Everyone with a Birdex, you included, goes on the leaderboard,
+  // biggest first. Ties share a rank (1, 2, 2, 4) and are ordered by
+  // most recently followed. Follows with no Birdex yet are listed below,
+  // most recently added first.
+  const { leaders, unranked } = useMemo(() => {
+    const recentFirst = [...(follows ?? [])].reverse();
+    const candidates = selfPubkey && !follows?.has(selfPubkey) ? [...recentFirst, selfPubkey] : recentFirst;
+    const leaders: LeaderboardEntry[] = candidates
+      .filter((pubkey) => sizes.has(pubkey))
+      .map((pubkey) => ({ pubkey, species: sizes.get(pubkey) ?? 0, rank: 0 }))
       .sort((a, b) => b.species - a.species);
-    rows.forEach((row, i) => {
-      if (row.species === 0) return;
-      row.rank = i > 0 && rows[i - 1].species === row.species ? rows[i - 1].rank : i + 1;
+    leaders.forEach((row, i) => {
+      row.rank = i > 0 && leaders[i - 1].species === row.species ? leaders[i - 1].rank : i + 1;
     });
-    return rows;
-  }, [follows, birdexSizes]);
-  const ranked = following.some((row) => row.rank > 0);
+    return { leaders, unranked: recentFirst.filter((pubkey) => !sizes.has(pubkey)) };
+  }, [follows, sizes, selfPubkey]);
+
+  const loading = isLoading || sizesLoading;
 
   if (!user) return null;
 
@@ -174,23 +179,9 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain border-t px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-4">
-        <h3 className="mb-3 text-xs uppercase tracking-widest text-muted-foreground">
-          {follows && follows.size > 0 ? `Following · ${follows.size}` : 'Following'}
-        </h3>
-
-        {isLoading ? (
-          <div className="space-y-1">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 py-2">
-                <Skeleton className="size-10 rounded-full" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-3 w-40" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : following.length === 0 ? (
+        {loading ? (
+          <FriendsLeaderboardSkeleton />
+        ) : !follows || follows.size === 0 ? (
           <Card className="border-dashed">
             <CardContent className="px-8 py-10 text-center">
               <p className="mx-auto max-w-sm text-sm text-muted-foreground">
@@ -200,25 +191,36 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
           </Card>
         ) : (
           <>
-            <ul className="-mx-2">
-              {following.slice(0, shown).map(({ pubkey, species, rank }) => (
-                <FriendRow
-                  key={pubkey}
-                  pubkey={pubkey}
-                  species={species}
-                  rank={ranked ? rank : undefined}
-                  onNavigate={onClose}
-                />
-              ))}
-            </ul>
-            {following.length > shown && (
-              <Button
-                variant="ghost"
-                className="mt-2 w-full"
-                onClick={() => setShown((n) => n + PAGE_SIZE)}
-              >
-                Show more
-              </Button>
+            {leaders.length > 0 && (
+              <FriendsLeaderboard entries={leaders} selfPubkey={user.pubkey} onNavigate={onClose} />
+            )}
+            {unranked.length > 0 && (
+              <>
+                <h3
+                  className={cn(
+                    'mb-3 text-xs uppercase tracking-widest text-muted-foreground',
+                    leaders.length > 0 && 'mt-8',
+                  )}
+                >
+                  {leaders.length > 0
+                    ? `Not on the board yet · ${unranked.length}`
+                    : `Following · ${follows.size}`}
+                </h3>
+                <ul className="-mx-2">
+                  {unranked.slice(0, shown).map((pubkey) => (
+                    <FriendRow key={pubkey} pubkey={pubkey} onNavigate={onClose} />
+                  ))}
+                </ul>
+                {unranked.length > shown && (
+                  <Button
+                    variant="ghost"
+                    className="mt-2 w-full"
+                    onClick={() => setShown((n) => n + PAGE_SIZE)}
+                  >
+                    Show more
+                  </Button>
+                )}
+              </>
             )}
           </>
         )}
@@ -227,16 +229,7 @@ function FriendsBody({ onClose }: { onClose: () => void }) {
   );
 }
 
-interface FriendRowProps {
-  pubkey: string;
-  /** Species on their Birdex. */
-  species: number;
-  /** Leaderboard position; 0 when unranked, undefined when nobody is. */
-  rank?: number;
-  onNavigate: () => void;
-}
-
-function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
+function FriendRow({ pubkey, onNavigate }: { pubkey: string; onNavigate: () => void }) {
   const author = useAuthor(pubkey);
 
   const metadata = author.data?.metadata;
@@ -252,29 +245,10 @@ function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
         onClick={onNavigate}
         className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {rank !== undefined && (
-          <span
-            className={cn(
-              'w-6 shrink-0 text-center text-sm font-semibold tabular-nums',
-              rank === 1 ? 'text-amber-600 dark:text-amber-300' : 'text-muted-foreground',
-            )}
-            aria-label={rank > 0 ? `Rank ${rank}` : undefined}
-          >
-            {rank > 0 ? rank : ''}
-          </span>
-        )}
-        <div className="relative shrink-0">
-          <Avatar className="size-10">
-            {picture && <AvatarImage src={picture} alt="" className="object-cover" />}
-            <AvatarFallback>{(name ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
-          </Avatar>
-          {rank === 1 && (
-            <Crown
-              className="absolute -top-2.5 left-1/2 size-5 -translate-x-1/2 rotate-[-12deg] fill-amber-400 text-amber-600 drop-shadow-sm dark:text-amber-300"
-              aria-hidden
-            />
-          )}
-        </div>
+        <Avatar className="size-10">
+          {picture && <AvatarImage src={picture} alt="" className="object-cover" />}
+          <AvatarFallback>{(name ?? '?').charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
         <div className="min-w-0 flex-1">
           {author.isLoading && !name ? (
             <Skeleton className="h-4 w-24" />
@@ -285,12 +259,6 @@ function FriendRow({ pubkey, species, rank, onNavigate }: FriendRowProps) {
             {nip05 ?? `${npub.slice(0, 12)}…${npub.slice(-6)}`}
           </p>
         </div>
-        {species > 0 && (
-          <div className="shrink-0 text-right leading-tight">
-            <p className="text-sm font-semibold tabular-nums">{species.toLocaleString()}</p>
-            <p className="text-xs text-muted-foreground">species</p>
-          </div>
-        )}
       </Link>
     </li>
   );

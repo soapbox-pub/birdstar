@@ -72,6 +72,27 @@
   --animate-lifer-ring: lifer-ring 1400ms ease-out infinite;
   --animate-lifer-banner: lifer-banner 520ms cubic-bezier(0.2, 0.8, 0.2, 1) 120ms both;
   --animate-lifer-confetti: lifer-confetti 2200ms cubic-bezier(0.2, 0.6, 0.3, 1) both;
+  /* Friends leaderboard — podium steps rising, species bars filling. */
+  --animate-podium-rise: podium-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-bar-grow: bar-grow 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes podium-rise {
+    0% {
+      transform: scaleY(0);
+    }
+    100% {
+      transform: scaleY(1);
+    }
+  }
+
+  @keyframes bar-grow {
+    0% {
+      transform: scaleX(0);
+    }
+    100% {
+      transform: scaleX(1);
+    }
+  }
 
   @keyframes accordion-down {
     from {
