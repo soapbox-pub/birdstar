@@ -956,10 +956,14 @@ const IndexInner = () => {
   // We only act when the param names a *different* species than the
   // current subject, so `openSubject`'s own navigation doesn't clobber
   // the richer state it just set (rare flag, detection, etc.).
+  //
+  // A slug isn't marked as handled until labels have loaded, otherwise a
+  // cold load would consume the slug before it could be resolved and the
+  // dialog would never open.
   const [prevBirdSlugParam, setPrevBirdSlugParam] = useState<
     string | undefined
   >(undefined);
-  if (prevBirdSlugParam !== birdSlugParam) {
+  if (prevBirdSlugParam !== birdSlugParam && (!birdSlugParam || labels)) {
     setPrevBirdSlugParam(birdSlugParam);
     if (birdSlugParam && labels) {
       const currentSci =
